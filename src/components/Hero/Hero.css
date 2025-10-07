@@ -31,6 +31,22 @@
   color: var(--primary-color);
 }
 
+/* Rotating Word Animation */
+.rotating-word {
+  display: inline-block;
+  transition: opacity 0.5s ease-in-out, transform 0.5s ease-in-out;
+}
+
+.rotating-word.fade-in {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.rotating-word.fade-out {
+  opacity: 0;
+  transform: translateY(-10px);
+}
+
 .hero-subtitle {
   margin-top: 0.2rem;
   font-size: var(--font-size-2xl);

@@ -92,7 +92,7 @@ function Navbar() {
                 </div>
               )}
             </li>
-            <li><Link to="/contact">Contact</Link></li>
+            <li><Link to="/contact">Get in touch</Link></li>
           </ul>
         </div>
 
@@ -157,7 +157,7 @@ function Navbar() {
                   </div>
                 )}
               </div>
-              <Link to="/contact" onClick={closeMobileMenu}>Contact</Link>
+              <Link to="/contact" onClick={closeMobileMenu}>Get in touch</Link>
             </nav>
 
             <div className="mobile-menu-actions">
