@@ -1,13 +1,27 @@
+import { useEffect, useState } from 'react'
 import './Navbar.css'
-import logoLight from '../../assets/images/looped-logo/looped-logo-light.png'
+import ThemeToggle from '../ThemeToggle/ThemeToggle'
+import mainLogo from '../../assets/images/brand-assets/main-logo.svg'
 
 function Navbar() {
+  const [isScrolled, setIsScrolled] = useState(false)
+
+  useEffect(() => {
+    const handleScroll = () => {
+      setIsScrolled(window.scrollY > 10)
+    }
+
+    window.addEventListener('scroll', handleScroll)
+    return () => window.removeEventListener('scroll', handleScroll)
+  }, [])
+
   return (
-    <nav className="navbar">
+    <nav className={`navbar ${isScrolled ? 'navbar-scrolled' : ''}`}>
       <div className="navbar-container">
         <div className="navbar-left">
           <div className="navbar-logo">
-            <img src={logoLight} alt="Looped" />
+            <img src={mainLogo} alt="Looped" />
+            <span className="navbar-logo-text">ooped</span>
           </div>
 
           <ul className="navbar-links">
@@ -18,6 +32,7 @@ function Navbar() {
         </div>
 
         <div className="navbar-actions">
+          <ThemeToggle />
           <a href="#login" className="navbar-login">Log in</a>
           <a href="#get-looped" className="navbar-cta">Get Looped</a>
         </div>

@@ -26,6 +26,19 @@
 
     <!-- iOS App Store -->
     <meta name="apple-itunes-app" content="app-id=YOUR_APP_ID" />
+
+    <!-- Theme initialization - prevents FOUC -->
+    <script>
+      (function() {
+        const stored = localStorage.getItem('looped-theme');
+        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        const theme = stored || (prefersDark ? 'dark' : 'light');
+
+        if (theme === 'dark') {
+          document.documentElement.setAttribute('data-theme', 'dark');
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

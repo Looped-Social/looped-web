@@ -2,27 +2,39 @@
 
 /* Root font size - scales all rem values */
 html {
-  font-size: 16px; /* Desktop base */
+  font-size: 16px;
+  /* Desktop base */
 }
 
 @media (max-width: 768px) {
   html {
-    font-size: 14px; /* Mobile base - everything scales down */
+    font-size: 14px;
+    /* Mobile base - everything scales down */
   }
 }
 
 :root {
+  color-scheme: light dark;
+
   /* Colors */
   --primary-color: #ea404a;
+  --primary-hover: #d63841;
   --secondary-color: #15BFB5;
-  --text-primary: #333333;
-  --text-secondary: #666666;
-  --text-light: #999999;
-  --background-white: #ffffff;
-  --background-light: #f8f8f8;
+  --contrast-color: #0F0F0F;
+  --text-primary: #1F2937;
+  --text-secondary: #6B7280;
+  --text-light: #9CA3AF;
+  --strong-text: #111827;
+  --background-color: #FFFFFF;
+  --background-muted: #F3F4F6;
+  --border-color: #E5E7EB;
+  --message-color-muted: #FAFAFA;
+  --message-color: #ACF6F2;
 
   /* Typography - all in rem, scales with root font-size */
   --font-family: 'Poppins', sans-serif;
+  --font-size-s: 0.625rem;
+  --font-size-xs: 0.5rem;
   --font-size-base: 1rem;
   --font-size-lg: 1.125rem;
   --font-size-xl: 1.25rem;
@@ -31,6 +43,36 @@ html {
   --font-size-4xl: 2.25rem;
   --font-size-5xl: 3rem;
   --font-size-6xl: 5rem;
+}
+
+/* Dark mode colors */
+[data-theme="dark"] {
+  --text-primary: #E5E7EB;
+  --text-secondary: #9CA3AF;
+  --text-light: #6B7280;
+  --strong-text: #E5E7EB;
+  --contrast-color: #FFFFFF;
+  --background-color: #0F0F0F;
+  --background-muted: #333333;
+  --border-color: #374151;
+  --message-color-muted: #1A1A1A;
+  --message-color: #0D7C75;
+}
+
+/* Fallback for system preference (when no manual theme is set) */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --text-primary: #E5E7EB;
+    --text-secondary: #9CA3AF;
+    --text-light: #6B7280;
+    --strong-text: #E5E7EB;
+    --contrast-color: #FFFFFF;
+    --background-color: #0F0F0F;
+    --background-muted: #333333;
+    --border-color: #374151;
+    --message-color-muted: #1A1A1A;
+    --message-color: #0D7C75;
+  }
 }
 
 * {
@@ -43,5 +85,5 @@ body {
   font-size: var(--font-size-base);
   line-height: 1.5;
   color: var(--text-primary);
-  background-color: var(--background-white);
+  background-color: var(--background-color);
 }
