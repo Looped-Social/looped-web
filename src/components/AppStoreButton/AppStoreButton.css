@@ -11,34 +11,33 @@
 .app-store-button img {
   height: var(--button-size, 6rem);
   width: auto;
-  display: block;
 }
 
-/* Light mode - show black, hide white */
-.app-store-button-light {
-  display: block;
-}
-
-.app-store-button-dark {
+/* Light mode - show black button, hide white button */
+.app-store-button img.app-store-button-light {
   display: none;
 }
 
-/* Manual dark theme - hide black, show white */
-[data-theme="dark"] .app-store-button-light {
-  display: none;
+.app-store-button img.app-store-button-dark {
+  display: block;
 }
 
-[data-theme="dark"] .app-store-button-dark {
+/* Manual dark theme - show white button, hide black button */
+[data-theme="dark"] .app-store-button img.app-store-button-light {
   display: block;
+}
+
+[data-theme="dark"] .app-store-button img.app-store-button-dark {
+  display: none;
 }
 
 /* System preference dark theme (when no manual theme set) */
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme]) .app-store-button-light {
-    display: none;
+  :root:not([data-theme]) .app-store-button img.app-store-button-light {
+    display: block;
   }
 
-  :root:not([data-theme]) .app-store-button-dark {
-    display: block;
+  :root:not([data-theme]) .app-store-button img.app-store-button-dark {
+    display: none;
   }
 }
