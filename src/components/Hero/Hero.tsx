@@ -1,5 +1,6 @@
 import './Hero.css'
-import appStoreButton from '../../assets/images/download-app-store-black.svg'
+import appStoreButtonBlack from '../../assets/images/download-app-store-black.svg'
+import appStoreButtonWhite from '../../assets/images/download-app-store-white.svg'
 import phoneImage from '../../assets/images/home-page-sample.jpeg'
 
 function Hero() {
@@ -16,7 +17,8 @@ function Hero() {
             Looped is where real employees and students speak freely, anonymous by design
           </p>
           <a href="#download" className="hero-download">
-            <img src={appStoreButton} alt="Download on the App Store" />
+            <img src={appStoreButtonWhite} alt="Download on the App Store" className="hero-download-light" />
+            <img src={appStoreButtonBlack} alt="Download on the App Store" className="hero-download-dark" />
           </a>
         </div>
         <div className="hero-image">

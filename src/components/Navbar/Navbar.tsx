@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import './Navbar.css'
 import ThemeToggle from '../ThemeToggle/ThemeToggle'
-import mainLogo from '../../assets/images/brand-assets/main-logo.svg'
+import Logo from '../Logo/Logo'
 
 function Navbar() {
   const [isScrolled, setIsScrolled] = useState(false)
@@ -34,10 +34,7 @@ function Navbar() {
     <nav className={`navbar ${isScrolled ? 'navbar-scrolled' : ''}`}>
       <div className="navbar-container">
         <div className="navbar-left">
-          <div className="navbar-logo">
-            <img src={mainLogo} alt="Looped" />
-            <span className="navbar-logo-text">ooped</span>
-          </div>
+          <Logo />
 
           <ul className="navbar-links">
             <li><a href="#about">About</a></li>

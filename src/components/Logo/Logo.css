@@ -1,0 +1,28 @@
+.logo {
+  display: flex;
+  align-items: center;
+}
+
+.logo-image {
+  height: var(--font-size-xl);
+  width: auto;
+  display: block;
+}
+
+.logo-text {
+  font-size: var(--font-size-lg);
+  font-weight: 400;
+  color: var(--text-primary);
+  line-height: 1;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .logo-image {
+    height: 28px;
+  }
+
+  .logo-text {
+    font-size: var(--font-size-lg);
+  }
+}
