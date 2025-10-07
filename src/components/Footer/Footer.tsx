@@ -33,7 +33,8 @@ function Footer() {
           <div className="footer-section">
             <h3 className="footer-title">Company</h3>
             <ul className="footer-links">
-              <li><a href="mailto:support@looped.app">Contact</a></li>
+              <li><Link to="/about">About</Link></li>
+              <li><Link to="/contact">Contact</Link></li>
               <li><a href="https://twitter.com/loopedapp" target="_blank" rel="noopener noreferrer">Twitter</a></li>
               <li><a href="https://instagram.com/loopedapp" target="_blank" rel="noopener noreferrer">Instagram</a></li>
             </ul>

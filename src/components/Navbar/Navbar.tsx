@@ -61,7 +61,7 @@ function Navbar() {
           <Logo />
 
           <ul className="navbar-links">
-            <li><a href="#about">About</a></li>
+            <li><Link to="/about">About</Link></li>
             <li className="navbar-dropdown" ref={dropdownRef}>
               <button
                 className="navbar-dropdown-trigger"
@@ -92,7 +92,7 @@ function Navbar() {
                 </div>
               )}
             </li>
-            <li><a href="#contact">Get in touch</a></li>
+            <li><Link to="/contact">Contact</Link></li>
           </ul>
         </div>
 
@@ -126,7 +126,7 @@ function Navbar() {
             </button>
 
             <nav className="mobile-menu-nav">
-              <a href="#about" onClick={closeMobileMenu}>About</a>
+              <Link to="/about" onClick={closeMobileMenu}>About</Link>
               <div className="mobile-menu-section">
                 <button
                   className="mobile-menu-section-trigger"
@@ -157,7 +157,7 @@ function Navbar() {
                   </div>
                 )}
               </div>
-              <a href="#contact" onClick={closeMobileMenu}>Get in touch</a>
+              <Link to="/contact" onClick={closeMobileMenu}>Contact</Link>
             </nav>
 
             <div className="mobile-menu-actions">

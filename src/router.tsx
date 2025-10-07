@@ -1,6 +1,8 @@
 import { createBrowserRouter } from 'react-router'
 import App from './App.tsx'
 import Home from './pages/Home/Home.tsx'
+import About from './pages/About/About.tsx'
+import Contact from './pages/Contact/Contact.tsx'
 import PrivacyPolicy from './pages/PrivacyPolicy/PrivacyPolicy.tsx'
 import TermsOfService from './pages/TermsOfService/TermsOfService.tsx'
 import CommunityRules from './pages/CommunityRules/CommunityRules.tsx'
@@ -19,6 +21,14 @@ export const router = createBrowserRouter([
       {
         path: 'login',
         element: <ComingSoon />,
+      },
+      {
+        path: 'about',
+        element: <About />,
+      },
+      {
+        path: 'contact',
+        element: <Contact />,
       },
       {
         path: 'privacy',
