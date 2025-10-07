@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { Link } from 'react-router'
 import './Navbar.css'
 import ThemeToggle from '../ThemeToggle/ThemeToggle'
@@ -7,6 +7,9 @@ import Logo from '../Logo/Logo'
 function Navbar() {
   const [isScrolled, setIsScrolled] = useState(false)
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+  const [isFinePrintOpen, setIsFinePrintOpen] = useState(false)
+  const [isFinePrintMobileOpen, setIsFinePrintMobileOpen] = useState(false)
+  const dropdownRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const handleScroll = () => {
@@ -29,7 +32,27 @@ function Navbar() {
     }
   }, [isMobileMenuOpen])
 
-  const closeMobileMenu = () => setIsMobileMenuOpen(false)
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsFinePrintOpen(false)
+      }
+    }
+
+    if (isFinePrintOpen) {
+      document.addEventListener('mousedown', handleClickOutside)
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [isFinePrintOpen])
+
+  const closeMobileMenu = () => {
+    setIsMobileMenuOpen(false)
+    setIsFinePrintMobileOpen(false)
+  }
 
   return (
     <nav className={`navbar ${isScrolled ? 'navbar-scrolled' : ''}`}>
@@ -39,7 +62,36 @@ function Navbar() {
 
           <ul className="navbar-links">
             <li><a href="#about">About</a></li>
-            <li><a href="#fine-print">The Fine Print</a></li>
+            <li className="navbar-dropdown" ref={dropdownRef}>
+              <button
+                className="navbar-dropdown-trigger"
+                onClick={() => setIsFinePrintOpen(!isFinePrintOpen)}
+                aria-expanded={isFinePrintOpen}
+              >
+                The Fine Print
+                <svg
+                  className={`dropdown-arrow ${isFinePrintOpen ? 'open' : ''}`}
+                  width="12"
+                  height="12"
+                  viewBox="0 0 12 12"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <polyline points="2 4 6 8 10 4" />
+                </svg>
+              </button>
+              {isFinePrintOpen && (
+                <div className="navbar-dropdown-menu">
+                  <Link to="/community-rules" onClick={() => setIsFinePrintOpen(false)}>Community Rules</Link>
+                  <Link to="/privacy" onClick={() => setIsFinePrintOpen(false)}>Privacy Policy</Link>
+                  <Link to="/terms" onClick={() => setIsFinePrintOpen(false)}>Terms of Service</Link>
+                  <Link to="/faq" onClick={() => setIsFinePrintOpen(false)}>FAQ</Link>
+                </div>
+              )}
+            </li>
             <li><a href="#contact">Get in touch</a></li>
           </ul>
         </div>
@@ -75,7 +127,36 @@ function Navbar() {
 
             <nav className="mobile-menu-nav">
               <a href="#about" onClick={closeMobileMenu}>About</a>
-              <a href="#fine-print" onClick={closeMobileMenu}>The Fine Print</a>
+              <div className="mobile-menu-section">
+                <button
+                  className="mobile-menu-section-trigger"
+                  onClick={() => setIsFinePrintMobileOpen(!isFinePrintMobileOpen)}
+                  aria-expanded={isFinePrintMobileOpen}
+                >
+                  The Fine Print
+                  <svg
+                    className={`mobile-dropdown-arrow ${isFinePrintMobileOpen ? 'open' : ''}`}
+                    width="16"
+                    height="16"
+                    viewBox="0 0 12 12"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <polyline points="2 4 6 8 10 4" />
+                  </svg>
+                </button>
+                {isFinePrintMobileOpen && (
+                  <div className="mobile-menu-subsection">
+                    <Link to="/community-rules" onClick={closeMobileMenu}>Community Rules</Link>
+                    <Link to="/privacy" onClick={closeMobileMenu}>Privacy Policy</Link>
+                    <Link to="/terms" onClick={closeMobileMenu}>Terms of Service</Link>
+                    <Link to="/faq" onClick={closeMobileMenu}>FAQ</Link>
+                  </div>
+                )}
+              </div>
               <a href="#contact" onClick={closeMobileMenu}>Get in touch</a>
             </nav>
 

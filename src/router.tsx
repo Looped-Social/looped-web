@@ -3,6 +3,7 @@ import App from './App.tsx'
 import Home from './pages/Home/Home.tsx'
 import PrivacyPolicy from './pages/PrivacyPolicy/PrivacyPolicy.tsx'
 import TermsOfService from './pages/TermsOfService/TermsOfService.tsx'
+import CommunityRules from './pages/CommunityRules/CommunityRules.tsx'
 import FAQ from './pages/FAQ/FAQ.tsx'
 import ComingSoon from './pages/ComingSoon/ComingSoon.tsx'
 
@@ -26,6 +27,10 @@ export const router = createBrowserRouter([
       {
         path: 'terms',
         element: <TermsOfService />,
+      },
+      {
+        path: 'community-rules',
+        element: <CommunityRules />,
       },
       {
         path: 'faq',
