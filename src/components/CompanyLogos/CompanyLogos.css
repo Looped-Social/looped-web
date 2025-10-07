@@ -1,5 +1,5 @@
 .company-logos {
-  padding: 5rem 0;
+  padding: 2.5rem 0;
   background-color: var(--background-muted);
 }
 
@@ -70,7 +70,7 @@
 /* Responsive Design */
 @media (max-width: 768px) {
   .company-logos {
-    padding: 3rem 0;
+    padding: 2rem 0;
   }
 
   .company-logos-container {

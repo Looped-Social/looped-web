@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router'
 import './Navbar.css'
 import ThemeToggle from '../ThemeToggle/ThemeToggle'
 import Logo from '../Logo/Logo'
@@ -45,7 +46,7 @@ function Navbar() {
 
         <div className="navbar-actions">
           <ThemeToggle />
-          <a href="#login" className="navbar-login">Log in</a>
+          <Link to="/login" className="navbar-login">Log in</Link>
           <a href="#get-looped" className="navbar-cta">Get Looped</a>
         </div>
 
@@ -80,7 +81,7 @@ function Navbar() {
 
             <div className="mobile-menu-actions">
               <ThemeToggle />
-              <a href="#login" onClick={closeMobileMenu} className="mobile-menu-login">Log in</a>
+              <Link to="/login" onClick={closeMobileMenu} className="mobile-menu-login">Log in</Link>
               <a href="#get-looped" onClick={closeMobileMenu} className="mobile-menu-cta">Get Looped</a>
             </div>
           </div>
