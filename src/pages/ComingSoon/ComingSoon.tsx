@@ -2,8 +2,7 @@ import './ComingSoon.css'
 import Navbar from '../../components/Navbar/Navbar'
 import Footer from '../../components/Footer/Footer'
 import Logo from '../../components/Logo/Logo'
-import appStoreButtonBlack from '../../assets/images/download-app-store-black.svg'
-import appStoreButtonWhite from '../../assets/images/download-app-store-white.svg'
+import AppStoreButton from '../../components/AppStoreButton/AppStoreButton'
 
 function ComingSoon() {
   return (
@@ -27,10 +26,7 @@ function ComingSoon() {
             </p>
           </div>
 
-          <a href="#download" className="coming-soon-download">
-            <img src={appStoreButtonWhite} alt="Download on the App Store" className="coming-soon-download-light" />
-            <img src={appStoreButtonBlack} alt="Download on the App Store" className="coming-soon-download-dark" />
-          </a>
+          <AppStoreButton size={3.5} className="coming-soon-download" />
 
           <div className="coming-soon-footer-note">
             <p>Want to be notified when we launch?</p>

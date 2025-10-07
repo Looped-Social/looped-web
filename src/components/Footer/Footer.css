@@ -32,48 +32,7 @@
 }
 
 .footer-download {
-  display: inline-block;
   margin-top: 0.5rem;
-  width: fit-content;
-  transition: opacity 0.2s ease;
-}
-
-.footer-download:hover {
-  opacity: 0.8;
-}
-
-.footer-download img {
-  height: 40px;
-  width: auto;
-}
-
-/* Theme-specific download buttons */
-[data-theme="dark"] .footer-download-light {
-  display: block;
-}
-
-[data-theme="dark"] .footer-download-dark {
-  display: none;
-}
-
-[data-theme="light"] .footer-download-light,
-:root:not([data-theme]) .footer-download-light {
-  display: none;
-}
-
-[data-theme="light"] .footer-download-dark,
-:root:not([data-theme]) .footer-download-dark {
-  display: block;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme]) .footer-download-light {
-    display: block;
-  }
-
-  :root:not([data-theme]) .footer-download-dark {
-    display: none;
-  }
 }
 
 .footer-section {

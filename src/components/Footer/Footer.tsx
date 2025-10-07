@@ -1,8 +1,7 @@
 import { Link } from 'react-router'
 import './Footer.css'
 import Logo from '../Logo/Logo'
-import appStoreButtonBlack from '../../assets/images/download-app-store-black.svg'
-import appStoreButtonWhite from '../../assets/images/download-app-store-white.svg'
+import AppStoreButton from '../AppStoreButton/AppStoreButton'
 
 function Footer() {
   const currentYear = new Date().getFullYear()
@@ -17,10 +16,7 @@ function Footer() {
             <p className="footer-tagline">
               Your community, verified. Where real employees and students speak freely.
             </p>
-            <a href="#download" className="footer-download">
-              <img src={appStoreButtonWhite} alt="Download on the App Store" className="footer-download-light" />
-              <img src={appStoreButtonBlack} alt="Download on the App Store" className="footer-download-dark" />
-            </a>
+            <AppStoreButton size={2.5} className="footer-download" />
           </div>
 
           {/* Product Links */}

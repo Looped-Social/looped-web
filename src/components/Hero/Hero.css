@@ -41,47 +41,7 @@
 }
 
 .hero-download {
-  display: inline-block;
   margin-top: 0.5rem;
-}
-
-.hero-download img {
-  height: 6rem;
-  width: auto;
-  transition: transform 0.2s ease;
-}
-
-/* Light mode - show black, hide white */
-.hero-download-light {
-  display: block;
-}
-
-.hero-download-dark {
-  display: none;
-}
-
-/* Manual dark theme - hide black, show white */
-[data-theme="dark"] .hero-download-light {
-  display: none;
-}
-
-[data-theme="dark"] .hero-download-dark {
-  display: block;
-}
-
-/* System preference dark theme (when no manual theme set) */
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme]) .hero-download-light {
-    display: none;
-  }
-
-  :root:not([data-theme]) .hero-download-dark {
-    display: block;
-  }
-}
-
-.hero-download:hover img {
-  transform: scale(1.02);
 }
 
 .hero-image {
@@ -114,10 +74,6 @@
     gap: 1.5rem;
     margin-left: 4;
     margin-top: 0;
-  }
-
-  .hero-download img {
-    height: 48px;
   }
 
   .hero-image {

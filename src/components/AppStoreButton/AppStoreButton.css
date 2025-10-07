@@ -1,0 +1,44 @@
+.app-store-button {
+  display: inline-block;
+  transition: opacity 0.2s ease;
+  line-height: 0;
+}
+
+.app-store-button:hover {
+  opacity: 0.8;
+}
+
+.app-store-button img {
+  height: var(--button-size, 6rem);
+  width: auto;
+  display: block;
+}
+
+/* Light mode - show black, hide white */
+.app-store-button-light {
+  display: block;
+}
+
+.app-store-button-dark {
+  display: none;
+}
+
+/* Manual dark theme - hide black, show white */
+[data-theme="dark"] .app-store-button-light {
+  display: none;
+}
+
+[data-theme="dark"] .app-store-button-dark {
+  display: block;
+}
+
+/* System preference dark theme (when no manual theme set) */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) .app-store-button-light {
+    display: none;
+  }
+
+  :root:not([data-theme]) .app-store-button-dark {
+    display: block;
+  }
+}
