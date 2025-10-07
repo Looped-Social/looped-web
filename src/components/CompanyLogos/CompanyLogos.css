@@ -7,21 +7,28 @@
   max-width: 1200px;
   margin: 0 auto;
   padding: 0 2rem;
-  text-align: center;
+}
+
+.company-logos-content {
+  display: flex;
+  align-items: center;
+  gap: 3rem;
 }
 
 .company-logos-title {
   font-size: var(--font-size-lg);
   font-weight: 400;
   color: var(--text-light);
-  margin: 0 0 3rem 0;
-  text-align: left;
+  margin: 0;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .company-logos-scroll {
   overflow: hidden;
   position: relative;
   width: 100%;
+  flex: 1;
 }
 
 .company-logos-track {
@@ -72,8 +79,14 @@
     padding: 0 1rem;
   }
 
+  .company-logos-content {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2rem;
+  }
+
   .company-logos-title {
-    margin-bottom: 2rem;
+    width: 100%;
   }
 
   .company-logos-track {

@@ -19,20 +19,22 @@ function CompanyLogos() {
   return (
     <section className="company-logos">
       <div className="company-logos-container">
-        <p className="company-logos-title">Trusted by people everywhere</p>
-        <div className="company-logos-scroll">
-          <div className="company-logos-track">
-            {logos.map((logo, index) => (
-              <div key={index} className="company-logo-item">
-                <img src={logo.src} alt={logo.alt} />
-              </div>
-            ))}
-            {/* Duplicate for seamless loop */}
-            {logos.map((logo, index) => (
-              <div key={`duplicate-${index}`} className="company-logo-item">
-                <img src={logo.src} alt={logo.alt} />
-              </div>
-            ))}
+        <div className="company-logos-content">
+          <p className="company-logos-title">Trusted by people everywhere</p>
+          <div className="company-logos-scroll">
+            <div className="company-logos-track">
+              {logos.map((logo, index) => (
+                <div key={index} className="company-logo-item">
+                  <img src={logo.src} alt={logo.alt} />
+                </div>
+              ))}
+              {/* Duplicate for seamless loop */}
+              {logos.map((logo, index) => (
+                <div key={`duplicate-${index}`} className="company-logo-item">
+                  <img src={logo.src} alt={logo.alt} />
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </div>
