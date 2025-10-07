@@ -9,7 +9,7 @@ function Navbar() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [isFinePrintOpen, setIsFinePrintOpen] = useState(false)
   const [isFinePrintMobileOpen, setIsFinePrintMobileOpen] = useState(false)
-  const dropdownRef = useRef<HTMLDivElement>(null)
+  const dropdownRef = useRef<HTMLLIElement>(null)
 
   useEffect(() => {
     const handleScroll = () => {
