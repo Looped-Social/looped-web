@@ -27,7 +27,7 @@ html {
   --strong-text: #111827;
   --background-color: #FFFFFF;
   --background-muted: #F3F4F6;
-  --border-color: #E5E7EB;
+  --border-color: #6B72804D;
   --message-color-muted: #FAFAFA;
   --message-color: #ACF6F2;
 
@@ -54,7 +54,7 @@ html {
   --contrast-color: #FFFFFF;
   --background-color: #0F0F0F;
   --background-muted: #333333;
-  --border-color: #374151;
+  --border-color: #9CA3AF08;
   --message-color-muted: #1A1A1A;
   --message-color: #0D7C75;
 }
@@ -69,7 +69,7 @@ html {
     --contrast-color: #FFFFFF;
     --background-color: #0F0F0F;
     --background-muted: #333333;
-    --border-color: #374151;
+    --border-color: #3741514D;
     --message-color-muted: #1A1A1A;
     --message-color: #0D7C75;
   }

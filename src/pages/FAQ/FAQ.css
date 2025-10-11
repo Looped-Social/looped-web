@@ -43,7 +43,7 @@
 }
 
 .faq-item:hover {
-  border-color: var(--primary-color);
+  border-color: var(--contrast-color);
 }
 
 .faq-question {
@@ -64,13 +64,6 @@
   transition: background-color 0.2s ease;
 }
 
-.faq-question:hover {
-  background-color: var(--background-muted);
-}
-
-.faq-question.active {
-  background-color: var(--background-muted);
-}
 
 .faq-icon {
   font-size: var(--font-size-2xl);
@@ -83,12 +76,12 @@
 
 .faq-answer {
   padding: 0 1.5rem 1.5rem 1.5rem;
-  background-color: var(--background-muted);
   animation: fadeIn 0.3s ease;
 }
 
 .faq-answer p {
   color: var(--text-primary);
+
   line-height: 1.8;
   margin: 0;
   font-size: var(--font-size-base);
@@ -99,6 +92,7 @@
     opacity: 0;
     transform: translateY(-10px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
