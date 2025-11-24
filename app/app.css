@@ -1,10 +1,23 @@
 @import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,200..800;1,6..72,200..800&family=Poppins:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&display=swap');
 
 @theme {
   --font-sans: "Poppins", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
     sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol",
     "Noto Color Emoji";
   --color-brand: #ea404a;
+  --color-brand-hover: #d63841;
+  --color-secondary: #15bfb5;
+  --color-contrast: #0f0f0f;
+  --color-text-primary: #1f2937;
+  --color-text-secondary: #6b7280;
+  --color-text-light: #9ca3af;
+  --color-strong: #111827;
+  --color-bg: #ffffff;
+  --color-bg-muted: #f3f4f6;
+  --color-border: #6b72804d;
+  --color-message-muted: #fafafa;
+  --color-message: #acf6f2;
 }
 
 :root {
@@ -12,13 +25,14 @@
 }
 
 body {
-  @apply bg-white text-slate-900 font-sans antialiased;
+  @apply bg-bg text-text-primary font-sans antialiased;
 }
 
 @keyframes marquee {
   0% {
     transform: translateX(0);
   }
+
   100% {
     transform: translateX(-50%);
   }

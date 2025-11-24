@@ -38,9 +38,9 @@ export function Hero() {
             Private beta · iOS only
           </div>
 
-          <h1 className="text-4xl font-semibold leading-tight text-slate-900 sm:text-5xl lg:text-6xl">
-            <div>Your</div>
-            <div className="inline-flex min-h-[3.5rem] items-baseline gap-3 md:min-h-[4rem]">
+          <h1 className="flex flex-col text-4xl font-semibold leading-tight text-strong sm:text-5xl lg:text-6xl">
+            <span className="block">Your</span>
+            <span className="block min-h-[3.5rem] md:min-h-[4rem]">
               <span
                 className={`inline-block min-w-[8rem] transition-all duration-300 ease-in-out ${
                   isFading ? "-translate-y-2 opacity-0" : "translate-y-0 opacity-100"
@@ -49,11 +49,11 @@ export function Hero() {
                 {rotatingWords[currentWordIndex]}
               </span>
               <span>,</span>
-            </div>
-            <span className="text-brand">Verified.</span>
+            </span>
+            <span className="block text-brand">Verified.</span>
           </h1>
 
-          <p className="max-w-2xl text-lg text-slate-600 md:text-xl">
+          <p className="max-w-2xl text-lg text-text-secondary md:text-xl">
             Looped is where real employees and students speak freely, anonymous by design.
           </p>
 
@@ -61,17 +61,17 @@ export function Hero() {
             <div id="download">
               <AppStoreButton size={7} />
             </div>
-            <div className="flex items-center gap-2 text-sm text-slate-500">
+            <div className="flex items-center gap-2 text-sm text-text-light">
               <span className="inline-block h-1.5 w-1.5 rounded-full bg-brand" />
               <span>Download the app to get started</span>
             </div>
           </div>
 
-          <div className="flex flex-wrap gap-3 text-sm text-slate-600">
+          <div className="flex flex-wrap gap-3 text-sm text-text-secondary">
             {["Verified accounts", "Anonymity controls", "Company + campus channels"].map((item) => (
               <span
                 key={item}
-                className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-4 py-2 ring-1 ring-slate-200"
+                className="inline-flex items-center gap-2 rounded-full bg-bg-muted px-4 py-2 ring-1 ring-border"
               >
                 <span className="inline-block h-1.5 w-1.5 rounded-full bg-brand" />
                 {item}
@@ -82,7 +82,7 @@ export function Hero() {
 
         <div className="relative flex justify-center md:justify-end">
           <div className="relative max-w-[20rem] sm:max-w-[22rem] lg:max-w-[24rem]">
-            <div className="absolute inset-0 -z-10 rounded-[28px] bg-gradient-to-br from-white via-white to-brand/5 blur-2xl" />
+            <div className="absolute inset-0 -z-10 rounded-[28px] bg-gradient-to-br from-bg via-bg to-brand/5 blur-2xl" />
             <img
               src={heroImage}
               alt="Looped app interface"

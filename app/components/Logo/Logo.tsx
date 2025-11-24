@@ -10,10 +10,10 @@ export function Logo({ className = "" }: LogoProps) {
   return (
     <Link
       to="/"
-      className={`flex items-center gap-2 text-slate-900 transition-opacity hover:opacity-80 ${className}`}
+      className={`flex items-center gap-2 text-strong transition-opacity hover:opacity-80 ${className}`}
     >
-      <img src={mainLogo} alt="Looped" className="h-8 w-auto" />
-      <span className="text-lg font-semibold leading-none tracking-tight">ooped</span>
+      <img src={mainLogo} alt="Looped" className="h-6 w-auto" />
+      <span className="text-lg font-medium leading-none tracking-tight">ooped</span>
     </Link>
   );
 }

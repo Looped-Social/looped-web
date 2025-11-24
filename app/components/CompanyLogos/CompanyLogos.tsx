@@ -16,10 +16,10 @@ const logos = [
 
 export function CompanyLogos() {
   return (
-    <section className="bg-slate-50 py-10 md:py-12">
+    <section className="bg-bg-muted py-10 md:py-12">
       <div className="mx-auto max-w-6xl px-4">
         <div className="flex flex-col items-start gap-6 lg:flex-row lg:items-center lg:gap-10">
-          <p className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+          <p className="text-sm font-semibold uppercase tracking-wide text-text-light">
             Trusted by people everywhere
           </p>
 
