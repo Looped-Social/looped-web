@@ -1,13 +1,28 @@
 import type { Route } from "./+types/home";
-import { Welcome } from "../welcome/welcome";
+import { CompanyLogos } from "../components/CompanyLogos/CompanyLogos";
+import { Footer } from "../components/Footer/Footer";
+import { Hero } from "../components/Hero/Hero";
+import { Navbar } from "../components/Navbar/Navbar";
 
 export function meta({}: Route.MetaArgs) {
   return [
-    { title: "New React Router App" },
-    { name: "description", content: "Welcome to React Router!" },
+    { title: "Looped | Your community, verified." },
+    {
+      name: "description",
+      content: "Looped is where real employees and students speak freely, anonymous by design.",
+    },
   ];
 }
 
 export default function Home() {
-  return <Welcome />;
+  return (
+    <div className="min-h-screen bg-white">
+      <Navbar />
+      <main>
+        <Hero />
+        <CompanyLogos />
+      </main>
+      <Footer />
+    </div>
+  );
 }
