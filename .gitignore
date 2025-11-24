@@ -2,7 +2,6 @@
 .env
 .env.local
 /node_modules/
-/old-web-files/
 # React Router
 /.react-router/
 /build/

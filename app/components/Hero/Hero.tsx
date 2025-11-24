@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import heroImage from "../../assets/images/home-page-sample.jpeg";
 import { AppStoreButton } from "../AppStoreButton/AppStoreButton";
 
-const rotatingWords = ["community", "workspace", "college", "colleagues", "team", "office"];
+const rotatingWords = ["college", "community", "workspace", "colleagues", "team", "office"];
 const rotationFadeDurationMs = 500;
 const rotationIntervalMs = 3000;
 
@@ -29,15 +29,16 @@ export function Hero() {
     };
   }, []);
 
+
   return (
-    <section id="get-looped" className="bg-bg py-4 sm:py-6">
-      <div className="mx-auto grid max-w-6xl grid-cols-1 items-center gap-4 px-4 md:grid-cols-2">
-        <div className="flex flex-col gap-2 md:gap-3 md:pl-[5.5rem] md:-mt-5">
-          <h1 className="flex flex-col text-5xl font-semibold leading-[1.1] text-strong md:text-6xl">
-            <span className="block">Your</span>
-            <span className="block min-h-[3.5rem] md:min-h-[4rem]">
+    <section id="get-looped" className="bg-bg py-6 sm:py-8">
+      <div className="mx-auto grid max-w-7xl grid-cols-1 items-center gap-6 px-4 md:grid-cols-[1.25fr_0.75fr] md:px-10 lg:px-14">
+        <div className="flex flex-col gap-3 md:gap-5 md:pl-0">
+          <h1 className="flex flex-col text-[60px] font-semibold leading-[1.05] text-strong md:text-[72px] md:leading-[1.05]">
+            <span className="block leading-[1.05]">Your</span>
+            <span className="block min-h-[4.2rem] leading-[1.05] md:min-h-[5rem]">
               <span
-                className={`inline-block min-w-[8rem] transition-all duration-[500ms] ease-in-out ${
+                className={`inline-block min-w-[10rem] text-[60px] font-semibold leading-[1.05] transition-all duration-[500ms] ease-in-out md:min-w-[12rem] md:text-[72px] md:leading-[1.05] ${
                   isFading ? "-translate-y-2 opacity-0" : "translate-y-0 opacity-100"
                 }`}
               >
@@ -48,16 +49,16 @@ export function Hero() {
             <span className="block text-brand">Verified.</span>
           </h1>
 
-          <p className="mt-1 max-w-5xl text-2xl font-normal leading-[1.6] text-text-primary">
+          <p className="mt-2 max-w-none text-[24px] font-normal leading-relaxed text-text-primary md:text-[28px]">
             Looped is where real employees and students speak freely, anonymous by design
           </p>
 
           <div id="download" className="mt-2">
-            <AppStoreButton size={7} />
+            <AppStoreButton size={6.2} />
           </div>
         </div>
 
-        <div className="relative flex justify-center md:justify-end md:pr-[5rem]">
+        <div className="relative flex justify-center md:justify-end md:pr-0">
           <div className="absolute inset-0 -z-10 rounded-[28px] bg-gradient-to-br from-bg via-bg to-brand/5 blur-2xl" />
           <img
             src={heroImage}

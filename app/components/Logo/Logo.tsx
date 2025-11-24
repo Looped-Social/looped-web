@@ -13,7 +13,7 @@ export function Logo({ className = "" }: LogoProps) {
       className={`flex items-center gap-2 text-strong transition-opacity hover:opacity-80 ${className}`}
     >
       <img src={mainLogo} alt="Looped" className="h-6 w-auto" />
-      <span className="text-lg font-medium leading-none tracking-tight">ooped</span>
+      <span className="text-lg font-normal leading-none tracking-tight">ooped</span>
     </Link>
   );
 }
