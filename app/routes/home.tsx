@@ -1,8 +1,5 @@
 import type { Route } from "./+types/home";
-import { CompanyLogos } from "../components/CompanyLogos/CompanyLogos";
-import { Footer } from "../components/Footer/Footer";
-import { Hero } from "../components/Hero/Hero";
-import { Navbar } from "../components/Navbar/Navbar";
+import { HomePage } from "@/pages/HomePage/HomePage";
 
 export function meta({}: Route.MetaArgs) {
   return [
@@ -15,14 +12,5 @@ export function meta({}: Route.MetaArgs) {
 }
 
 export default function Home() {
-  return (
-    <div className="min-h-screen bg-bg">
-      <Navbar />
-      <main>
-        <Hero />
-        <CompanyLogos />
-      </main>
-      <Footer />
-    </div>
-  );
+  return <HomePage />;
 }
