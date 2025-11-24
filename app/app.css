@@ -1,6 +1,8 @@
 @import "tailwindcss";
 @import url('https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,200..800;1,6..72,200..800&family=Poppins:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&display=swap');
 
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
 @theme {
   --font-sans: "Poppins", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
     sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol",
@@ -8,6 +10,8 @@
   --color-brand: #ea404a;
   --color-brand-hover: #d63841;
   --color-secondary: #15bfb5;
+
+  /* Light defaults */
   --color-contrast: #0f0f0f;
   --color-text-primary: #1f2937;
   --color-text-secondary: #6b7280;
@@ -18,6 +22,18 @@
   --color-border: #6b72804d;
   --color-message-muted: #fafafa;
   --color-message: #acf6f2;
+
+  /* Dark counterparts for easy overrides */
+  --color-contrast-dark: #ffffff;
+  --color-text-primary-dark: #e5e7eb;
+  --color-text-secondary-dark: #9ca3af;
+  --color-text-light-dark: #6b7280;
+  --color-strong-dark: #e5e7eb;
+  --color-bg-dark: #0f0f0f;
+  --color-bg-muted-dark: #333333;
+  --color-border-dark: #9ca3af08;
+  --color-message-muted-dark: #1a1a1a;
+  --color-message-dark: #0d7c75;
 }
 
 :root {
@@ -30,16 +46,16 @@ body {
 
 [data-theme="dark"] {
   color-scheme: dark;
-  --color-contrast: #ffffff;
-  --color-text-primary: #e5e7eb;
-  --color-text-secondary: #9ca3af;
-  --color-text-light: #6b7280;
-  --color-strong: #e5e7eb;
-  --color-bg: #0f0f0f;
-  --color-bg-muted: #333333;
-  --color-border: #9ca3af08;
-  --color-message-muted: #1a1a1a;
-  --color-message: #0d7c75;
+  --color-contrast: var(--color-contrast-dark);
+  --color-text-primary: var(--color-text-primary-dark);
+  --color-text-secondary: var(--color-text-secondary-dark);
+  --color-text-light: var(--color-text-light-dark);
+  --color-strong: var(--color-strong-dark);
+  --color-bg: var(--color-bg-dark);
+  --color-bg-muted: var(--color-bg-muted-dark);
+  --color-border: var(--color-border-dark);
+  --color-message-muted: var(--color-message-muted-dark);
+  --color-message: var(--color-message-dark);
 }
 
 .app-store-img-light {

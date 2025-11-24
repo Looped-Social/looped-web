@@ -34,10 +34,6 @@ export function Hero() {
 
       <div className="mx-auto grid max-w-6xl grid-cols-1 items-center gap-12 px-4 py-16 md:grid-cols-2 md:py-20 lg:gap-16">
         <div className="space-y-7">
-          <div className="inline-flex items-center gap-2 rounded-full bg-brand/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-brand ring-1 ring-brand/15">
-            Private beta · iOS only
-          </div>
-
           <h1 className="flex flex-col text-4xl font-semibold leading-tight text-strong sm:text-5xl lg:text-6xl">
             <span className="block">Your</span>
             <span className="block min-h-[3.5rem] md:min-h-[4rem]">
@@ -61,22 +57,6 @@ export function Hero() {
             <div id="download">
               <AppStoreButton size={7} />
             </div>
-            <div className="flex items-center gap-2 text-sm text-text-light">
-              <span className="inline-block h-1.5 w-1.5 rounded-full bg-brand" />
-              <span>Download the app to get started</span>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap gap-3 text-sm text-text-secondary">
-            {["Verified accounts", "Anonymity controls", "Company + campus channels"].map((item) => (
-              <span
-                key={item}
-                className="inline-flex items-center gap-2 rounded-full bg-bg-muted px-4 py-2 ring-1 ring-border"
-              >
-                <span className="inline-block h-1.5 w-1.5 rounded-full bg-brand" />
-                {item}
-              </span>
-            ))}
           </div>
         </div>
 
