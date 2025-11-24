@@ -63,7 +63,7 @@ export function Hero() {
           <img
             src={heroImage}
             alt="Looped app interface"
-            className="w-[70%] max-w-[360px] rounded-[24px] border border-white/60 shadow-[0_20px_60px_rgba(0,0,0,0.1)] sm:w-[55%]"
+            className="w-[80%] min-w-[260px] max-w-[440px] rounded-[24px] border border-white/60 shadow-[0_20px_60px_rgba(0,0,0,0.1)] sm:w-[65%] md:w-[75%] lg:w-[80%]"
           />
         </div>
       </div>
