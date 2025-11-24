@@ -4,41 +4,40 @@ import heroImage from "../../assets/images/home-page-sample.jpeg";
 import { AppStoreButton } from "../AppStoreButton/AppStoreButton";
 
 const rotatingWords = ["community", "workspace", "college", "colleagues", "team", "office"];
+const rotationFadeDurationMs = 500;
+const rotationIntervalMs = 3000;
 
 export function Hero() {
   const [currentWordIndex, setCurrentWordIndex] = useState(0);
   const [isFading, setIsFading] = useState(false);
 
   useEffect(() => {
-    let timeoutId: number;
+    let timeoutId: number | undefined;
     const intervalId = window.setInterval(() => {
       setIsFading(true);
       timeoutId = window.setTimeout(() => {
         setCurrentWordIndex((prev) => (prev + 1) % rotatingWords.length);
         setIsFading(false);
-      }, 320);
-    }, 2800);
+      }, rotationFadeDurationMs);
+    }, rotationIntervalMs);
 
     return () => {
       clearInterval(intervalId);
-      clearTimeout(timeoutId);
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
     };
   }, []);
 
   return (
-    <section id="get-looped" className="relative isolate overflow-hidden">
-      <div className="pointer-events-none absolute inset-0">
-        <div className="absolute -left-12 top-10 h-56 w-56 rounded-full bg-brand/15 blur-3xl" />
-        <div className="absolute bottom-[-5rem] right-[-8rem] h-72 w-72 rounded-full bg-brand/10 blur-[120px]" />
-      </div>
-
-      <div className="mx-auto grid max-w-6xl grid-cols-1 items-center gap-12 px-4 py-16 md:grid-cols-2 md:py-20 lg:gap-16">
-        <div className="space-y-7">
-          <h1 className="flex flex-col text-4xl font-semibold leading-tight text-strong sm:text-5xl lg:text-6xl">
+    <section id="get-looped" className="bg-bg py-4 sm:py-6">
+      <div className="mx-auto grid max-w-6xl grid-cols-1 items-center gap-4 px-4 md:grid-cols-2">
+        <div className="flex flex-col gap-2 md:gap-3 md:pl-[5.5rem] md:-mt-5">
+          <h1 className="flex flex-col text-5xl font-semibold leading-[1.1] text-strong md:text-6xl">
             <span className="block">Your</span>
             <span className="block min-h-[3.5rem] md:min-h-[4rem]">
               <span
-                className={`inline-block min-w-[8rem] transition-all duration-300 ease-in-out ${
+                className={`inline-block min-w-[8rem] transition-all duration-[500ms] ease-in-out ${
                   isFading ? "-translate-y-2 opacity-0" : "translate-y-0 opacity-100"
                 }`}
               >
@@ -49,26 +48,22 @@ export function Hero() {
             <span className="block text-brand">Verified.</span>
           </h1>
 
-          <p className="max-w-2xl text-lg text-text-secondary md:text-xl">
-            Looped is where real employees and students speak freely, anonymous by design.
+          <p className="mt-1 max-w-5xl text-2xl font-normal leading-[1.6] text-text-primary">
+            Looped is where real employees and students speak freely, anonymous by design
           </p>
 
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:gap-6">
-            <div id="download">
-              <AppStoreButton size={7} />
-            </div>
+          <div id="download" className="mt-2">
+            <AppStoreButton size={7} />
           </div>
         </div>
 
-        <div className="relative flex justify-center md:justify-end">
-          <div className="relative max-w-[20rem] sm:max-w-[22rem] lg:max-w-[24rem]">
-            <div className="absolute inset-0 -z-10 rounded-[28px] bg-gradient-to-br from-bg via-bg to-brand/5 blur-2xl" />
-            <img
-              src={heroImage}
-              alt="Looped app interface"
-              className="w-full rounded-[28px] border border-white/60 shadow-[0_25px_80px_rgba(234,64,74,0.12)]"
-            />
-          </div>
+        <div className="relative flex justify-center md:justify-end md:pr-[5rem]">
+          <div className="absolute inset-0 -z-10 rounded-[28px] bg-gradient-to-br from-bg via-bg to-brand/5 blur-2xl" />
+          <img
+            src={heroImage}
+            alt="Looped app interface"
+            className="w-[70%] max-w-[360px] rounded-[24px] border border-white/60 shadow-[0_20px_60px_rgba(0,0,0,0.1)] sm:w-[55%]"
+          />
         </div>
       </div>
     </section>
