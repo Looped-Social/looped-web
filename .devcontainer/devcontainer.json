@@ -1,0 +1,39 @@
+{
+  "name": "looped-new-web",
+  "image": "mcr.microsoft.com/devcontainers/typescript-node:20",
+  "remoteUser": "node",
+  "postCreateCommand": "npm ci",
+  "forwardPorts": [
+    5173
+  ],
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "editor.defaultFormatter": "esbenp.prettier-vscode",
+        "editor.formatOnSave": true,
+        "editor.quickSuggestions": {
+          "strings": true
+        },
+        "files.associations": {
+          "*.css": "tailwindcss"
+        },
+        "css.validate": false,
+        "scss.validate": false,
+        "tailwindCSS.emmetCompletions": true,
+        "tailwindCSS.includeLanguages": {
+          "typescriptreact": "html",
+          "javascriptreact": "html"
+        }
+      },
+      "extensions": [
+        "esbenp.prettier-vscode",
+        "dbaeumer.vscode-eslint",
+        "bradlc.vscode-tailwindcss",
+        "formulahendry.auto-rename-tag",
+        "streetsidesoftware.code-spell-checker",
+        "yoavbls.pretty-ts-errors",
+        "eamodio.gitlens"
+      ]
+    }
+  }
+}
