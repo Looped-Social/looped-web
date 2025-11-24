@@ -18,12 +18,12 @@ export function AppStoreButton({ size = 6, className = "" }: AppStoreButtonProps
       <img
         src={appStoreLight}
         alt="Download on the App Store"
-        className="block h-full w-auto dark:hidden"
+        className="app-store-img-light block h-full w-auto"
       />
       <img
         src={appStoreDark}
         alt="Download on the App Store"
-        className="hidden h-full w-auto dark:block"
+        className="app-store-img-dark hidden h-full w-auto"
       />
     </a>
   );

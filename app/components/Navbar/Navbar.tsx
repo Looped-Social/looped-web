@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 
 import { Logo } from "../Logo/Logo";
+import { ThemeToggle } from "../ThemeToggle/ThemeToggle";
 
 const finePrintLinks = [
   { label: "Community Rules", to: "/community-rules" },
@@ -103,6 +104,7 @@ export function Navbar() {
         </div>
 
         <div className="hidden items-center gap-3 md:flex">
+          <ThemeToggle />
           <Link className="text-[0.95rem] font-normal text-text-primary transition hover:text-strong" to="/login">
             Log in
           </Link>
@@ -115,7 +117,7 @@ export function Navbar() {
         </div>
 
         <button
-          className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-bg-muted text-text-primary transition hover:bg-bg-muted/70 md:hidden"
+          className="inline-flex items-center justify-center p-2 text-text-primary transition hover:text-strong md:hidden"
           onClick={() => setIsMobileOpen(true)}
           aria-label="Open menu"
         >
@@ -211,6 +213,7 @@ export function Navbar() {
             </nav>
 
             <div className="mt-auto space-y-3 pt-4">
+              <ThemeToggle className="inline-flex w-full justify-center" />
               <Link
                 to="/login"
                 className="block rounded-full border border-border px-4 py-2.5 text-center text-sm font-semibold text-text-primary transition hover:bg-bg-muted"

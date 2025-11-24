@@ -28,6 +28,46 @@ body {
   @apply bg-bg text-text-primary font-sans antialiased;
 }
 
+[data-theme="dark"] {
+  color-scheme: dark;
+  --color-contrast: #ffffff;
+  --color-text-primary: #e5e7eb;
+  --color-text-secondary: #9ca3af;
+  --color-text-light: #6b7280;
+  --color-strong: #e5e7eb;
+  --color-bg: #0f0f0f;
+  --color-bg-muted: #333333;
+  --color-border: #9ca3af08;
+  --color-message-muted: #1a1a1a;
+  --color-message: #0d7c75;
+}
+
+.app-store-img-light {
+  display: block;
+}
+
+.app-store-img-dark {
+  display: none;
+}
+
+[data-theme="dark"] .app-store-img-light {
+  display: none;
+}
+
+[data-theme="dark"] .app-store-img-dark {
+  display: block;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) .app-store-img-light {
+    display: none;
+  }
+
+  :root:not([data-theme]) .app-store-img-dark {
+    display: block;
+  }
+}
+
 @keyframes marquee {
   0% {
     transform: translateX(0);
