@@ -51,11 +51,11 @@ export function Navbar() {
         isScrolled ? "shadow-[0_2px_8px_rgba(0,0,0,0.08)] ring-1 ring-border/80" : ""
       }`}
     >
-      <div className="flex w-full items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8">
-        <div className="flex items-center gap-10">
+      <div className="flex w-full items-center justify-between gap-8 px-4 py-4 sm:px-6 lg:px-8">
+        <div className="flex items-center gap-8">
           <Logo />
 
-          <nav className="hidden items-center gap-8 text-[0.95rem] font-normal text-text-primary md:flex">
+          <nav className="hidden items-center text-[0.95rem] font-normal text-text-primary gap-6 md:flex">
             <Link className="transition-colors hover:text-strong" to="/about">
               About
             </Link>
@@ -103,7 +103,7 @@ export function Navbar() {
           </nav>
         </div>
 
-        <div className="hidden items-center gap-3 md:flex">
+        <div className="hidden items-center gap-4 md:flex">
           <ThemeToggle />
           <Link className="text-[0.95rem] font-normal text-text-primary transition hover:text-strong" to="/login">
             Log in
