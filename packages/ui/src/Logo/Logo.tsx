@@ -18,9 +18,9 @@ const sizePresets: Record<
 > = {
   xs: { className: "h-4 w-auto" },
   sm: { className: "h-5 w-auto" },
-  md: { className: "w-auto", style: { width: 400, height: 60 } },
-  lg: { className: "w-auto", style: { width: 500, height: 75 } },
-  xl: { className: "w-auto", style: { width: 600, height: 90 } },
+  md: { className: "w-5", style: { width: 200, height: 57 } },
+  lg: { className: "w-auto", style: { width: 300, height: 75 } },
+  xl: { className: "w-auto", style: { width: 400, height: 90 } },
 };
 
 export function Logo({

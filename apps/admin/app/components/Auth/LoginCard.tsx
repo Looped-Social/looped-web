@@ -88,7 +88,7 @@ export function LoginCard({
                 type="button"
                 disabled={isBusy}
                 onClick={onGoogle}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-border bg-bg px-4 py-2.5 text-sm font-semibold text-text-primary shadow-sm transition hover:bg-bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-border bg-bg px-4 py-2.5 text-sm font-semibold text-text-primary  transition hover:bg-bg-muted disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <GoogleIcon className="h-5 w-5" />
                 Continue with Google
@@ -99,7 +99,7 @@ export function LoginCard({
                 type="button"
                 disabled={isBusy}
                 onClick={onApple}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-border bg-bg px-4 py-2.5 text-sm font-semibold text-text-primary shadow-sm transition hover:bg-bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-border bg-bg px-4 py-2.5 text-sm font-semibold text-text-primary  transition hover:bg-bg-muted disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <AppleIcon className="h-5 w-5" />
                 Continue with Apple
@@ -111,7 +111,7 @@ export function LoginCard({
         {hasProviders && (
           <div className="flex items-center gap-3">
             <span className="h-px flex-1 bg-border" />
-            <span className="text-[11px] font-semibold uppercase tracking-[0.28em] text-text-light">
+            <span className="text-[11px] font-semibold uppercase text-text-light">
               or
             </span>
             <span className="h-px flex-1 bg-border" />
@@ -129,7 +129,7 @@ export function LoginCard({
               autoComplete="email"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
-              className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-text-primary shadow-sm outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+              className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-text-primary  outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
               placeholder="admin@company.com"
               required
             />
@@ -145,7 +145,7 @@ export function LoginCard({
               autoComplete="current-password"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
-              className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-text-primary shadow-sm outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+              className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-text-primary  outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
               placeholder="Enter your password"
               required
             />
@@ -156,7 +156,7 @@ export function LoginCard({
           <button
             type="submit"
             disabled={isDisabled}
-            className="inline-flex w-full items-center justify-center rounded-lg bg-brand px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:-translate-y-px hover:bg-brand/90 disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex w-full items-center justify-center rounded-lg bg-brand px-4 py-2.5 text-sm font-semibold text-white  transition hover:-translate-y-px hover:bg-brand/90 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {isBusy ? "Signing in..." : "Sign in"}
           </button>

@@ -92,6 +92,18 @@ export async function signOutUser(): Promise<void> {
   return cachedAuthModule.signOut(cachedAuth);
 }
 
+export async function getFirebaseIdToken(): Promise<string> {
+  await ensureFirebase();
+  if (!cachedAuth) {
+    throw new Error("Firebase auth failed to initialize.");
+  }
+  const user = cachedAuth.currentUser;
+  if (!user) {
+    throw new Error("No authenticated user.");
+  }
+  return user.getIdToken();
+}
+
 export function getFirebaseErrorMessage(error: unknown): string {
   if (typeof error === "object" && error && "code" in error) {
     const code = String((error as { code: string }).code);

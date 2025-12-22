@@ -1,0 +1,316 @@
+import { useEffect, useMemo, useState } from "react";
+import { useOutletContext } from "react-router";
+
+import {
+  approveVerification,
+  fetchAdminVerifications,
+  rejectVerification,
+} from "../lib/adminApi";
+import type { VerificationItem } from "../types/admin";
+import type { AdminRouteContext } from "./admin";
+
+const statusOptions = ["pending", "approved", "rejected"] as const;
+
+function formatDate(value?: string | null) {
+  if (!value) return "N/A";
+  const date = new Date(value);
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "2-digit",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(date);
+}
+
+export default function VerificationsRoute() {
+  const { admin } = useOutletContext<AdminRouteContext>();
+  const canVerify = admin.permissions.includes("verify_users");
+  const [status, setStatus] = useState<(typeof statusOptions)[number]>("pending");
+  const [items, setItems] = useState<VerificationItem[]>([]);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [rejectReason, setRejectReason] = useState("");
+
+  const selectedItem = useMemo(
+    () => items.find((item) => item.id === selectedId) ?? items[0] ?? null,
+    [items, selectedId]
+  );
+
+  useEffect(() => {
+    if (!canVerify) return;
+    let active = true;
+    setIsLoading(true);
+    setError(null);
+    fetchAdminVerifications(status)
+      .then((res) => {
+        if (!active) return;
+        setItems(res.items);
+        setNextCursor(res.next_cursor ?? null);
+        setSelectedId(res.items[0]?.id ?? null);
+      })
+      .catch((err) => {
+        if (!active) return;
+        setError(err instanceof Error ? err.message : "Unable to load verifications.");
+        setItems([]);
+        setNextCursor(null);
+      })
+      .finally(() => {
+        if (!active) return;
+        setIsLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [canVerify, status]);
+
+  const loadMore = async () => {
+    if (!nextCursor || isLoading) return;
+    setIsLoading(true);
+    try {
+      const res = await fetchAdminVerifications(status, nextCursor);
+      setItems((prev) => [...prev, ...res.items]);
+      setNextCursor(res.next_cursor ?? null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to load more results.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const updateItemStatus = (id: number, nextStatus: string, reason?: string) => {
+    setItems((prev) => {
+      const updated = prev.map((item) =>
+        item.id === id
+          ? { ...item, status: nextStatus, reject_reason: reason ?? item.reject_reason }
+          : item
+      );
+      return status === "pending" ? updated.filter((item) => item.status === "pending") : updated;
+    });
+  };
+
+  const handleApprove = async () => {
+    if (!selectedItem) return;
+    setIsSaving(true);
+    setActionError(null);
+    try {
+      await approveVerification(selectedItem.id);
+      updateItemStatus(selectedItem.id, "approved");
+      setRejectReason("");
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Unable to approve verification.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleReject = async () => {
+    if (!selectedItem) return;
+    if (!rejectReason.trim()) {
+      setActionError("Please add a rejection reason.");
+      return;
+    }
+    setIsSaving(true);
+    setActionError(null);
+    try {
+      await rejectVerification(selectedItem.id, rejectReason.trim());
+      updateItemStatus(selectedItem.id, "rejected", rejectReason.trim());
+      setRejectReason("");
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Unable to reject verification.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  if (!canVerify) {
+    return (
+      <div className="rounded-2xl border border-border bg-bg p-6 ">
+        <h1 className="text-2xl font-semibold text-strong">Verification queue</h1>
+        <p className="mt-2 text-sm text-text-secondary">
+          You do not have permission to review verification requests.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <header className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase text-text-light">
+            Verification queue
+          </p>
+          <h1 className="mt-2 text-2xl font-semibold text-strong">Review pending accounts</h1>
+          <p className="mt-1 text-sm text-text-secondary">
+            Approve or reject verification submissions tied to workplace identity.
+          </p>
+        </div>
+        <div className="flex items-center gap-2 rounded-full border border-border bg-bg px-2 py-1 text-sm text-text-secondary">
+          {statusOptions.map((option) => (
+            <button
+              key={option}
+              type="button"
+              onClick={() => setStatus(option)}
+              className={`rounded-full px-3 py-1 transition ${
+                status === option
+                  ? "bg-brand text-white"
+                  : "hover:text-text-primary"
+              }`}
+            >
+              {option}
+            </button>
+          ))}
+        </div>
+      </header>
+
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+        <section className="space-y-3">
+          {error && (
+            <div className="rounded-xl border border-border bg-bg px-4 py-3 text-sm text-brand">
+              {error}
+            </div>
+          )}
+          {isLoading && items.length === 0 && (
+            <div className="rounded-xl border border-border bg-bg px-4 py-6 text-sm text-text-secondary">
+              Loading verification requests...
+            </div>
+          )}
+          {!isLoading && items.length === 0 && (
+            <div className="rounded-xl border border-border bg-bg px-4 py-6 text-sm text-text-secondary">
+              No verifications found for this status.
+            </div>
+          )}
+          {items.map((item) => {
+            const isActive = item.id === selectedItem?.id;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setSelectedId(item.id)}
+                className={`w-full rounded-2xl border px-4 py-4 text-left transition hover:shadow-[0_12px_24px_rgba(15,23,42,0.08)] ${
+                  isActive
+                    ? "border-brand/60 bg-bg-muted/60"
+                    : "border-border bg-bg hover:border-brand/40"
+                }`}
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-semibold text-text-primary">
+                      {item.email ?? "Unknown email"}
+                    </p>
+                    <p className="mt-1 text-xs text-text-secondary">
+                      {item.company_domain ?? "No company domain"}
+                    </p>
+                  </div>
+                  <span className="rounded-full bg-bg-muted px-2.5 py-1 text-xs font-semibold text-text-primary">
+                    {item.method}
+                  </span>
+                </div>
+                <div className="mt-3 flex items-center justify-between text-xs text-text-light">
+                  <span>Submitted {formatDate(item.submitted_at)}</span>
+                  <span className="uppercase ">{item.status}</span>
+                </div>
+              </button>
+            );
+          })}
+
+          {nextCursor && (
+            <button
+              type="button"
+              onClick={loadMore}
+              disabled={isLoading}
+              className="w-full rounded-full border border-border bg-bg px-4 py-2 text-sm font-semibold text-text-primary transition hover:bg-bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {isLoading ? "Loading..." : "Load more"}
+            </button>
+          )}
+        </section>
+
+        <aside className="rounded-2xl border border-border bg-bg p-5 ">
+          <h2 className="text-lg font-semibold text-strong">Review details</h2>
+          {!selectedItem ? (
+            <p className="mt-3 text-sm text-text-secondary">
+              Select a verification request to review the details.
+            </p>
+          ) : (
+            <div className="mt-4 space-y-4 text-sm text-text-secondary">
+              <div>
+                <p className="text-xs font-semibold uppercase text-text-light">
+                  Applicant
+                </p>
+                <p className="mt-1 text-sm font-semibold text-text-primary">
+                  {selectedItem.email ?? "Unknown email"}
+                </p>
+                <p className="text-xs text-text-light">
+                  {selectedItem.company_domain ?? "N/A"}
+                </p>
+              </div>
+              <div className="rounded-xl border border-border bg-bg-muted/30 p-3">
+                <p className="text-xs font-semibold uppercase text-text-light">
+                  Method
+                </p>
+                <p className="mt-1 text-sm font-semibold text-text-primary">
+                  {selectedItem.method}
+                </p>
+                {selectedItem.media_key && (
+                  <p className="mt-1 text-xs text-text-light">{selectedItem.media_key}</p>
+                )}
+              </div>
+              <div className="rounded-xl border border-border bg-bg-muted/30 p-3">
+                <p className="text-xs font-semibold uppercase text-text-light">
+                  Status
+                </p>
+                <p className="mt-1 text-sm font-semibold text-text-primary">
+                  {selectedItem.status}
+                </p>
+                {selectedItem.reject_reason && (
+                  <p className="mt-1 text-xs text-text-light">
+                    Reject reason: {selectedItem.reject_reason}
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-3">
+                <label className="text-xs font-semibold uppercase text-text-light">
+                  Rejection reason
+                </label>
+                <textarea
+                  value={rejectReason}
+                  onChange={(event) => setRejectReason(event.target.value)}
+                  rows={3}
+                  placeholder="Provide a clear reason for rejection..."
+                  className="w-full rounded-xl border border-border bg-bg px-3 py-2 text-sm text-text-primary  outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+                />
+              </div>
+
+              {actionError && <p className="text-sm text-brand">{actionError}</p>}
+
+              <div className="grid gap-2 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={handleApprove}
+                  disabled={isSaving}
+                  className="rounded-full bg-brand px-4 py-2 text-sm font-semibold text-white  transition hover:bg-brand/90 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isSaving ? "Saving..." : "Approve"}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleReject}
+                  disabled={isSaving}
+                  className="rounded-full border border-border px-4 py-2 text-sm font-semibold text-text-primary transition hover:bg-bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Reject
+                </button>
+              </div>
+            </div>
+          )}
+        </aside>
+      </div>
+    </div>
+  );
+}
