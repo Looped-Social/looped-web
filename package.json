@@ -1,40 +1,17 @@
 {
-  "name": "looped-new-web",
+  "name": "looped-web",
   "private": true,
   "type": "module",
+  "workspaces": ["apps/*", "packages/*"],
   "scripts": {
-    "build": "react-router build",
-    "dev": "react-router dev",
-    "lint": "eslint \"{app,src}/**/*.{ts,tsx}\"",
-    "format": "prettier --write \"{app,src,public}/**/*.{ts,tsx,js,jsx,json,css,md}\"",
-    "format:check": "prettier --check \"{app,src,public}/**/*.{ts,tsx,js,jsx,json,css,md}\"",
-    "start": "react-router-serve ./build/server/index.js",
-    "typecheck": "react-router typegen && tsc"
-  },
-  "dependencies": {
-    "@react-router/node": "^7.9.2",
-    "@react-router/serve": "^7.9.2",
-    "isbot": "^5.1.31",
-    "react": "^19.1.1",
-    "react-dom": "^19.1.1",
-    "react-router": "^7.9.2"
-  },
-  "devDependencies": {
-    "@eslint/js": "^9.17.0",
-    "@react-router/dev": "^7.9.2",
-    "@tailwindcss/vite": "^4.1.13",
-    "@types/node": "^22",
-    "@types/react": "^19.1.13",
-    "@types/react-dom": "^19.1.9",
-    "eslint": "^9.17.0",
-    "eslint-config-prettier": "^10.0.1",
-    "eslint-plugin-react-hooks": "^5.1.0",
-    "globals": "^15.12.0",
-    "prettier": "^3.4.2",
-    "tailwindcss": "^4.1.13",
-    "typescript": "^5.9.2",
-    "typescript-eslint": "^8.17.0",
-    "vite": "^7.1.7",
-    "vite-tsconfig-paths": "^5.1.4"
+    "dev": "npm run -w apps/web dev",
+    "build": "npm run -w apps/web build",
+    "start": "npm run -w apps/web start",
+    "typecheck": "npm run -ws --if-present typecheck",
+    "lint": "npm run -ws --if-present lint",
+    "format": "prettier --write \"apps/**/{app,src,public}/**/*.{ts,tsx,js,jsx,json,css,md}\" \"packages/**/src/**/*.{ts,tsx,css}\"",
+    "format:check": "prettier --check \"apps/**/{app,src,public}/**/*.{ts,tsx,js,jsx,json,css,md}\" \"packages/**/src/**/*.{ts,tsx,css}\"",
+    "dev:admin": "npm run -w apps/admin dev",
+    "build:admin": "npm run -w apps/admin build"
   }
 }

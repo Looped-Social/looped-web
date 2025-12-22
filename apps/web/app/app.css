@@ -1,0 +1,41 @@
+@import "@looped/config/theme.css";
+@import "tailwindcss";
+@import "@looped/config/base.css";
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+.app-store-img-light {
+  display: block;
+}
+
+.app-store-img-dark {
+  display: none;
+}
+
+[data-theme="dark"] .app-store-img-light {
+  display: none;
+}
+
+[data-theme="dark"] .app-store-img-dark {
+  display: block;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) .app-store-img-light {
+    display: none;
+  }
+
+  :root:not([data-theme]) .app-store-img-dark {
+    display: block;
+  }
+}
+
+@keyframes marquee {
+  0% {
+    transform: translateX(0);
+  }
+
+  100% {
+    transform: translateX(-50%);
+  }
+}

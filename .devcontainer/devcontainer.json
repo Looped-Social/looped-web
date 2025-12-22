@@ -1,10 +1,11 @@
 {
-  "name": "looped-new-web",
+  "name": "looped-web",
   "image": "mcr.microsoft.com/devcontainers/typescript-node:20",
   "remoteUser": "node",
-  "postCreateCommand": "npm ci",
+  "postCreateCommand": "npm install",
   "forwardPorts": [
-    5173
+    5173,
+    5174
   ],
   "customizations": {
     "vscode": {

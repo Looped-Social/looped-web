@@ -1,0 +1,21 @@
+:root {
+  color-scheme: light;
+}
+
+body {
+  @apply bg-bg text-text-primary font-sans antialiased;
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+  --color-contrast: var(--color-contrast-dark);
+  --color-text-primary: var(--color-text-primary-dark);
+  --color-text-secondary: var(--color-text-secondary-dark);
+  --color-text-light: var(--color-text-light-dark);
+  --color-strong: var(--color-strong-dark);
+  --color-bg: var(--color-bg-dark);
+  --color-bg-muted: var(--color-bg-muted-dark);
+  --color-border: var(--color-border-dark);
+  --color-message-muted: var(--color-message-muted-dark);
+  --color-message: var(--color-message-dark);
+}

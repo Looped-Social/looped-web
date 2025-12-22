@@ -1,0 +1,5 @@
+@import "@looped/config/theme.css";
+@import "tailwindcss";
+@import "@looped/config/base.css";
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
