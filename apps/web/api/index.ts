@@ -120,26 +120,41 @@ function parseCookies(header: string | undefined) {
   return cookies;
 }
 
+function normalizeOriginalPath(value: string) {
+  if (value.startsWith("http://") || value.startsWith("https://")) {
+    try {
+      return new URL(value).pathname + new URL(value).search;
+    } catch {
+      return value;
+    }
+  }
+  return value;
+}
+
 function getOriginalUrl(req: IncomingMessage) {
   const headerCandidates = [
     "x-vercel-original-url",
     "x-original-url",
     "x-forwarded-uri",
-    "x-rewrite-url",
-    "x-matched-path",
   ];
+
+  const currentUrl = req.url ?? "/";
+  if (!currentUrl.startsWith("/api/")) {
+    return currentUrl;
+  }
 
   for (const headerName of headerCandidates) {
     const value = req.headers[headerName];
-    if (Array.isArray(value)) {
-      return value[0];
-    }
-    if (typeof value === "string" && value.length > 0) {
-      return value;
+    const raw = Array.isArray(value) ? value[0] : value;
+    if (typeof raw === "string" && raw.length > 0) {
+      const normalized = normalizeOriginalPath(raw);
+      if (!normalized.startsWith("/api/")) {
+        return normalized;
+      }
     }
   }
 
-  return req.url ?? "/";
+  return currentUrl;
 }
 
 function isAuthed(req: IncomingMessage) {
