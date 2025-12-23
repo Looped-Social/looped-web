@@ -3,6 +3,7 @@ import { useOutletContext } from "react-router";
 
 import {
   banAdminUser,
+  dismissReport,
   fetchAdminPost,
   fetchAdminReports,
   removeAdminPost,
@@ -11,8 +12,8 @@ import {
 import type { PostDetail, ReportItem } from "../types/admin";
 import type { AdminRouteContext } from "./admin";
 
-const statusOptions = ["open", "resolved"] as const;
-const targetOptions = ["all", "post", "user"] as const;
+const statusOptions = ["open", "resolved", "dismissed"] as const;
+const targetOptions = ["all", "post", "user", "comment"] as const;
 const sortOptions = [
   { label: "Newest first", value: "created_at_desc" },
   { label: "Oldest first", value: "created_at_asc" },
@@ -34,6 +35,8 @@ function statusBadgeClass(status: string) {
     case "open":
       return "bg-brand/10 text-brand";
     case "resolved":
+      return "bg-bg-muted text-text-secondary";
+    case "dismissed":
       return "bg-bg-muted text-text-secondary";
     default:
       return "bg-bg-muted text-text-secondary";
@@ -63,8 +66,11 @@ export default function ReportsRoute() {
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
-  const [confirmAction, setConfirmAction] = useState<"remove_post" | "ban_user" | null>(null);
+  const [confirmAction, setConfirmAction] = useState<
+    "remove_post" | "ban_user" | "dismiss_report" | null
+  >(null);
   const [resolveReason, setResolveReason] = useState("");
+  const [dismissReason, setDismissReason] = useState("");
   const [removeReason, setRemoveReason] = useState("");
   const [banReason, setBanReason] = useState("");
   const [banDuration, setBanDuration] = useState("");
@@ -75,6 +81,7 @@ export default function ReportsRoute() {
     () => items.find((item) => item.id === selectedId) ?? items[0] ?? null,
     [items, selectedId]
   );
+  const canTakeAction = canResolve && selectedReport?.status === "open";
 
   const appliedFilters = useMemo(() => {
     const filters: Array<{ label: string; onClear: () => void }> = [];
@@ -101,6 +108,7 @@ export default function ReportsRoute() {
     setConfirmAction(null);
     setActionError(null);
     setResolveReason("");
+    setDismissReason("");
     setRemoveReason("");
     setBanReason("");
     setBanDuration("");
@@ -193,8 +201,36 @@ export default function ReportsRoute() {
         );
       });
       setResolveReason("");
+      setConfirmAction(null);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Unable to resolve report.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDismiss = async () => {
+    if (!selectedReport) return;
+    if (!dismissReason.trim()) {
+      setActionError("Add a dismissal reason before confirming.");
+      return;
+    }
+    setIsSaving(true);
+    setActionError(null);
+    try {
+      await dismissReport(selectedReport.id, dismissReason.trim());
+      setItems((prev) => {
+        if (status === "open") {
+          return prev.filter((item) => item.id !== selectedReport.id);
+        }
+        return prev.map((item) =>
+          item.id === selectedReport.id ? { ...item, status: "dismissed" } : item
+        );
+      });
+      setDismissReason("");
+      setConfirmAction(null);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Unable to dismiss report.");
     } finally {
       setIsSaving(false);
     }
@@ -516,10 +552,16 @@ export default function ReportsRoute() {
                 </div>
               </div>
 
-              {canResolve && (
+              {canResolve && selectedReport.status !== "open" && (
+                <div className="rounded-xl border border-border bg-bg-muted/40 px-3 py-2 text-xs text-text-secondary">
+                  This report is already {formatStatusLabel(selectedReport.status)}.
+                </div>
+              )}
+
+              {canTakeAction && (
                 <div className="space-y-3">
                   <label className="text-xs font-semibold uppercase text-text-light">
-                    Resolve reason
+                    Resolve note
                   </label>
                   <textarea
                     value={resolveReason}
@@ -527,6 +569,15 @@ export default function ReportsRoute() {
                     rows={2}
                     placeholder="Add an optional resolution note..."
                     className="w-full rounded-xl border border-border bg-bg px-3 py-2 text-sm text-text-primary  outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+                  />
+                  <label className="text-xs font-semibold uppercase text-text-light">
+                    Dismiss reason
+                  </label>
+                  <input
+                    value={dismissReason}
+                    onChange={(event) => setDismissReason(event.target.value)}
+                    placeholder="Why this report was dismissed..."
+                    className="w-full rounded-full border border-border bg-bg px-3 py-2 text-sm text-text-primary  outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
                   />
                 </div>
               )}
@@ -538,7 +589,7 @@ export default function ReportsRoute() {
               )}
 
               <div className="grid gap-2">
-                {canResolve && (
+                {canTakeAction && (
                   <button
                     type="button"
                     onClick={handleResolve}
@@ -546,6 +597,37 @@ export default function ReportsRoute() {
                     className="rounded-full bg-brand px-4 py-2 text-sm font-semibold text-white  transition hover:bg-brand/90 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {isSaving ? "Saving..." : "Resolve report"}
+                  </button>
+                )}
+                {canTakeAction && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!dismissReason.trim()) {
+                        setActionError("Add a dismissal reason before confirming.");
+                        return;
+                      }
+                      if (confirmAction !== "dismiss_report") {
+                        setConfirmAction("dismiss_report");
+                        return;
+                      }
+                      handleDismiss();
+                    }}
+                    disabled={isSaving}
+                    className="rounded-full border border-border px-4 py-2 text-sm font-semibold text-text-primary transition hover:bg-bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {confirmAction === "dismiss_report"
+                      ? "Confirm dismiss report"
+                      : "Dismiss report"}
+                  </button>
+                )}
+                {confirmAction === "dismiss_report" && (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmAction(null)}
+                    className="rounded-full border border-border px-4 py-2 text-xs font-semibold text-text-secondary transition hover:bg-bg-muted"
+                  >
+                    Cancel
                   </button>
                 )}
                 {selectedReport.target_type === "post" && canRemovePost && (

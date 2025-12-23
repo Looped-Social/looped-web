@@ -20,6 +20,11 @@ function formatDate(value?: string | null) {
   }).format(date);
 }
 
+function formatNumber(value?: number | null) {
+  if (typeof value !== "number" || Number.isNaN(value)) return "N/A";
+  return new Intl.NumberFormat("en-US").format(value);
+}
+
 function statusBadgeClass(status: string) {
   switch (status) {
     case "banned":
@@ -68,6 +73,7 @@ export default function UsersRoute() {
     () => items.find((item) => item.id === selectedId) ?? items[0] ?? null,
     [items, selectedId]
   );
+  const moderationStats = selectedDetail?.moderation_stats ?? null;
 
   const updateRecentSearches = (value: string) => {
     const normalized = value.trim();
@@ -389,6 +395,129 @@ export default function UsersRoute() {
                   <p className="text-xs text-text-light">
                     Expires{" "}
                     {formatDate(selectedDetail?.ban?.expires_at ?? selectedItem.ban?.expires_at)}
+                  </p>
+                )}
+                {selectedDetail?.ban?.created_at && (
+                  <p className="text-xs text-text-light">
+                    Banned {formatDate(selectedDetail.ban.created_at)}
+                  </p>
+                )}
+                {selectedDetail?.ban?.reason && (
+                  <p className="mt-2 text-xs text-text-secondary">
+                    Reason: {selectedDetail.ban.reason}
+                  </p>
+                )}
+                {selectedDetail?.ban?.created_by && (
+                  <p className="text-xs text-text-light">
+                    Banned by admin #{selectedDetail.ban.created_by}
+                  </p>
+                )}
+              </div>
+
+              <div className="rounded-xl border border-border bg-bg-muted/30 p-3">
+                <p className="text-xs font-semibold uppercase text-text-light">
+                  Moderation stats
+                </p>
+                {moderationStats ? (
+                  <div className="mt-3 space-y-3 text-xs text-text-secondary">
+                    {[
+                      {
+                        title: "Posts",
+                        stats: [
+                          { label: "Total posts", value: moderationStats.posts_total },
+                          {
+                            label: "Removed posts",
+                            value: moderationStats.posts_removed_total,
+                          },
+                        ],
+                      },
+                      {
+                        title: "Reports against user",
+                        stats: [
+                          {
+                            label: "Total",
+                            value: moderationStats.reports_against_user_total,
+                          },
+                          {
+                            label: "Open",
+                            value: moderationStats.reports_against_user_open,
+                          },
+                          {
+                            label: "Resolved",
+                            value: moderationStats.reports_against_user_resolved,
+                          },
+                          {
+                            label: "Dismissed",
+                            value: moderationStats.reports_against_user_dismissed,
+                          },
+                        ],
+                      },
+                      {
+                        title: "Reports against posts",
+                        stats: [
+                          {
+                            label: "Total",
+                            value: moderationStats.reports_against_posts_total,
+                          },
+                          {
+                            label: "Open",
+                            value: moderationStats.reports_against_posts_open,
+                          },
+                          {
+                            label: "Resolved",
+                            value: moderationStats.reports_against_posts_resolved,
+                          },
+                          {
+                            label: "Dismissed",
+                            value: moderationStats.reports_against_posts_dismissed,
+                          },
+                        ],
+                      },
+                      {
+                        title: "Reports filed",
+                        stats: [
+                          {
+                            label: "Total",
+                            value: moderationStats.reports_filed_total,
+                          },
+                          {
+                            label: "Open",
+                            value: moderationStats.reports_filed_open,
+                          },
+                          {
+                            label: "Resolved",
+                            value: moderationStats.reports_filed_resolved,
+                          },
+                          {
+                            label: "Dismissed",
+                            value: moderationStats.reports_filed_dismissed,
+                          },
+                        ],
+                      },
+                    ].map((group) => (
+                      <div key={group.title}>
+                        <p className="text-xs font-semibold text-text-light">
+                          {group.title}
+                        </p>
+                        <div className="mt-2 space-y-1">
+                          {group.stats.map((stat) => (
+                            <div
+                              key={stat.label}
+                              className="flex items-center justify-between"
+                            >
+                              <span>{stat.label}</span>
+                              <span className="font-semibold text-text-primary">
+                                {formatNumber(stat.value)}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-2 text-xs text-text-secondary">
+                    No moderation stats available yet.
                   </p>
                 )}
               </div>

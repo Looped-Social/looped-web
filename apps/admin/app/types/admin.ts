@@ -67,12 +67,12 @@ export type VerificationListResponse = {
 
 export type ReportItem = {
   id: number;
-  target_type: "post" | "user" | string;
+  target_type: "post" | "user" | "comment" | string;
   target_id: number;
   reporter_id: number;
   reporter_handle: string | null;
   reason: string;
-  status: "open" | "resolved" | string;
+  status: "open" | "resolved" | "dismissed" | string;
   created_at: string;
   updated_at: string;
   resolved_at: string | null;
@@ -90,6 +90,8 @@ export type UserBan = {
   status: "banned" | "active" | string;
   expires_at?: string | null;
   reason?: string | null;
+  created_at?: string | null;
+  created_by?: number | null;
 };
 
 export type UserListItem = {
@@ -112,6 +114,44 @@ export type UserDetail = UserListItem & {
     verified: boolean;
     verified_at: string | null;
   } | null;
+  moderation_stats?: ModerationStats | null;
+};
+
+export type ModerationStats = {
+  posts_total: number;
+  posts_removed_total: number;
+  reports_against_user_total: number;
+  reports_against_user_open: number;
+  reports_against_user_resolved: number;
+  reports_against_user_dismissed: number;
+  reports_against_posts_total: number;
+  reports_against_posts_open: number;
+  reports_against_posts_resolved: number;
+  reports_against_posts_dismissed: number;
+  reports_filed_total: number;
+  reports_filed_open: number;
+  reports_filed_resolved: number;
+  reports_filed_dismissed: number;
+};
+
+export type AppealItem = {
+  id: number;
+  user_id: number;
+  user_handle: string | null;
+  target_type: "user_ban" | "post_removal" | string;
+  target_id: number | null;
+  reason: string;
+  status: "open" | "approved" | "rejected" | string;
+  created_at: string;
+  updated_at: string;
+  reviewed_at: string | null;
+  reviewed_by: number | null;
+  reviewed_reason: string | null;
+};
+
+export type AppealListResponse = {
+  items: AppealItem[];
+  next_cursor?: string | null;
 };
 
 export type PostDetail = {

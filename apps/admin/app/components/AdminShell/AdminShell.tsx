@@ -18,6 +18,7 @@ const navItems = [
   { label: "Overview", to: "/" },
   { label: "Verifications", to: "/verifications", permission: "verify_users" },
   { label: "Reports", to: "/reports", permission: "view_reports" },
+  { label: "Appeals", to: "/appeals", permission: "view_reports" },
   { label: "Users", to: "/users", permission: "ban_user" },
   { label: "Posts", to: "/posts", permission: "remove_post" },
   { label: "Admins", to: "/admins", permission: "manage_admins" },

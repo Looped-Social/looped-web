@@ -6,6 +6,7 @@ import type {
   AdminMe,
   AdminUpdateRequest,
   AdminUpdateResponse,
+  AppealListResponse,
   AuditListResponse,
   PostDetail,
   ReportListResponse,
@@ -96,8 +97,8 @@ export async function rejectVerification(id: number, reason: string): Promise<{ 
 }
 
 export async function fetchAdminReports(
-  status: "open" | "resolved",
-  targetType?: "post" | "user",
+  status: "open" | "resolved" | "dismissed",
+  targetType?: "post" | "user" | "comment",
   cursor?: string,
   limit = 20,
   filters?: {
@@ -117,6 +118,13 @@ export async function fetchAdminReports(
 
 export async function resolveReport(id: number, reason?: string): Promise<{ status: string }> {
   return adminFetch<{ status: string }>(`/v1/admin/reports/${id}/resolve`, {
+    method: "POST",
+    body: JSON.stringify(reason ? { reason } : {}),
+  });
+}
+
+export async function dismissReport(id: number, reason?: string): Promise<{ status: string }> {
+  return adminFetch<{ status: string }>(`/v1/admin/reports/${id}/dismiss`, {
     method: "POST",
     body: JSON.stringify(reason ? { reason } : {}),
   });
@@ -190,6 +198,43 @@ export async function updateAdmin(
   return adminFetch<AdminUpdateResponse>(`/v1/admin/admins/${id}`, {
     method: "PATCH",
     body: JSON.stringify(payload),
+  });
+}
+
+export async function fetchAdminAppeals(
+  status: "open" | "approved" | "rejected",
+  targetType?: "user_ban" | "post_removal",
+  userId?: number,
+  cursor?: string,
+  limit = 20,
+  sort: "created_at_desc" | "created_at_asc" = "created_at_desc"
+): Promise<AppealListResponse> {
+  const params = new URLSearchParams({ status, limit: String(limit), sort });
+  if (targetType) params.set("targetType", targetType);
+  if (typeof userId === "number" && Number.isFinite(userId)) {
+    params.set("userId", String(userId));
+  }
+  if (cursor) params.set("cursor", cursor);
+  return adminFetch<AppealListResponse>(`/v1/admin/appeals?${params.toString()}`);
+}
+
+export async function approveAppeal(
+  id: number,
+  reason?: string
+): Promise<{ status: string; action?: string }> {
+  return adminFetch<{ status: string; action?: string }>(`/v1/admin/appeals/${id}/approve`, {
+    method: "POST",
+    body: JSON.stringify(reason ? { reason } : {}),
+  });
+}
+
+export async function rejectAppeal(
+  id: number,
+  reason?: string
+): Promise<{ status: string }> {
+  return adminFetch<{ status: string }>(`/v1/admin/appeals/${id}/reject`, {
+    method: "POST",
+    body: JSON.stringify(reason ? { reason } : {}),
   });
 }
 
