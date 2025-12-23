@@ -172,7 +172,17 @@ export function AdminHome({ admin }: AdminHomeProps) {
           </div>
           <div className="mt-4 space-y-3 text-sm text-text-secondary">
             {!canVerify && <p>Permission required.</p>}
-            {canVerify && verificationState.error && <p>{verificationState.error}</p>}
+            {canVerify && verificationState.error && (
+              <div className="rounded-lg border border-border bg-bg px-3 py-2 text-xs text-text-secondary">
+                <p className="font-semibold text-text-primary">
+                  Unable to load the verification queue.
+                </p>
+                <details className="mt-1 text-xs text-text-light">
+                  <summary className="cursor-pointer">Details</summary>
+                  <p className="mt-1 whitespace-pre-wrap">{verificationState.error}</p>
+                </details>
+              </div>
+            )}
             {canVerify && !verificationState.error && verificationState.items.length === 0 && (
               <p>No pending verifications right now.</p>
             )}
@@ -207,7 +217,17 @@ export function AdminHome({ admin }: AdminHomeProps) {
           </div>
           <div className="mt-4 space-y-3 text-sm text-text-secondary">
             {!canViewReports && <p>Permission required.</p>}
-            {canViewReports && reportState.error && <p>{reportState.error}</p>}
+            {canViewReports && reportState.error && (
+              <div className="rounded-lg border border-border bg-bg px-3 py-2 text-xs text-text-secondary">
+                <p className="font-semibold text-text-primary">
+                  Unable to load the reports queue.
+                </p>
+                <details className="mt-1 text-xs text-text-light">
+                  <summary className="cursor-pointer">Details</summary>
+                  <p className="mt-1 whitespace-pre-wrap">{reportState.error}</p>
+                </details>
+              </div>
+            )}
             {canViewReports && !reportState.error && reportState.items.length === 0 && (
               <p>No open reports right now.</p>
             )}

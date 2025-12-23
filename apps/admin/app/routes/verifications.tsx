@@ -22,6 +22,23 @@ function formatDate(value?: string | null) {
   }).format(date);
 }
 
+function statusBadgeClass(status: string) {
+  switch (status) {
+    case "pending":
+      return "bg-bg-muted text-text-secondary";
+    case "approved":
+      return "bg-brand/10 text-brand";
+    case "rejected":
+      return "bg-bg-muted text-text-secondary";
+    default:
+      return "bg-bg-muted text-text-secondary";
+  }
+}
+
+function formatStatusLabel(value: string) {
+  return value.replace(/_/g, " ");
+}
+
 export default function VerificationsRoute() {
   const { admin } = useOutletContext<AdminRouteContext>();
   const canVerify = admin.permissions.includes("verify_users");
@@ -33,12 +50,19 @@ export default function VerificationsRoute() {
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [confirmReject, setConfirmReject] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
 
   const selectedItem = useMemo(
     () => items.find((item) => item.id === selectedId) ?? items[0] ?? null,
     [items, selectedId]
   );
+
+  useEffect(() => {
+    setConfirmReject(false);
+    setActionError(null);
+    setRejectReason("");
+  }, [selectedItem?.id]);
 
   useEffect(() => {
     if (!canVerify) return;
@@ -100,6 +124,7 @@ export default function VerificationsRoute() {
       await approveVerification(selectedItem.id);
       updateItemStatus(selectedItem.id, "approved");
       setRejectReason("");
+      setConfirmReject(false);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Unable to approve verification.");
     } finally {
@@ -110,7 +135,7 @@ export default function VerificationsRoute() {
   const handleReject = async () => {
     if (!selectedItem) return;
     if (!rejectReason.trim()) {
-      setActionError("Please add a rejection reason.");
+      setActionError("Add a rejection reason before confirming.");
       return;
     }
     setIsSaving(true);
@@ -119,6 +144,7 @@ export default function VerificationsRoute() {
       await rejectVerification(selectedItem.id, rejectReason.trim());
       updateItemStatus(selectedItem.id, "rejected", rejectReason.trim());
       setRejectReason("");
+      setConfirmReject(false);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Unable to reject verification.");
     } finally {
@@ -170,8 +196,17 @@ export default function VerificationsRoute() {
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
         <section className="space-y-3">
           {error && (
-            <div className="rounded-xl border border-border bg-bg px-4 py-3 text-sm text-brand">
-              {error}
+            <div className="rounded-xl border border-border bg-bg px-4 py-3 text-sm text-text-secondary">
+              <p className="text-sm font-semibold text-text-primary">
+                Unable to load verification requests.
+              </p>
+              <p className="mt-1 text-xs text-text-light">
+                Try refreshing the page or switching status filters.
+              </p>
+              <details className="mt-2 text-xs text-text-light">
+                <summary className="cursor-pointer">Details</summary>
+                <p className="mt-2 whitespace-pre-wrap">{error}</p>
+              </details>
             </div>
           )}
           {isLoading && items.length === 0 && (
@@ -181,7 +216,7 @@ export default function VerificationsRoute() {
           )}
           {!isLoading && items.length === 0 && (
             <div className="rounded-xl border border-border bg-bg px-4 py-6 text-sm text-text-secondary">
-              No verifications found for this status.
+              No verification requests match this status yet.
             </div>
           )}
           {items.map((item) => {
@@ -212,7 +247,13 @@ export default function VerificationsRoute() {
                 </div>
                 <div className="mt-3 flex items-center justify-between text-xs text-text-light">
                   <span>Submitted {formatDate(item.submitted_at)}</span>
-                  <span className="uppercase ">{item.status}</span>
+                  <span
+                    className={`rounded-full px-2 py-1 text-xs font-semibold ${statusBadgeClass(
+                      item.status
+                    )}`}
+                  >
+                    {formatStatusLabel(item.status)}
+                  </span>
                 </div>
               </button>
             );
@@ -230,7 +271,7 @@ export default function VerificationsRoute() {
           )}
         </section>
 
-        <aside className="rounded-2xl border border-border bg-bg p-5 ">
+        <aside className="rounded-2xl border border-border bg-bg p-5 lg:sticky lg:top-24">
           <h2 className="text-lg font-semibold text-strong">Review details</h2>
           {!selectedItem ? (
             <p className="mt-3 text-sm text-text-secondary">
@@ -264,9 +305,16 @@ export default function VerificationsRoute() {
                 <p className="text-xs font-semibold uppercase text-text-light">
                   Status
                 </p>
-                <p className="mt-1 text-sm font-semibold text-text-primary">
-                  {selectedItem.status}
-                </p>
+                <div className="mt-2 flex items-center justify-between text-sm">
+                  <span className="text-text-secondary">Current status</span>
+                  <span
+                    className={`rounded-full px-2 py-1 text-xs font-semibold ${statusBadgeClass(
+                      selectedItem.status
+                    )}`}
+                  >
+                    {formatStatusLabel(selectedItem.status)}
+                  </span>
+                </div>
                 {selectedItem.reject_reason && (
                   <p className="mt-1 text-xs text-text-light">
                     Reject reason: {selectedItem.reject_reason}
@@ -287,7 +335,11 @@ export default function VerificationsRoute() {
                 />
               </div>
 
-              {actionError && <p className="text-sm text-brand">{actionError}</p>}
+              {actionError && (
+                <p className="rounded-lg border border-border bg-bg px-3 py-2 text-xs text-brand">
+                  {actionError}
+                </p>
+              )}
 
               <div className="grid gap-2 sm:grid-cols-2">
                 <button
@@ -298,14 +350,35 @@ export default function VerificationsRoute() {
                 >
                   {isSaving ? "Saving..." : "Approve"}
                 </button>
-                <button
-                  type="button"
-                  onClick={handleReject}
-                  disabled={isSaving}
-                  className="rounded-full border border-border px-4 py-2 text-sm font-semibold text-text-primary transition hover:bg-bg-muted disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  Reject
-                </button>
+                <div className="space-y-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!rejectReason.trim()) {
+                        setActionError("Add a rejection reason before confirming.");
+                        return;
+                      }
+                      if (!confirmReject) {
+                        setConfirmReject(true);
+                        return;
+                      }
+                      handleReject();
+                    }}
+                    disabled={isSaving}
+                    className="w-full rounded-full border border-border px-4 py-2 text-sm font-semibold text-text-primary transition hover:bg-bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {confirmReject ? "Confirm reject" : "Reject"}
+                  </button>
+                  {confirmReject && (
+                    <button
+                      type="button"
+                      onClick={() => setConfirmReject(false)}
+                      className="w-full rounded-full border border-border px-4 py-2 text-xs font-semibold text-text-secondary transition hover:bg-bg-muted"
+                    >
+                      Cancel
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           )}

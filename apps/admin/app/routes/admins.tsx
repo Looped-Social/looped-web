@@ -180,7 +180,11 @@ export default function AdminsRoute() {
             ))}
           </div>
         </div>
-        {actionError && <p className="mt-3 text-sm text-brand">{actionError}</p>}
+        {actionError && (
+          <p className="mt-3 rounded-lg border border-border bg-bg px-3 py-2 text-xs text-brand">
+            {actionError}
+          </p>
+        )}
         <div className="mt-4 flex flex-wrap items-center gap-3">
           <button
             type="button"
@@ -201,8 +205,13 @@ export default function AdminsRoute() {
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
         <section className="space-y-3">
           {error && (
-            <div className="rounded-xl border border-border bg-bg px-4 py-3 text-sm text-brand">
-              {error}
+            <div className="rounded-xl border border-border bg-bg px-4 py-3 text-sm text-text-secondary">
+              <p className="text-sm font-semibold text-text-primary">Unable to load admins.</p>
+              <p className="mt-1 text-xs text-text-light">Try refreshing the list.</p>
+              <details className="mt-2 text-xs text-text-light">
+                <summary className="cursor-pointer">Details</summary>
+                <p className="mt-2 whitespace-pre-wrap">{error}</p>
+              </details>
             </div>
           )}
           {isLoading && (
@@ -239,7 +248,7 @@ export default function AdminsRoute() {
           })}
         </section>
 
-        <aside className="rounded-2xl border border-border bg-bg p-5 ">
+        <aside className="rounded-2xl border border-border bg-bg p-5 lg:sticky lg:top-24">
           <h2 className="text-lg font-semibold text-strong">Admin details</h2>
           {!selectedAdmin ? (
             <p className="mt-3 text-sm text-text-secondary">

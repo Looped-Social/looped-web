@@ -29,6 +29,21 @@ function formatDate(value?: string | null) {
   }).format(date);
 }
 
+function statusBadgeClass(status: string) {
+  switch (status) {
+    case "open":
+      return "bg-brand/10 text-brand";
+    case "resolved":
+      return "bg-bg-muted text-text-secondary";
+    default:
+      return "bg-bg-muted text-text-secondary";
+  }
+}
+
+function formatStatusLabel(value: string) {
+  return value.replace(/_/g, " ");
+}
+
 export default function ReportsRoute() {
   const { admin } = useOutletContext<AdminRouteContext>();
   const canViewReports = admin.permissions.includes("view_reports");
@@ -48,6 +63,7 @@ export default function ReportsRoute() {
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<"remove_post" | "ban_user" | null>(null);
   const [resolveReason, setResolveReason] = useState("");
   const [removeReason, setRemoveReason] = useState("");
   const [banReason, setBanReason] = useState("");
@@ -59,6 +75,36 @@ export default function ReportsRoute() {
     () => items.find((item) => item.id === selectedId) ?? items[0] ?? null,
     [items, selectedId]
   );
+
+  const appliedFilters = useMemo(() => {
+    const filters: Array<{ label: string; onClear: () => void }> = [];
+    if (status !== "open") {
+      filters.push({ label: `Status: ${status}`, onClear: () => setStatus("open") });
+    }
+    if (targetType !== "all") {
+      filters.push({ label: `Target: ${targetType}`, onClear: () => setTargetType("all") });
+    }
+    if (dateFrom) {
+      filters.push({ label: `From: ${dateFrom}`, onClear: () => setDateFrom("") });
+    }
+    if (dateTo) {
+      filters.push({ label: `To: ${dateTo}`, onClear: () => setDateTo("") });
+    }
+    if (sort !== "created_at_desc") {
+      const label = sortOptions.find((option) => option.value === sort)?.label ?? sort;
+      filters.push({ label: `Sort: ${label}`, onClear: () => setSort("created_at_desc") });
+    }
+    return filters;
+  }, [dateFrom, dateTo, sort, status, targetType]);
+
+  useEffect(() => {
+    setConfirmAction(null);
+    setActionError(null);
+    setResolveReason("");
+    setRemoveReason("");
+    setBanReason("");
+    setBanDuration("");
+  }, [selectedReport?.id]);
 
   useEffect(() => {
     if (!canViewReports) return;
@@ -157,7 +203,7 @@ export default function ReportsRoute() {
   const handleRemovePost = async () => {
     if (!selectedReport || selectedReport.target_type !== "post") return;
     if (!removeReason.trim()) {
-      setActionError("Please add a removal reason.");
+      setActionError("Add a removal reason before confirming.");
       return;
     }
     setIsSaving(true);
@@ -165,6 +211,7 @@ export default function ReportsRoute() {
     try {
       await removeAdminPost(selectedReport.target_id, removeReason.trim());
       setRemoveReason("");
+      setConfirmAction(null);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Unable to remove post.");
     } finally {
@@ -186,6 +233,7 @@ export default function ReportsRoute() {
       });
       setBanReason("");
       setBanDuration("");
+      setConfirmAction(null);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Unable to ban user.");
     } finally {
@@ -307,11 +355,47 @@ export default function ReportsRoute() {
         )}
       </div>
 
+      {appliedFilters.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 text-xs text-text-secondary">
+          <span className="font-semibold text-text-light">Applied filters:</span>
+          {appliedFilters.map((filter) => (
+            <button
+              key={filter.label}
+              type="button"
+              onClick={filter.onClear}
+              className="rounded-full border border-border bg-bg px-3 py-1 text-xs font-semibold text-text-primary transition hover:bg-bg-muted"
+            >
+              {filter.label} x
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={() => {
+              setStatus("open");
+              setTargetType("all");
+              setDateFrom("");
+              setDateTo("");
+              setSort("created_at_desc");
+            }}
+            className="rounded-full border border-border px-3 py-1 text-xs font-semibold text-text-primary transition hover:bg-bg-muted"
+          >
+            Clear all
+          </button>
+        </div>
+      )}
+
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
         <section className="space-y-3">
           {error && (
-            <div className="rounded-xl border border-border bg-bg px-4 py-3 text-sm text-brand">
-              {error}
+            <div className="rounded-xl border border-border bg-bg px-4 py-3 text-sm text-text-secondary">
+              <p className="text-sm font-semibold text-text-primary">Unable to load reports.</p>
+              <p className="mt-1 text-xs text-text-light">
+                Try adjusting filters or refresh the page.
+              </p>
+              <details className="mt-2 text-xs text-text-light">
+                <summary className="cursor-pointer">Details</summary>
+                <p className="mt-2 whitespace-pre-wrap">{error}</p>
+              </details>
             </div>
           )}
           {isLoading && items.length === 0 && (
@@ -321,7 +405,7 @@ export default function ReportsRoute() {
           )}
           {!isLoading && items.length === 0 && (
             <div className="rounded-xl border border-border bg-bg px-4 py-6 text-sm text-text-secondary">
-              No reports found for this filter.
+              No reports match the current filters. Try adjusting the date range or status.
             </div>
           )}
 
@@ -353,7 +437,13 @@ export default function ReportsRoute() {
                 </div>
                 <div className="mt-3 flex items-center justify-between text-xs text-text-light">
                   <span>Opened {formatDate(item.created_at)}</span>
-                  <span className="uppercase ">{item.status}</span>
+                  <span
+                    className={`rounded-full px-2 py-1 text-xs font-semibold ${statusBadgeClass(
+                      item.status
+                    )}`}
+                  >
+                    {formatStatusLabel(item.status)}
+                  </span>
                 </div>
               </button>
             );
@@ -371,7 +461,7 @@ export default function ReportsRoute() {
           )}
         </section>
 
-        <aside className="rounded-2xl border border-border bg-bg p-5 ">
+        <aside className="rounded-2xl border border-border bg-bg p-5 lg:sticky lg:top-24">
           <h2 className="text-lg font-semibold text-strong">Report details</h2>
           {!selectedReport ? (
             <p className="mt-3 text-sm text-text-secondary">
@@ -404,8 +494,26 @@ export default function ReportsRoute() {
                   </p>
                 )}
                 {selectedReport.target_type === "post" && postError && (
-                  <p className="mt-2 text-xs text-brand">{postError}</p>
+                  <p className="mt-2 text-xs text-text-secondary">
+                    Unable to load post details.
+                  </p>
                 )}
+              </div>
+
+              <div className="rounded-xl border border-border bg-bg-muted/30 p-3">
+                <p className="text-xs font-semibold uppercase text-text-light">
+                  Status
+                </p>
+                <div className="mt-2 flex items-center justify-between text-sm">
+                  <span className="text-text-secondary">Current status</span>
+                  <span
+                    className={`rounded-full px-2 py-1 text-xs font-semibold ${statusBadgeClass(
+                      selectedReport.status
+                    )}`}
+                  >
+                    {formatStatusLabel(selectedReport.status)}
+                  </span>
+                </div>
               </div>
 
               {canResolve && (
@@ -423,7 +531,11 @@ export default function ReportsRoute() {
                 </div>
               )}
 
-              {actionError && <p className="text-sm text-brand">{actionError}</p>}
+              {actionError && (
+                <p className="rounded-lg border border-border bg-bg px-3 py-2 text-xs text-brand">
+                  {actionError}
+                </p>
+              )}
 
               <div className="grid gap-2">
                 {canResolve && (
@@ -449,12 +561,31 @@ export default function ReportsRoute() {
                     />
                     <button
                       type="button"
-                      onClick={handleRemovePost}
+                      onClick={() => {
+                        if (!removeReason.trim()) {
+                          setActionError("Add a removal reason before confirming.");
+                          return;
+                        }
+                        if (confirmAction !== "remove_post") {
+                          setConfirmAction("remove_post");
+                          return;
+                        }
+                        handleRemovePost();
+                      }}
                       disabled={isSaving}
                       className="w-full rounded-full border border-border px-4 py-2 text-sm font-semibold text-text-primary transition hover:bg-bg-muted disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      Remove post
+                      {confirmAction === "remove_post" ? "Confirm remove post" : "Remove post"}
                     </button>
+                    {confirmAction === "remove_post" && (
+                      <button
+                        type="button"
+                        onClick={() => setConfirmAction(null)}
+                        className="w-full rounded-full border border-border px-4 py-2 text-xs font-semibold text-text-secondary transition hover:bg-bg-muted"
+                      >
+                        Cancel
+                      </button>
+                    )}
                   </div>
                 )}
                 {selectedReport.target_type === "user" && canBanUser && (
@@ -476,12 +607,27 @@ export default function ReportsRoute() {
                     />
                     <button
                       type="button"
-                      onClick={handleBanUser}
+                      onClick={() => {
+                        if (confirmAction !== "ban_user") {
+                          setConfirmAction("ban_user");
+                          return;
+                        }
+                        handleBanUser();
+                      }}
                       disabled={isSaving}
                       className="w-full rounded-full border border-border px-4 py-2 text-sm font-semibold text-text-primary transition hover:bg-bg-muted disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      Ban user
+                      {confirmAction === "ban_user" ? "Confirm ban user" : "Ban user"}
                     </button>
+                    {confirmAction === "ban_user" && (
+                      <button
+                        type="button"
+                        onClick={() => setConfirmAction(null)}
+                        className="w-full rounded-full border border-border px-4 py-2 text-xs font-semibold text-text-secondary transition hover:bg-bg-muted"
+                      >
+                        Cancel
+                      </button>
+                    )}
                   </div>
                 )}
               </div>

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useOutletContext } from "react-router";
 
 import {
@@ -20,6 +20,23 @@ function formatDate(value?: string | null) {
   }).format(date);
 }
 
+function statusBadgeClass(status: string) {
+  switch (status) {
+    case "banned":
+      return "bg-brand/10 text-brand";
+    case "active":
+      return "bg-bg-muted text-text-secondary";
+    default:
+      return "bg-bg-muted text-text-secondary";
+  }
+}
+
+function formatStatusLabel(value: string) {
+  return value.replace(/_/g, " ");
+}
+
+const RECENT_SEARCHES_KEY = "looped-admin-user-searches";
+
 export default function UsersRoute() {
   const { admin } = useOutletContext<AdminRouteContext>();
   const canBan = admin.permissions.includes("ban_user");
@@ -33,16 +50,41 @@ export default function UsersRoute() {
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [confirmBan, setConfirmBan] = useState(false);
   const [banReason, setBanReason] = useState("");
   const [banDuration, setBanDuration] = useState("");
+  const [recentSearches, setRecentSearches] = useState<string[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const raw = localStorage.getItem(RECENT_SEARCHES_KEY);
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  });
 
   const selectedItem = useMemo(
     () => items.find((item) => item.id === selectedId) ?? items[0] ?? null,
     [items, selectedId]
   );
 
-  const search = async () => {
-    if (!query.trim()) {
+  const updateRecentSearches = (value: string) => {
+    const normalized = value.trim();
+    if (!normalized) return;
+    const next = [normalized, ...recentSearches.filter((item) => item !== normalized)].slice(
+      0,
+      4
+    );
+    setRecentSearches(next);
+    if (typeof window !== "undefined") {
+      localStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(next));
+    }
+  };
+
+  const runSearch = async (rawQuery?: string) => {
+    const nextQuery = (rawQuery ?? query).trim();
+    if (!nextQuery) {
       setItems([]);
       setNextCursor(null);
       setSelectedId(null);
@@ -51,8 +93,9 @@ export default function UsersRoute() {
     }
     setIsLoading(true);
     setError(null);
+    updateRecentSearches(nextQuery);
     try {
-      const res = await fetchAdminUsers(query.trim());
+      const res = await fetchAdminUsers(nextQuery);
       setItems(res.items);
       setNextCursor(res.next_cursor ?? null);
       setSelectedId(res.items[0]?.id ?? null);
@@ -91,6 +134,13 @@ export default function UsersRoute() {
     }
   };
 
+  useEffect(() => {
+    setConfirmBan(false);
+    setActionError(null);
+    setBanReason("");
+    setBanDuration("");
+  }, [selectedItem?.id]);
+
   const handleBan = async () => {
     if (!selectedItem) return;
     setIsSaving(true);
@@ -105,6 +155,7 @@ export default function UsersRoute() {
       });
       setBanReason("");
       setBanDuration("");
+      setConfirmBan(false);
       await fetchDetail(selectedItem.id);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Unable to ban user.");
@@ -119,6 +170,7 @@ export default function UsersRoute() {
     setActionError(null);
     try {
       await unbanAdminUser(selectedItem.id);
+      setConfirmBan(false);
       await fetchDetail(selectedItem.id);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Unable to unban user.");
@@ -152,12 +204,17 @@ export default function UsersRoute() {
         <input
           value={query}
           onChange={(event) => setQuery(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              runSearch();
+            }
+          }}
           placeholder="Search by email, handle, or user id"
           className="min-w-[240px] flex-1 rounded-full border border-border bg-bg px-4 py-2 text-sm text-text-primary  outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
         />
         <button
           type="button"
-          onClick={search}
+          onClick={() => runSearch()}
           disabled={isLoading}
           className="rounded-full bg-brand px-5 py-2 text-sm font-semibold text-white  transition hover:bg-brand/90 disabled:cursor-not-allowed disabled:opacity-60"
         >
@@ -165,11 +222,51 @@ export default function UsersRoute() {
         </button>
       </div>
 
+      {recentSearches.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 text-xs text-text-secondary">
+          <span className="font-semibold text-text-light">Recent searches:</span>
+          {recentSearches.map((value) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => {
+                setQuery(value);
+                runSearch(value);
+              }}
+              className="rounded-full border border-border bg-bg px-3 py-1 text-xs font-semibold text-text-primary transition hover:bg-bg-muted"
+            >
+              {value}
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={() => {
+              setRecentSearches([]);
+              if (typeof window !== "undefined") {
+                localStorage.removeItem(RECENT_SEARCHES_KEY);
+              }
+            }}
+            className="rounded-full border border-border px-3 py-1 text-xs font-semibold text-text-primary transition hover:bg-bg-muted"
+          >
+            Clear
+          </button>
+        </div>
+      )}
+
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
         <section className="space-y-3">
           {error && (
-            <div className="rounded-xl border border-border bg-bg px-4 py-3 text-sm text-brand">
-              {error}
+            <div className="rounded-xl border border-border bg-bg px-4 py-3 text-sm text-text-secondary">
+              <p className="text-sm font-semibold text-text-primary">
+                Unable to load user results.
+              </p>
+              <p className="mt-1 text-xs text-text-light">
+                Double-check the query and try again.
+              </p>
+              <details className="mt-2 text-xs text-text-light">
+                <summary className="cursor-pointer">Details</summary>
+                <p className="mt-2 whitespace-pre-wrap">{error}</p>
+              </details>
             </div>
           )}
           {isLoading && items.length === 0 && (
@@ -179,12 +276,12 @@ export default function UsersRoute() {
           )}
           {!isLoading && query && items.length === 0 && (
             <div className="rounded-xl border border-border bg-bg px-4 py-6 text-sm text-text-secondary">
-              No users found for this query.
+              No users found for this query. Try an email, handle, or numeric id.
             </div>
           )}
           {!query && items.length === 0 && (
             <div className="rounded-xl border border-border bg-bg px-4 py-6 text-sm text-text-secondary">
-              Enter a query to find a user account.
+              Enter a query or press Enter to search for a user account.
             </div>
           )}
 
@@ -216,8 +313,12 @@ export default function UsersRoute() {
                 </div>
                 <div className="mt-3 flex items-center justify-between text-xs text-text-light">
                   <span>Joined {formatDate(item.created_at)}</span>
-                  <span className="uppercase ">
-                    {item.ban?.status ?? "active"}
+                  <span
+                    className={`rounded-full px-2 py-1 text-xs font-semibold ${statusBadgeClass(
+                      item.ban?.status ?? "active"
+                    )}`}
+                  >
+                    {formatStatusLabel(item.ban?.status ?? "active")}
                   </span>
                 </div>
               </button>
@@ -236,7 +337,7 @@ export default function UsersRoute() {
           )}
         </section>
 
-        <aside className="rounded-2xl border border-border bg-bg p-5 ">
+        <aside className="rounded-2xl border border-border bg-bg p-5 lg:sticky lg:top-24">
           <h2 className="text-lg font-semibold text-strong">User details</h2>
           {!selectedItem ? (
             <p className="mt-3 text-sm text-text-secondary">
@@ -272,9 +373,18 @@ export default function UsersRoute() {
                 <p className="text-xs font-semibold uppercase text-text-light">
                   Ban status
                 </p>
-                <p className="mt-1 text-sm font-semibold text-text-primary">
-                  {selectedDetail?.ban?.status ?? selectedItem.ban?.status ?? "active"}
-                </p>
+                <div className="mt-2 flex items-center justify-between text-sm">
+                  <span className="text-text-secondary">Current status</span>
+                  <span
+                    className={`rounded-full px-2 py-1 text-xs font-semibold ${statusBadgeClass(
+                      selectedDetail?.ban?.status ?? selectedItem.ban?.status ?? "active"
+                    )}`}
+                  >
+                    {formatStatusLabel(
+                      selectedDetail?.ban?.status ?? selectedItem.ban?.status ?? "active"
+                    )}
+                  </span>
+                </div>
                 {(selectedDetail?.ban?.expires_at || selectedItem.ban?.expires_at) && (
                   <p className="text-xs text-text-light">
                     Expires{" "}
@@ -283,7 +393,11 @@ export default function UsersRoute() {
                 )}
               </div>
 
-              {actionError && <p className="text-sm text-brand">{actionError}</p>}
+              {actionError && (
+                <p className="rounded-lg border border-border bg-bg px-3 py-2 text-xs text-brand">
+                  {actionError}
+                </p>
+              )}
 
               <div className="space-y-2">
                 <label className="text-xs font-semibold uppercase text-text-light">
@@ -304,11 +418,17 @@ export default function UsersRoute() {
                 <div className="grid gap-2 sm:grid-cols-2">
                   <button
                     type="button"
-                    onClick={handleBan}
+                    onClick={() => {
+                      if (!confirmBan) {
+                        setConfirmBan(true);
+                        return;
+                      }
+                      handleBan();
+                    }}
                     disabled={isSaving}
                     className="rounded-full bg-brand px-4 py-2 text-sm font-semibold text-white  transition hover:bg-brand/90 disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    {isSaving ? "Saving..." : "Ban user"}
+                    {isSaving ? "Saving..." : confirmBan ? "Confirm ban" : "Ban user"}
                   </button>
                   <button
                     type="button"
@@ -319,6 +439,15 @@ export default function UsersRoute() {
                     Unban
                   </button>
                 </div>
+                {confirmBan && (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmBan(false)}
+                    className="w-full rounded-full border border-border px-4 py-2 text-xs font-semibold text-text-secondary transition hover:bg-bg-muted"
+                  >
+                    Cancel
+                  </button>
+                )}
               </div>
             </div>
           )}

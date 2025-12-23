@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useOutletContext } from "react-router";
 
 import { fetchAdminPost, removeAdminPost, restoreAdminPost } from "../lib/adminApi";
@@ -17,6 +17,21 @@ function formatDate(value?: string | null) {
   }).format(date);
 }
 
+function statusBadgeClass(status: string) {
+  switch (status) {
+    case "removed":
+      return "bg-brand/10 text-brand";
+    case "active":
+      return "bg-bg-muted text-text-secondary";
+    default:
+      return "bg-bg-muted text-text-secondary";
+  }
+}
+
+function formatStatusLabel(value: string) {
+  return value.replace(/_/g, " ");
+}
+
 export default function PostsRoute() {
   const { admin } = useOutletContext<AdminRouteContext>();
   const canRemove = admin.permissions.includes("remove_post");
@@ -27,7 +42,14 @@ export default function PostsRoute() {
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [confirmRemove, setConfirmRemove] = useState(false);
   const [removeReason, setRemoveReason] = useState("");
+
+  useEffect(() => {
+    setConfirmRemove(false);
+    setActionError(null);
+    setRemoveReason("");
+  }, [post?.id]);
 
   const lookup = async () => {
     if (!postId.trim()) {
@@ -55,7 +77,7 @@ export default function PostsRoute() {
 
   const handleRemove = async () => {
     if (!post || !removeReason.trim()) {
-      setActionError("Please add a removal reason.");
+      setActionError("Add a removal reason before confirming.");
       return;
     }
     setIsSaving(true);
@@ -64,6 +86,7 @@ export default function PostsRoute() {
       await removeAdminPost(post.id, removeReason.trim());
       setPost({ ...post, removed_at: new Date().toISOString(), removed_reason: removeReason });
       setRemoveReason("");
+      setConfirmRemove(false);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Unable to remove post.");
     } finally {
@@ -78,6 +101,7 @@ export default function PostsRoute() {
     try {
       await restoreAdminPost(post.id);
       setPost({ ...post, removed_at: null, removed_reason: null });
+      setConfirmRemove(false);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Unable to restore post.");
     } finally {
@@ -110,6 +134,11 @@ export default function PostsRoute() {
         <input
           value={postId}
           onChange={(event) => setPostId(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              lookup();
+            }
+          }}
           placeholder="Enter post id"
           className="min-w-[200px] flex-1 rounded-full border border-border bg-bg px-4 py-2 text-sm text-text-primary  outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
         />
@@ -124,8 +153,13 @@ export default function PostsRoute() {
       </div>
 
       {error && (
-        <div className="rounded-xl border border-border bg-bg px-4 py-3 text-sm text-brand">
-          {error}
+        <div className="rounded-xl border border-border bg-bg px-4 py-3 text-sm text-text-secondary">
+          <p className="text-sm font-semibold text-text-primary">Unable to load the post.</p>
+          <p className="mt-1 text-xs text-text-light">Check the post id and try again.</p>
+          <details className="mt-2 text-xs text-text-light">
+            <summary className="cursor-pointer">Details</summary>
+            <p className="mt-2 whitespace-pre-wrap">{error}</p>
+          </details>
         </div>
       )}
 
@@ -142,8 +176,12 @@ export default function PostsRoute() {
               <p className="text-xs font-semibold uppercase text-text-light">
                 Post #{post.id}
               </p>
-              <span className="rounded-full bg-bg-muted px-2.5 py-1 text-xs font-semibold text-text-primary">
-                {post.removed_at ? "removed" : "active"}
+              <span
+                className={`rounded-full px-2.5 py-1 text-xs font-semibold ${statusBadgeClass(
+                  post.removed_at ? "removed" : "active"
+                )}`}
+              >
+                {formatStatusLabel(post.removed_at ? "removed" : "active")}
               </span>
             </div>
             <p className="mt-4 text-base text-text-primary">
@@ -162,7 +200,7 @@ export default function PostsRoute() {
             )}
           </section>
 
-          <aside className="rounded-2xl border border-border bg-bg p-5 ">
+          <aside className="rounded-2xl border border-border bg-bg p-5 lg:sticky lg:top-24">
             <h2 className="text-lg font-semibold text-strong">Moderation</h2>
             <div className="mt-4 space-y-3 text-sm text-text-secondary">
               <label className="text-xs font-semibold uppercase text-text-light">
@@ -175,16 +213,39 @@ export default function PostsRoute() {
                 placeholder="Explain why the post is removed..."
                 className="w-full rounded-xl border border-border bg-bg px-3 py-2 text-sm text-text-primary  outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
               />
-              {actionError && <p className="text-sm text-brand">{actionError}</p>}
+              {actionError && (
+                <p className="rounded-lg border border-border bg-bg px-3 py-2 text-xs text-brand">
+                  {actionError}
+                </p>
+              )}
               <div className="grid gap-2">
                 <button
                   type="button"
-                  onClick={handleRemove}
+                  onClick={() => {
+                    if (!removeReason.trim()) {
+                      setActionError("Add a removal reason before confirming.");
+                      return;
+                    }
+                    if (!confirmRemove) {
+                      setConfirmRemove(true);
+                      return;
+                    }
+                    handleRemove();
+                  }}
                   disabled={isSaving}
                   className="rounded-full bg-brand px-4 py-2 text-sm font-semibold text-white  transition hover:bg-brand/90 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {isSaving ? "Saving..." : "Remove post"}
+                  {isSaving ? "Saving..." : confirmRemove ? "Confirm remove post" : "Remove post"}
                 </button>
+                {confirmRemove && (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmRemove(false)}
+                    className="rounded-full border border-border px-4 py-2 text-xs font-semibold text-text-secondary transition hover:bg-bg-muted"
+                  >
+                    Cancel
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={handleRestore}

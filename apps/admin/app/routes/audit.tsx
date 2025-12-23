@@ -86,8 +86,13 @@ export default function AuditRoute() {
       </header>
 
       {error && (
-        <div className="rounded-xl border border-border bg-bg px-4 py-3 text-sm text-brand">
-          {error}
+        <div className="rounded-xl border border-border bg-bg px-4 py-3 text-sm text-text-secondary">
+          <p className="text-sm font-semibold text-text-primary">Unable to load the audit log.</p>
+          <p className="mt-1 text-xs text-text-light">Try refreshing the page.</p>
+          <details className="mt-2 text-xs text-text-light">
+            <summary className="cursor-pointer">Details</summary>
+            <p className="mt-2 whitespace-pre-wrap">{error}</p>
+          </details>
         </div>
       )}
       {isLoading && items.length === 0 && (
@@ -95,12 +100,17 @@ export default function AuditRoute() {
           Loading audit log...
         </div>
       )}
+      {!isLoading && items.length === 0 && !error && (
+        <div className="rounded-xl border border-border bg-bg px-4 py-6 text-sm text-text-secondary">
+          No audit entries yet.
+        </div>
+      )}
 
       <div className="space-y-3">
         {items.map((item) => (
           <div
             key={item.id}
-            className="rounded-2xl border border-border bg-bg px-4 py-4 "
+            className="rounded-2xl border border-border bg-bg px-4 py-4 transition hover:shadow-[0_12px_24px_rgba(15,23,42,0.08)]"
           >
             <div className="flex items-start justify-between gap-4">
               <div>
