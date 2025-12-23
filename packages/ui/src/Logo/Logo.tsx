@@ -13,6 +13,7 @@ type LogoProps = {
 };
 
 //hello to you
+//hello to you as well
 const sizePresets: Record<
   NonNullable<LogoProps["size"]>,
   { className: string; style?: { width: number; height: number } }
