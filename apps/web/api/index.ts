@@ -120,6 +120,28 @@ function parseCookies(header: string | undefined) {
   return cookies;
 }
 
+function getOriginalUrl(req: IncomingMessage) {
+  const headerCandidates = [
+    "x-vercel-original-url",
+    "x-original-url",
+    "x-forwarded-uri",
+    "x-rewrite-url",
+    "x-matched-path",
+  ];
+
+  for (const headerName of headerCandidates) {
+    const value = req.headers[headerName];
+    if (Array.isArray(value)) {
+      return value[0];
+    }
+    if (typeof value === "string" && value.length > 0) {
+      return value;
+    }
+  }
+
+  return req.url ?? "/";
+}
+
 function isAuthed(req: IncomingMessage) {
   if (!gateHash) {
     return true;
@@ -279,6 +301,11 @@ async function serveStaticFile(
 }
 
 export default async function handler(req: IncomingMessage, res: ServerResponse) {
+  const originalUrl = getOriginalUrl(req);
+  if (req.url !== originalUrl) {
+    req.url = originalUrl;
+  }
+
   if (!isAuthed(req)) {
     if (req.method === "POST" && req.url?.startsWith("/__gate")) {
       const body = await readBody(req);
