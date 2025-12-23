@@ -4,7 +4,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 type NodeHandler = (req: IncomingMessage, res: ServerResponse) => void;
 
@@ -14,8 +14,29 @@ type ServerState = {
   publicPath: string;
 };
 
-const buildPath = path.resolve(process.cwd(), "build/server/index.js");
-const publicDir = path.resolve(process.cwd(), "public");
+const projectRoot = process.cwd();
+const moduleDir = path.dirname(fileURLToPath(import.meta.url));
+
+const resolveFirstExisting = (candidates: string[]) => {
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  return candidates[0];
+};
+
+const buildPath = resolveFirstExisting([
+  path.resolve(projectRoot, "build/server/index.js"),
+  path.resolve(moduleDir, "../build/server/index.js"),
+  path.resolve(moduleDir, "../../build/server/index.js"),
+]);
+
+const publicDir = resolveFirstExisting([
+  path.resolve(projectRoot, "public"),
+  path.resolve(moduleDir, "../public"),
+  path.resolve(moduleDir, "../../public"),
+]);
 const gateHash = process.env.WEB_GATE_SHA256 ?? "";
 const gateCookieName = "looped-web-gate";
 
