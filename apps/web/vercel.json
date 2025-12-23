@@ -1,7 +1,7 @@
 {
   "functions": {
     "api/index.ts": {
-      "includeFiles": ["build/**", "public/**"]
+      "includeFiles": "build/**"
     }
   },
   "rewrites": [
