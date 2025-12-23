@@ -10,6 +10,7 @@ import {
 import type { Route } from "./+types/root";
 import "./app.css";
 
+// Toggle to serve a site-wide 404 without removing routes/content.
 const forceNotFound = true;
 
 export async function loader() {
