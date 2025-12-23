@@ -177,7 +177,11 @@ async function getServerState(): Promise<ServerState> {
   } else {
     const build = buildModule;
     publicPath = build.publicPath ?? "/";
-    assetsDir = build.assetsBuildDirectory ?? assetsDir;
+    if (build.assetsBuildDirectory) {
+      assetsDir = path.isAbsolute(build.assetsBuildDirectory)
+        ? build.assetsBuildDirectory
+        : path.resolve(path.dirname(buildPath), build.assetsBuildDirectory);
+    }
     handler = createRequestListener({ build, mode: process.env.NODE_ENV });
   }
 
