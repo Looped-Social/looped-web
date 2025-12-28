@@ -4,7 +4,7 @@ import { ContactPage } from "@/pages/ContactPage/ContactPage";
 export function meta({}: Route.MetaArgs) {
   return [
     { title: "Contact Looped" },
-    { name: "description", content: "Reach out to the Looped team for support, press, or partnerships." },
+    { name: "description", content: "Send feedback or reach out to the Looped team for support, press, or partnerships." },
   ];
 }
 

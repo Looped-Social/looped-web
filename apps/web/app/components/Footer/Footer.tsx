@@ -32,6 +32,16 @@ export function Footer() {
                 </Link>
               </li>
               <li>
+                <Link className="transition hover:text-strong" to="/contact">
+                  Feedback
+                </Link>
+              </li>
+              <li>
+                <Link className="transition hover:text-strong" to="/community-request">
+                  Community Request
+                </Link>
+              </li>
+              <li>
                 <a className="transition hover:text-strong" href="#download">
                   Download
                 </a>
