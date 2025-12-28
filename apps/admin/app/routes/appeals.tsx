@@ -40,6 +40,20 @@ function formatStatusLabel(value: string) {
   return value.replace(/_/g, " ");
 }
 
+function formatActionLabel(value?: string | null) {
+  if (!value) return "No action taken";
+  switch (value) {
+    case "user_unbanned":
+      return "User unbanned";
+    case "post_restored":
+      return "Post restored";
+    case "none":
+      return "No action taken";
+    default:
+      return value.replace(/_/g, " ");
+  }
+}
+
 export default function AppealsRoute() {
   const { admin } = useOutletContext<AdminRouteContext>();
   const canView = admin.permissions.includes("view_reports");
@@ -59,6 +73,9 @@ export default function AppealsRoute() {
   const [rejectReason, setRejectReason] = useState("");
   const [approveReason, setApproveReason] = useState("");
   const [confirmReject, setConfirmReject] = useState(false);
+  const [approveAction, setApproveAction] = useState<{ id: number; action?: string | null } | null>(
+    null
+  );
 
   const selectedAppeal = useMemo(
     () => items.find((item) => item.id === selectedId) ?? items[0] ?? null,
@@ -95,6 +112,7 @@ export default function AppealsRoute() {
     setActionError(null);
     setRejectReason("");
     setApproveReason("");
+    setApproveAction(null);
   }, [selectedAppeal?.id]);
 
   useEffect(() => {
@@ -180,8 +198,9 @@ export default function AppealsRoute() {
     setIsSaving(true);
     setActionError(null);
     try {
-      await approveAppeal(selectedAppeal.id, approveReason.trim() || undefined);
+      const response = await approveAppeal(selectedAppeal.id, approveReason.trim() || undefined);
       updateItemStatus(selectedAppeal.id, "approved", approveReason.trim() || undefined);
+      setApproveAction({ id: selectedAppeal.id, action: response.action ?? "none" });
       setApproveReason("");
       setConfirmReject(false);
     } catch (err) {
@@ -483,6 +502,11 @@ export default function AppealsRoute() {
                 {selectedAppeal.reviewed_reason && (
                   <p className="mt-2 text-xs text-text-secondary">
                     Review note: {selectedAppeal.reviewed_reason}
+                  </p>
+                )}
+                {approveAction?.id === selectedAppeal.id && (
+                  <p className="mt-2 text-xs text-text-secondary">
+                    Action: {formatActionLabel(approveAction.action)}
                   </p>
                 )}
               </div>

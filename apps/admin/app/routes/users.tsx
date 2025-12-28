@@ -52,6 +52,7 @@ export default function UsersRoute() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [selectedDetail, setSelectedDetail] = useState<UserDetail | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isDetailLoading, setIsDetailLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -95,6 +96,7 @@ export default function UsersRoute() {
       setNextCursor(null);
       setSelectedId(null);
       setSelectedDetail(null);
+      setIsDetailLoading(false);
       return;
     }
     setIsLoading(true);
@@ -104,8 +106,12 @@ export default function UsersRoute() {
       const res = await fetchAdminUsers(nextQuery);
       setItems(res.items);
       setNextCursor(res.next_cursor ?? null);
-      setSelectedId(res.items[0]?.id ?? null);
-      setSelectedDetail(null);
+      if (res.items[0]?.id) {
+        void fetchDetail(res.items[0].id);
+      } else {
+        setSelectedId(null);
+        setSelectedDetail(null);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to search users.");
       setItems([]);
@@ -132,11 +138,14 @@ export default function UsersRoute() {
   const fetchDetail = async (id: number) => {
     setSelectedId(id);
     setSelectedDetail(null);
+    setIsDetailLoading(true);
     try {
       const detail = await fetchAdminUser(id);
       setSelectedDetail(detail);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Unable to load user detail.");
+    } finally {
+      setIsDetailLoading(false);
     }
   };
 
@@ -515,6 +524,10 @@ export default function UsersRoute() {
                       </div>
                     ))}
                   </div>
+                ) : isDetailLoading ? (
+                  <p className="mt-2 text-xs text-text-secondary">
+                    Loading moderation stats...
+                  </p>
                 ) : (
                   <p className="mt-2 text-xs text-text-secondary">
                     No moderation stats available yet.

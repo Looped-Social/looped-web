@@ -55,7 +55,7 @@ export function Footer() {
               <li>
                 <a
                   className="transition hover:text-strong"
-                  href="https://twitter.com/loopedapp"
+                  href="https://twitter.com/loopedsm"
                   target="_blank"
                   rel="noreferrer"
                 >
@@ -65,11 +65,31 @@ export function Footer() {
               <li>
                 <a
                   className="transition hover:text-strong"
-                  href="https://instagram.com/loopedapp"
+                  href="https://instagram.com/loopedsm"
                   target="_blank"
                   rel="noreferrer"
                 >
                   Instagram
+                </a>
+              </li>
+              <li>
+                <a
+                  className="transition hover:text-strong"
+                  href="https://tiktok.com/@loopedsm"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  TikTok
+                </a>
+              </li>
+              <li>
+                <a
+                  className="transition hover:text-strong"
+                  href="https://www.linkedin.com/company/loopedsm"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  LinkedIn
                 </a>
               </li>
             </ul>
@@ -80,12 +100,27 @@ export function Footer() {
             <ul className="space-y-2 text-sm text-text-secondary">
               <li>
                 <Link className="transition hover:text-strong" to="/privacy">
+                  Privacy
+                </Link>
+              </li>
+              <li>
+                <Link className="transition hover:text-strong" to="/privacy-policy">
                   Privacy Policy
                 </Link>
               </li>
               <li>
+                <Link className="transition hover:text-strong" to="/cookies">
+                  Cookie Policy
+                </Link>
+              </li>
+              <li>
                 <Link className="transition hover:text-strong" to="/terms">
-                  Terms of Service
+                  User Agreement
+                </Link>
+              </li>
+              <li>
+                <Link className="transition hover:text-strong" to="/community-rules">
+                  Content Policy
                 </Link>
               </li>
             </ul>

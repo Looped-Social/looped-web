@@ -16,8 +16,15 @@ type AdminShellProps = {
 
 const navItems = [
   { label: "Overview", to: "/" },
+  { label: "Analytics", to: "/analytics" },
   { label: "Verifications", to: "/verifications", permission: "verify_users" },
+  {
+    label: "Community Requests",
+    to: "/community-requests",
+    permission: "create_community",
+  },
   { label: "Reports", to: "/reports", permission: "view_reports" },
+  { label: "Announcements", to: "/announcements", permission: "send_announcements" },
   { label: "Appeals", to: "/appeals", permission: "view_reports" },
   { label: "Users", to: "/users", permission: "ban_user" },
   { label: "Posts", to: "/posts", permission: "remove_post" },

@@ -12,6 +12,11 @@
   display: none;
 }
 
+[data-theme="dark"] {
+  --color-border: rgba(255, 255, 255, 0.18);
+  --color-text-secondary: #cbd5e1;
+}
+
 [data-theme="dark"] .app-store-img-light {
   display: none;
 }

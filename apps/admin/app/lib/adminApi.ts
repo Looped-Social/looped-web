@@ -6,12 +6,21 @@ import type {
   AdminMe,
   AdminUpdateRequest,
   AdminUpdateResponse,
+  AnnouncementSendRequest,
+  AnnouncementSendResponse,
   AppealListResponse,
   AuditListResponse,
+  CommunityRequestApprovePayload,
+  CommunityRequestListResponse,
+  CommunityLeaderboardItem,
+  CommunityLeaderboardResponse,
+  HashtagLeaderboardItem,
+  HashtagLeaderboardResponse,
   PostDetail,
   ReportListResponse,
   UserDetail,
   UserListResponse,
+  UserStatsResponse,
   VerificationListResponse,
 } from "../types/admin";
 
@@ -96,6 +105,44 @@ export async function rejectVerification(id: number, reason: string): Promise<{ 
   });
 }
 
+export async function fetchAdminCommunityRequests(
+  status: "pending" | "approved" | "rejected",
+  cursor?: string,
+  limit = 50
+): Promise<CommunityRequestListResponse> {
+  const params = new URLSearchParams({ status, limit: String(limit) });
+  if (cursor) params.set("cursor", cursor);
+  return adminFetch<CommunityRequestListResponse>(
+    `/v1/admin/community-requests?${params.toString()}`
+  );
+}
+
+export async function approveCommunityRequest(
+  id: number,
+  payload?: CommunityRequestApprovePayload
+): Promise<{ status: string }> {
+  return adminFetch<{ status: string }>(`/v1/admin/community-requests/${id}/approve`, {
+    method: "POST",
+    body: JSON.stringify(payload ?? {}),
+  });
+}
+
+export async function rejectCommunityRequest(
+  id: number,
+  reason: string
+): Promise<{ status: string }> {
+  return adminFetch<{ status: string }>(`/v1/admin/community-requests/${id}/reject`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+  });
+}
+
+export async function deleteCommunityRequest(id: number): Promise<{ status: string }> {
+  return adminFetch<{ status: string }>(`/v1/admin/community-requests/${id}`, {
+    method: "DELETE",
+  });
+}
+
 export async function fetchAdminReports(
   status: "open" | "resolved" | "dismissed",
   targetType?: "post" | "user" | "comment",
@@ -155,6 +202,56 @@ export async function fetchAdminUsers(
   const params = new URLSearchParams({ query, limit: String(limit) });
   if (cursor) params.set("cursor", cursor);
   return adminFetch<UserListResponse>(`/v1/admin/users?${params.toString()}`);
+}
+
+export async function fetchCommunityLeaderboard(params: {
+  metric?: "likes" | "shares" | "followers" | "verifications" | "accounts";
+  communityId?: string;
+  from?: string;
+  to?: string;
+  limit?: number;
+}): Promise<CommunityLeaderboardItem[]> {
+  const query = new URLSearchParams();
+  if (params.metric) query.set("metric", params.metric);
+  if (params.communityId) query.set("communityId", params.communityId);
+  if (params.from) query.set("from", params.from);
+  if (params.to) query.set("to", params.to);
+  if (params.limit) query.set("limit", String(params.limit));
+  const res = await adminFetch<CommunityLeaderboardResponse>(
+    `/v1/admin/analytics/communities/leaderboard?${query.toString()}`
+  );
+  if (Array.isArray(res)) return res;
+  return res.items ?? [];
+}
+
+export async function fetchHashtagLeaderboard(params: {
+  communityId?: string;
+  from?: string;
+  to?: string;
+  limit?: number;
+}): Promise<HashtagLeaderboardItem[]> {
+  const query = new URLSearchParams();
+  if (params.communityId) query.set("communityId", params.communityId);
+  if (params.from) query.set("from", params.from);
+  if (params.to) query.set("to", params.to);
+  if (params.limit) query.set("limit", String(params.limit));
+  const res = await adminFetch<HashtagLeaderboardResponse>(
+    `/v1/admin/analytics/hashtags?${query.toString()}`
+  );
+  if (Array.isArray(res)) return res;
+  return res.items ?? [];
+}
+
+export async function fetchUserStats(params: {
+  from?: string;
+  to?: string;
+}): Promise<UserStatsResponse> {
+  const query = new URLSearchParams();
+  if (params.from) query.set("from", params.from);
+  if (params.to) query.set("to", params.to);
+  const suffix = query.toString();
+  const path = suffix ? `/v1/admin/analytics/users?${suffix}` : "/v1/admin/analytics/users";
+  return adminFetch<UserStatsResponse>(path);
 }
 
 export async function fetchAdminUser(id: number): Promise<UserDetail> {
@@ -245,4 +342,13 @@ export async function fetchAdminAudit(
   const params = new URLSearchParams({ limit: String(limit) });
   if (cursor) params.set("cursor", cursor);
   return adminFetch<AuditListResponse>(`/v1/admin/audit?${params.toString()}`);
+}
+
+export async function sendAdminAnnouncement(
+  payload: AnnouncementSendRequest
+): Promise<AnnouncementSendResponse> {
+  return adminFetch<AnnouncementSendResponse>("/v1/admin/announcements", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }

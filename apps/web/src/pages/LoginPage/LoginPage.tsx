@@ -18,12 +18,6 @@ export function LoginPage() {
 
         <AppStoreButton size={6} />
 
-        <div className="rounded-2xl border border-border bg-bg-muted px-6 py-4 text-sm text-text-secondary shadow-sm">
-          Want to be notified when we launch? Email{" "}
-          <a className="font-semibold text-brand hover:text-brand/90" href="mailto:notify@looped.app">
-            notify@looped.app
-          </a>
-        </div>
       </div>
     </PageShell>
   );

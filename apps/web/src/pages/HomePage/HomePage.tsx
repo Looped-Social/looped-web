@@ -1,4 +1,5 @@
 import { CompanyLogos } from "~/components/CompanyLogos/CompanyLogos";
+import { FeatureSections } from "~/components/FeatureSections/FeatureSections";
 import { Footer } from "~/components/Footer/Footer";
 import { Hero } from "~/components/Hero/Hero";
 import { Navbar } from "~/components/Navbar/Navbar";
@@ -10,6 +11,7 @@ export function HomePage() {
       <main>
         <Hero />
         <CompanyLogos />
+        <FeatureSections />
       </main>
       <Footer />
     </div>

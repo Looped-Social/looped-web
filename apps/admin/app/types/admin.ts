@@ -65,6 +65,38 @@ export type VerificationListResponse = {
   next_cursor?: string | null;
 };
 
+export type CommunityRequestItem = {
+  id: number;
+  status: "pending" | "approved" | "rejected" | string;
+  kind: string | null;
+  name: string | null;
+  description: string | null;
+  image_key?: string | null;
+  image_url?: string | null;
+  verification_ttl_days?: number | null;
+  submitted_at?: string | null;
+  created_at?: string | null;
+  requested_by?: number | null;
+  requested_by_email?: string | null;
+  reviewed_at?: string | null;
+  reviewed_by?: number | null;
+  reject_reason?: string | null;
+  [key: string]: unknown;
+};
+
+export type CommunityRequestListResponse = {
+  items: CommunityRequestItem[];
+  next_cursor?: string | null;
+};
+
+export type CommunityRequestApprovePayload = {
+  kind?: string;
+  name?: string;
+  description?: string;
+  imageUrl?: string;
+  verificationTtlDays?: number;
+};
+
 export type ReportItem = {
   id: number;
   target_type: "post" | "user" | "comment" | string;
@@ -167,6 +199,43 @@ export type PostDetail = {
   [key: string]: unknown;
 };
 
+export type CommunityLeaderboardItem = {
+  community_id: number;
+  community_name?: string | null;
+  likes_count?: number | null;
+  shares_count?: number | null;
+  followers_count?: number | null;
+  verifications_count?: number | null;
+  accounts_total?: number | null;
+  [key: string]: unknown;
+};
+
+export type CommunityLeaderboardResponse =
+  | CommunityLeaderboardItem[]
+  | {
+      items: CommunityLeaderboardItem[];
+    };
+
+export type HashtagLeaderboardItem = {
+  id: number;
+  name: string;
+  usage_count?: number | null;
+  [key: string]: unknown;
+};
+
+export type HashtagLeaderboardResponse =
+  | HashtagLeaderboardItem[]
+  | {
+      items: HashtagLeaderboardItem[];
+    };
+
+export type UserStatsResponse = {
+  total_users?: number | null;
+  new_users?: number | null;
+  deleted_users?: number | null;
+  [key: string]: unknown;
+};
+
 export type AuditItem = {
   id: number;
   actor_admin_id: number;
@@ -180,4 +249,14 @@ export type AuditItem = {
 export type AuditListResponse = {
   items: AuditItem[];
   next_cursor?: string | null;
+};
+
+export type AnnouncementSendRequest = {
+  title: string;
+  body: string;
+  deeplink?: string | null;
+};
+
+export type AnnouncementSendResponse = {
+  sent: number;
 };

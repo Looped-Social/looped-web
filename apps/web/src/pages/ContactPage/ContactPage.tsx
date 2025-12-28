@@ -48,7 +48,7 @@ export function ContactPage() {
             <div className="flex flex-wrap gap-3">
               <a
                 className="inline-flex items-center gap-2 rounded-full border border-border px-4 py-2 text-sm font-semibold text-text-primary transition hover:border-brand hover:text-brand"
-                href="https://twitter.com/loopedapp"
+                href="https://twitter.com/loopedsm"
                 target="_blank"
                 rel="noreferrer"
               >
@@ -56,7 +56,7 @@ export function ContactPage() {
               </a>
               <a
                 className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-800 transition hover:border-brand hover:text-brand"
-                href="https://instagram.com/loopedapp"
+                href="https://instagram.com/loopedsm"
                 target="_blank"
                 rel="noreferrer"
               >

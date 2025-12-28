@@ -3,8 +3,8 @@ import { TermsOfServicePage } from "@/pages/TermsOfServicePage/TermsOfServicePag
 
 export function meta({}: Route.MetaArgs) {
   return [
-    { title: "Terms of Service" },
-    { name: "description", content: "Terms for using the Looped platform." },
+    { title: "User Agreement" },
+    { name: "description", content: "Looped User Agreement and Terms of Use." },
   ];
 }
 

@@ -3,8 +3,12 @@ import { CommunityRulesPage } from "@/pages/CommunityRulesPage/CommunityRulesPag
 
 export function meta({}: Route.MetaArgs) {
   return [
-    { title: "Community Rules" },
-    { name: "description", content: "Guidelines for participating in the Looped community." },
+    { title: "Looped Content Policy" },
+    {
+      name: "description",
+      content:
+        "Looped Content Policy defines what content is permitted, restricted, or prohibited on the platform.",
+    },
   ];
 }
 

@@ -550,6 +550,24 @@ export default function ReportsRoute() {
                     {formatStatusLabel(selectedReport.status)}
                   </span>
                 </div>
+                {selectedReport.resolved_at && (
+                  <p className="mt-2 text-xs text-text-light">
+                    Reviewed {formatDate(selectedReport.resolved_at)}
+                  </p>
+                )}
+                {selectedReport.resolved_by && (
+                  <p className="text-xs text-text-light">
+                    Reviewed by admin #{selectedReport.resolved_by}
+                  </p>
+                )}
+                {selectedReport.resolved_reason && (
+                  <p className="mt-2 text-xs text-text-secondary">
+                    {selectedReport.status === "dismissed"
+                      ? "Dismissal reason"
+                      : "Resolution note"}
+                    : {selectedReport.resolved_reason}
+                  </p>
+                )}
               </div>
 
               {canResolve && selectedReport.status !== "open" && (

@@ -4,9 +4,10 @@ import { Link } from "react-router";
 import { Logo, ThemeToggle } from "@looped/ui";
 
 const finePrintLinks = [
-  { label: "Community Rules", to: "/community-rules" },
-  { label: "Privacy Policy", to: "/privacy" },
-  { label: "Terms of Service", to: "/terms" },
+  { label: "Content Policy", to: "/community-rules" },
+  { label: "Privacy Policy", to: "/privacy-policy" },
+  { label: "Cookie Policy", to: "/cookies" },
+  { label: "User Agreement", to: "/terms" },
   { label: "FAQ", to: "/faq" },
 ];
 
@@ -58,6 +59,9 @@ export function Navbar() {
             <Link className="transition-colors hover:text-strong" to="/about">
               About
             </Link>
+            <Link className="transition-colors hover:text-strong" to="/privacy">
+              Privacy
+            </Link>
 
             <div className="relative" ref={dropdownRef}>
               <button
@@ -107,12 +111,12 @@ export function Navbar() {
           <Link className="text-[0.95rem] font-normal text-text-primary transition hover:text-strong" to="/login">
             Log in
           </Link>
-          <a
-            href="#get-looped"
+          <Link
+            to="/login"
             className="inline-flex items-center justify-center rounded-md bg-brand px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:-translate-y-px hover:bg-brand/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand/80"
           >
             Get Looped
-          </a>
+          </Link>
         </div>
 
         <button
@@ -163,6 +167,13 @@ export function Navbar() {
                 onClick={() => setIsMobileOpen(false)}
               >
                 About
+              </Link>
+              <Link
+                to="/privacy"
+                className="rounded-lg px-3 py-2 transition hover:bg-bg-muted"
+                onClick={() => setIsMobileOpen(false)}
+              >
+                Privacy
               </Link>
 
               <div className="rounded-lg bg-bg-muted">
@@ -220,13 +231,13 @@ export function Navbar() {
               >
                 Log in
               </Link>
-              <a
-                href="#get-looped"
+              <Link
+                to="/login"
                 className="block rounded-full bg-brand px-4 py-3 text-center text-sm font-semibold text-white shadow-sm transition hover:-translate-y-px hover:bg-brand/90"
                 onClick={() => setIsMobileOpen(false)}
               >
                 Get Looped
-              </a>
+              </Link>
             </div>
           </div>
         </div>
