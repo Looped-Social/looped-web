@@ -5,12 +5,12 @@ const steps = [
   {
     title: "Verify your identity",
     copy:
-      "Sign up with your work or school email. We verify you're part of the community, but your identity stays private to other users.",
+      "Sign up with your work, school, or sector verification. We confirm you're part of the community, but your identity stays private to other users.",
   },
   {
     title: "Join your community",
     copy:
-      "Connect with verified employees and students from your organization. Multiple companies? Join multiple communities.",
+      "Connect with verified coworkers, classmates, or peers in your field. Multiple communities? Join as many as you qualify for.",
   },
   {
     title: "Speak freely",
@@ -26,6 +26,21 @@ const values = [
   { title: "Authentic voices", copy: "No corporate speak required. Real people having real conversations." },
 ];
 
+const communityTypes = [
+  {
+    title: "Workplaces",
+    copy: "Get a trusted pulse of your company. Share wins, ask questions, and connect with verified coworkers.",
+  },
+  {
+    title: "Schools",
+    copy: "Find honest student perspective. Compare programs, swap advice, and build campus community.",
+  },
+  {
+    title: "Sectors",
+    copy: "Talk shop with verified peers in finance, tech, HR, and more. Insights without the noise.",
+  },
+];
+
 export function AboutPage() {
   return (
     <PageShell>
@@ -33,26 +48,38 @@ export function AboutPage() {
         <header className="space-y-4 text-center">
           <p className="text-sm font-semibold uppercase tracking-wide text-brand">About</p>
           <h1 className="text-4xl font-semibold tracking-tight text-strong md:text-5xl">
-            Your workplace deserves a better conversation
+            Every verified community deserves a better conversation
           </h1>
           <p className="text-lg leading-8 text-text-secondary md:text-xl">
-            Looped is the workplace-verified social platform where employees and students can speak freely,
-            connect authentically, and build real community.
+            Looped is the verified social platform for workplaces, schools, and sectors. Speak freely, connect
+            authentically, and build real community with people who share your context.
           </p>
         </header>
 
         <section className="space-y-4">
           <h2 className="text-2xl font-semibold text-strong">Why Looped exists</h2>
           <p className="text-base leading-7 text-text-secondary">
-            Every workplace has a culture, but not every workplace has a voice. We built Looped because honest
-            conversations matter—whether it's discussing workplace challenges, sharing wins, or simply connecting
-            with colleagues who understand what you're going through.
+            Every workplace, school, and professional community has a culture, but not every community has a voice.
+            We built Looped because honest conversations matter, whether it's discussing challenges, sharing wins, or
+            connecting with people who truly understand your world.
           </p>
           <p className="text-base leading-7 text-text-secondary">
             Traditional social media is too public. Internal chat tools are too formal. Anonymous forums lack
             accountability. Looped strikes the balance: verified communities where you can be yourself without being
             identified.
           </p>
+        </section>
+
+        <section className="space-y-6">
+          <h2 className="text-2xl font-semibold text-strong">Built for three kinds of communities</h2>
+          <div className="grid gap-6 md:grid-cols-3">
+            {communityTypes.map((item) => (
+              <div key={item.title} className="rounded-2xl border border-border bg-bg p-6 shadow-sm">
+                <h3 className="text-lg font-semibold text-strong">{item.title}</h3>
+                <p className="mt-2 text-base leading-7 text-text-secondary">{item.copy}</p>
+              </div>
+            ))}
+          </div>
         </section>
 
         <section className="space-y-6">
@@ -88,9 +115,9 @@ export function AboutPage() {
         <section className="space-y-4">
           <h2 className="text-2xl font-semibold text-strong">Built by people who get it</h2>
           <p className="text-base leading-7 text-text-secondary">
-            We're a small team that believes in the power of authentic workplace connections. We've experienced the
-            frustration of having important conversations in hushed tones or not at all. We built Looped to change
-            that.
+            We're a small team that believes in the power of authentic connection. We've experienced the frustration
+            of having important conversations in hushed tones, or not at all. We built Looped to change that for
+            workplaces, schools, and professional sectors alike.
           </p>
           <p className="text-base leading-7 text-text-secondary">
             Based in San Francisco with a distributed team, we're backed by investors who believe in creating
@@ -101,7 +128,7 @@ export function AboutPage() {
         <section className="rounded-3xl bg-bg-muted px-6 py-8 text-center ring-1 ring-border md:px-10">
           <h2 className="text-2xl font-semibold text-strong md:text-3xl">Ready to join your community?</h2>
           <p className="mt-3 text-base leading-7 text-text-secondary">
-            Download Looped and start connecting with your verified workplace community today.
+            Download Looped and start connecting with your verified workplace, school, or sector community today.
           </p>
           <div className="mt-5 inline-flex items-center justify-center">
             <AppStoreButton size={6} />

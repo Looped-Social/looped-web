@@ -26,6 +26,10 @@ export function DeleteAccountPage() {
     deletePhraseInput.trim() === deletePhrase && deleteEmailInput.trim().toLowerCase() === normalizedEmail;
 
   const handleDeactivate = async () => {
+    if (!window.confirm("Are you sure you want to deactivate your account?")) {
+      return;
+    }
+
     setAction("deactivate");
     setActionError(null);
 
@@ -153,7 +157,9 @@ export function DeleteAccountPage() {
             <div className="space-y-3">
               <h2 className="text-xl font-semibold text-strong">Deactivate account</h2>
               <p className="text-sm text-text-secondary">
-                Temporarily disable your account. Your data stays intact and can be restored by support.
+                Deactivation is a reversible pause. Your profile is hidden, you will not show in search or feed, and
+                you will not receive notifications. If you log back in, your account reactivates. If you do not
+                reactivate within 90 days, your account will be deleted.
               </p>
             </div>
             <button
