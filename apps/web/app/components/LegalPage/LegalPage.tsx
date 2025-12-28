@@ -1,11 +1,11 @@
-import React from "react";
+import React, { type ReactNode } from "react";
 
 import { PageShell } from "../PageShell/PageShell";
 
 export type LegalSection = {
   title: string;
-  paragraphs?: string[];
-  bullets?: string[];
+  paragraphs?: ReactNode[];
+  bullets?: ReactNode[];
   subSections?: LegalSection[];
 };
 
@@ -57,8 +57,8 @@ function LegalSectionBlock({ section, level = 2 }: LegalSectionBlockProps) {
 
       {section.bullets && (
         <ul className="list-disc space-y-2 pl-6 text-base leading-7 text-text-secondary">
-          {section.bullets.map((bullet) => (
-            <li key={bullet}>{bullet}</li>
+          {section.bullets.map((bullet, idx) => (
+            <li key={idx}>{bullet}</li>
           ))}
         </ul>
       )}

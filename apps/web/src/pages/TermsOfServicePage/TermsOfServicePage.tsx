@@ -1,3 +1,5 @@
+import { Link } from "react-router";
+
 import { LegalPage, type LegalSection } from "~/components/LegalPage/LegalPage";
 
 const sections: LegalSection[] = [
@@ -87,7 +89,13 @@ const sections: LegalSection[] = [
       "You violate these Terms or the Content Policy.",
       "We believe your behavior risks harm to other users or to Looped.",
       "We discontinue the Service.",
-      "You may delete your account at any time through your profile settings.",
+      <>
+        You may delete your account at any time through your profile settings or{" "}
+        <Link className="font-semibold text-brand hover:text-brand/90" to="/delete-account">
+          delete your data on the web
+        </Link>
+        .
+      </>,
     ],
   },
   {

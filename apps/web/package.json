@@ -16,6 +16,7 @@
     "@looped/ui": "file:../../packages/ui",
     "@react-router/node": "^7.9.2",
     "@react-router/serve": "^7.9.2",
+    "firebase": "^11.0.0",
     "isbot": "^5.1.31",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",

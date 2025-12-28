@@ -1,3 +1,5 @@
+import { Link } from "react-router";
+
 import { LegalPage, type LegalSection } from "~/components/LegalPage/LegalPage";
 
 const sections: LegalSection[] = [
@@ -241,7 +243,14 @@ const sections: LegalSection[] = [
   },
   {
     title: "17. How Can You Review, Update, or Delete the Data We Collect From You?",
-    paragraphs: ["Requests can be submitted at: https://www.mylooped.app/terms"],
+    paragraphs: [
+      <>
+        Requests can be submitted at:{" "}
+        <Link className="font-semibold text-brand hover:text-brand/90" to="/delete-account">
+          https://www.mylooped.app/delete-account
+        </Link>
+      </>,
+    ],
   },
 ];
 

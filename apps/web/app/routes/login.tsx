@@ -3,8 +3,11 @@ import { LoginPage } from "@/pages/LoginPage/LoginPage";
 
 export function meta({}: Route.MetaArgs) {
   return [
-    { title: "Looped Web — Coming Soon" },
-    { name: "description", content: "Looped on the web is coming soon. Download the iOS app to get started today." },
+    { title: "Looped — Sign in" },
+    {
+      name: "description",
+      content: "Sign in to Looped to manage account deactivation or deletion.",
+    },
   ];
 }
 

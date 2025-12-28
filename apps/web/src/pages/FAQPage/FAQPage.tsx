@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
+import { Link } from "react-router";
 
 import { PageShell } from "~/components/PageShell/PageShell";
 
 type FAQItemProps = {
   question: string;
-  answer: string;
+  answer: ReactNode;
 };
 
 const faqs: FAQItemProps[] = [
@@ -44,6 +45,18 @@ const faqs: FAQItemProps[] = [
       "Currently, Looped is only available on iOS. We're focused on delivering the best experience for iPhone users first.",
   },
   {
+    question: "Does Looped have a web app?",
+    answer: (
+      <>
+        No. We're working on it and it's on our priority list. For now, you can sign in on the web to{" "}
+        <Link className="font-semibold text-brand hover:text-brand/90" to="/delete-account">
+          manage account deletion
+        </Link>
+        .
+      </>
+    ),
+  },
+  {
     question: "How do I download Looped?",
     answer:
       "You can download Looped from the App Store on your iPhone. Search for \"Looped\" or tap the download button on our homepage.",
@@ -70,8 +83,15 @@ const faqs: FAQItemProps[] = [
   },
   {
     question: "How do I delete my account?",
-    answer:
-      "You can delete your account at any time through the app settings. This action is permanent and will remove all your data from Looped.",
+    answer: (
+      <>
+        You can delete your account through the iOS app settings or by{" "}
+        <Link className="font-semibold text-brand hover:text-brand/90" to="/delete-account">
+          signing in on the web to delete your data
+        </Link>
+        . This action is permanent and will remove all your data from Looped.
+      </>
+    ),
   },
   {
     question: "Who can I contact for support?",

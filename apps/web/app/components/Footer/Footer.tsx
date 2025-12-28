@@ -104,6 +104,11 @@ export function Footer() {
                 </Link>
               </li>
               <li>
+                <Link className="transition hover:text-strong" to="/delete-account">
+                  Delete Account
+                </Link>
+              </li>
+              <li>
                 <Link className="transition hover:text-strong" to="/privacy-policy">
                   Privacy Policy
                 </Link>
