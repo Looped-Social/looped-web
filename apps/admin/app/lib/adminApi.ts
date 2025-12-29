@@ -1,5 +1,14 @@
 import { getFirebaseIdToken } from "./firebaseClient";
 import type {
+  AdminCommunity,
+  AdminCommunityCreateRequest,
+  AdminCommunityDomainListResponse,
+  AdminCommunityListResponse,
+  AdminCommunityUpdateRequest,
+  AdminSector,
+  AdminSectorCompanyListResponse,
+  AdminSectorCreateRequest,
+  AdminSectorListResponse,
   AdminInviteRequest,
   AdminInviteResponse,
   AdminListResponse,
@@ -11,6 +20,7 @@ import type {
   AppealListResponse,
   AuditListResponse,
   CommunityRequestApprovePayload,
+  CommunityRequestApproveResponse,
   CommunityRequestListResponse,
   CommunityLeaderboardItem,
   CommunityLeaderboardResponse,
@@ -62,6 +72,33 @@ async function adminFetch<T>(path: string, init?: RequestInit): Promise<T> {
   }
 
   return response.json() as Promise<T>;
+}
+
+async function adminUpload<T>(path: string, formData: FormData): Promise<T> {
+  const token = await getFirebaseIdToken();
+  const base = getAdminApiBase();
+  const response = await fetch(`${base}${path}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const details = await response.text();
+    throw new AdminApiError(response.status, details || "Admin request failed.", details);
+  }
+
+  const text = await response.text();
+  if (!text) {
+    return {} as T;
+  }
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    return {} as T;
+  }
 }
 
 export async function fetchAdminMe(token: string): Promise<AdminMe> {
@@ -120,8 +157,8 @@ export async function fetchAdminCommunityRequests(
 export async function approveCommunityRequest(
   id: number,
   payload?: CommunityRequestApprovePayload
-): Promise<{ status: string }> {
-  return adminFetch<{ status: string }>(`/v1/admin/community-requests/${id}/approve`, {
+): Promise<CommunityRequestApproveResponse> {
+  return adminFetch<CommunityRequestApproveResponse>(`/v1/admin/community-requests/${id}/approve`, {
     method: "POST",
     body: JSON.stringify(payload ?? {}),
   });
@@ -139,6 +176,125 @@ export async function rejectCommunityRequest(
 
 export async function deleteCommunityRequest(id: number): Promise<{ status: string }> {
   return adminFetch<{ status: string }>(`/v1/admin/community-requests/${id}`, {
+    method: "DELETE",
+  });
+}
+
+export async function fetchAdminCommunities(
+  query?: string,
+  cursor?: string,
+  limit = 30
+): Promise<AdminCommunityListResponse> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (query) params.set("query", query);
+  if (cursor) params.set("cursor", cursor);
+  return adminFetch<AdminCommunityListResponse>(`/v1/admin/communities?${params.toString()}`);
+}
+
+export async function fetchAdminCommunity(id: number): Promise<AdminCommunity> {
+  return adminFetch<AdminCommunity>(`/v1/admin/communities/${id}`);
+}
+
+export async function createAdminCommunity(
+  payload: AdminCommunityCreateRequest
+): Promise<{ id: number }> {
+  return adminFetch<{ id: number }>(`/v1/admin/communities`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateAdminCommunity(
+  id: number,
+  payload: AdminCommunityUpdateRequest
+): Promise<{ id: number; verification_ttl_days: number }> {
+  return adminFetch<{ id: number; verification_ttl_days: number }>(
+    `/v1/admin/communities/${id}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }
+  );
+}
+
+export async function deleteAdminCommunity(id: number): Promise<{ status: string }> {
+  return adminFetch<{ status: string }>(`/v1/admin/communities/${id}`, {
+    method: "DELETE",
+  });
+}
+
+export async function fetchAdminCommunityDomains(
+  id: number,
+  includeInherited = false
+): Promise<AdminCommunityDomainListResponse> {
+  const query = includeInherited ? "?includeInherited=true" : "";
+  return adminFetch<AdminCommunityDomainListResponse>(`/v1/admin/communities/${id}/domains${query}`);
+}
+
+export async function addAdminCommunityDomain(
+  id: number,
+  domain: string
+): Promise<{ domain: string }> {
+  return adminFetch<{ domain: string }>(`/v1/admin/communities/${id}/domains`, {
+    method: "POST",
+    body: JSON.stringify({ domain }),
+  });
+}
+
+export async function deleteAdminCommunityDomain(id: number, domain: string): Promise<void> {
+  await adminFetch(`/v1/admin/communities/${id}/domains?domain=${encodeURIComponent(domain)}`, {
+    method: "DELETE",
+  });
+}
+
+export async function importAdminCommunitiesCsv(file: File): Promise<void> {
+  const formData = new FormData();
+  formData.append("file", file);
+  await adminUpload("/v1/admin/communities/import-csv", formData);
+}
+
+export async function fetchAdminSectors(
+  query?: string,
+  cursor?: string,
+  limit = 30
+): Promise<AdminSectorListResponse> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (query) params.set("query", query);
+  if (cursor) params.set("cursor", cursor);
+  return adminFetch<AdminSectorListResponse>(`/v1/admin/sectors?${params.toString()}`);
+}
+
+export async function createAdminSector(payload: AdminSectorCreateRequest): Promise<{ id: number }> {
+  return adminFetch<{ id: number }>(`/v1/admin/sectors`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteAdminSector(id: number): Promise<{ status: string }> {
+  return adminFetch<{ status: string }>(`/v1/admin/sectors/${id}`, {
+    method: "DELETE",
+  });
+}
+
+export async function fetchAdminSectorCompanies(
+  id: number
+): Promise<AdminSectorCompanyListResponse> {
+  return adminFetch<AdminSectorCompanyListResponse>(`/v1/admin/sectors/${id}/companies`);
+}
+
+export async function addAdminSectorCompany(
+  id: number,
+  companyId: number
+): Promise<{ company_id: number }> {
+  return adminFetch<{ company_id: number }>(`/v1/admin/sectors/${id}/companies`, {
+    method: "POST",
+    body: JSON.stringify({ company_id: companyId }),
+  });
+}
+
+export async function deleteAdminSectorCompany(id: number, companyId: number): Promise<void> {
+  await adminFetch(`/v1/admin/sectors/${id}/companies/${companyId}`, {
     method: "DELETE",
   });
 }

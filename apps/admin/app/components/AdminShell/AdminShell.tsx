@@ -18,6 +18,8 @@ const navItems = [
   { label: "Overview", to: "/" },
   { label: "Analytics", to: "/analytics" },
   { label: "Verifications", to: "/verifications", permission: "verify_users" },
+  { label: "Communities", to: "/communities", permission: "create_community" },
+  { label: "Sectors", to: "/sectors", permission: "create_community" },
   {
     label: "Community Requests",
     to: "/community-requests",

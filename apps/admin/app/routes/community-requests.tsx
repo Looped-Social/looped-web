@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useOutletContext } from "react-router";
+import { Link, useOutletContext } from "react-router";
 
 import {
   approveCommunityRequest,
@@ -64,6 +64,7 @@ export default function CommunityRequestsRoute() {
   const [confirmReject, setConfirmReject] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
+  const [approvedCommunityId, setApprovedCommunityId] = useState<number | null>(null);
   const [overrideKind, setOverrideKind] = useState("");
   const [overrideName, setOverrideName] = useState("");
   const [overrideDescription, setOverrideDescription] = useState("");
@@ -88,6 +89,10 @@ export default function CommunityRequestsRoute() {
     setOverrideImageUrl("");
     setOverrideVerificationTtlDays("");
   }, [selectedItem?.id]);
+
+  useEffect(() => {
+    setApprovedCommunityId(null);
+  }, [status]);
 
   useEffect(() => {
     if (!canCreate) return;
@@ -168,10 +173,11 @@ export default function CommunityRequestsRoute() {
     }
 
     try {
-      await approveCommunityRequest(
+      const response = await approveCommunityRequest(
         selectedItem.id,
         Object.keys(payload).length ? payload : undefined
       );
+      setApprovedCommunityId(response.community_id ?? null);
       updateItemStatus(selectedItem.id, "approved");
       setConfirmReject(false);
       setRejectReason("");
@@ -243,21 +249,31 @@ export default function CommunityRequestsRoute() {
             Approve a request to create a community or reject with a reason.
           </p>
         </div>
-        <div className="flex items-center gap-2 rounded-full border border-border bg-bg px-2 py-1 text-sm text-text-secondary">
-          {statusOptions.map((option) => (
-            <button
-              key={option}
-              type="button"
-              onClick={() => setStatus(option)}
-              className={`rounded-full px-3 py-1 transition ${
-                status === option
-                  ? "bg-brand text-white"
-                  : "hover:text-text-primary"
-              }`}
+        <div className="flex flex-wrap items-center gap-3">
+          {approvedCommunityId && (
+            <Link
+              to={`/communities?selected=${approvedCommunityId}`}
+              className="inline-flex items-center justify-center rounded-full border border-border px-4 py-2 text-xs font-semibold text-text-primary transition hover:bg-bg-muted"
             >
-              {option}
-            </button>
-          ))}
+              Manage domains for #{approvedCommunityId}
+            </Link>
+          )}
+          <div className="flex items-center gap-2 rounded-full border border-border bg-bg px-2 py-1 text-sm text-text-secondary">
+            {statusOptions.map((option) => (
+              <button
+                key={option}
+                type="button"
+                onClick={() => setStatus(option)}
+                className={`rounded-full px-3 py-1 transition ${
+                  status === option
+                    ? "bg-brand text-white"
+                    : "hover:text-text-primary"
+                }`}
+              >
+                {option}
+              </button>
+            ))}
+          </div>
         </div>
       </header>
 

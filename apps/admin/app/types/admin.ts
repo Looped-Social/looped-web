@@ -97,6 +97,69 @@ export type CommunityRequestApprovePayload = {
   verificationTtlDays?: number;
 };
 
+export type CommunityRequestApproveResponse = {
+  status: string;
+  community_id?: number;
+};
+
+export type AdminCommunity = {
+  id: number;
+  kind: "company" | "school" | "sector" | string;
+  name: string;
+  description?: string | null;
+  member_count?: number | null;
+  image_url?: string | null;
+  verification_ttl_days?: number | null;
+  created_at?: string | null;
+};
+
+export type AdminCommunityListResponse = {
+  items: AdminCommunity[];
+  next_cursor?: string | null;
+};
+
+export type AdminCommunityCreateRequest = {
+  kind: "company" | "school" | "sector";
+  name: string;
+  description?: string;
+  imageUrl?: string;
+  verificationTtlDays?: number;
+};
+
+export type AdminCommunityUpdateRequest = {
+  verificationTtlDays: number;
+};
+
+export type AdminCommunityDomainListResponse = {
+  items: string[];
+};
+
+export type AdminSector = {
+  id: number;
+  kind: "sector" | string;
+  name: string;
+  description?: string | null;
+  image_url?: string | null;
+  verification_ttl_days?: number | null;
+  created_at?: string | null;
+};
+
+export type AdminSectorListResponse = {
+  items: AdminSector[];
+  next_cursor?: string | null;
+};
+
+export type AdminSectorCreateRequest = {
+  name: string;
+  description?: string;
+  imageUrl?: string;
+  verificationTtlDays?: number;
+};
+
+export type AdminSectorCompanyListResponse = {
+  items: AdminCommunity[];
+};
+
 export type ReportItem = {
   id: number;
   target_type: "post" | "user" | "comment" | string;

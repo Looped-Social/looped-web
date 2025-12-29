@@ -43,6 +43,12 @@ export async function deactivateUser(): Promise<void> {
   await userFetch("/v1/users/me/deactivate", { method: "POST" });
 }
 
-export async function deleteUser(): Promise<void> {
-  await userFetch("/v1/users/me/delete", { method: "POST" });
+export type DeleteUserResponse = {
+  status?: string;
+  firebase_status?: "ok" | "skipped" | "failed" | "not_requested";
+  firebase_deleted?: boolean;
+};
+
+export async function deleteUser(): Promise<DeleteUserResponse> {
+  return userFetch<DeleteUserResponse>("/v1/users/me/delete", { method: "POST" });
 }

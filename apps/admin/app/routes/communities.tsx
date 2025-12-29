@@ -1,0 +1,575 @@
+import { useEffect, useMemo, useState } from "react";
+import { Link, useOutletContext, useSearchParams } from "react-router";
+
+import {
+  addAdminCommunityDomain,
+  createAdminCommunity,
+  deleteAdminCommunity,
+  deleteAdminCommunityDomain,
+  fetchAdminCommunities,
+  fetchAdminCommunity,
+  fetchAdminCommunityDomains,
+  updateAdminCommunity,
+} from "../lib/adminApi";
+import type { AdminCommunity } from "../types/admin";
+import type { AdminRouteContext } from "./admin";
+
+function formatDate(value?: string | null) {
+  if (!value) return "N/A";
+  const date = new Date(value);
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "2-digit",
+    year: "numeric",
+  }).format(date);
+}
+
+function formatKindLabel(value: string) {
+  return value.replace(/_/g, " ");
+}
+
+export default function CommunitiesRoute() {
+  const { admin } = useOutletContext<AdminRouteContext>();
+  const canCreate = admin.permissions.includes("create_community");
+  const [searchParams] = useSearchParams();
+
+  const [query, setQuery] = useState("");
+  const [items, setItems] = useState<AdminCommunity[]>([]);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [selectedDetail, setSelectedDetail] = useState<AdminCommunity | null>(null);
+  const [domains, setDomains] = useState<string[]>([]);
+  const [domainInput, setDomainInput] = useState("");
+  const [domainError, setDomainError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isDetailLoading, setIsDetailLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+
+  const [createKind, setCreateKind] = useState<"company" | "school" | "sector">("company");
+  const [createName, setCreateName] = useState("");
+  const [createDescription, setCreateDescription] = useState("");
+  const [createImageUrl, setCreateImageUrl] = useState("");
+  const [createTtlDays, setCreateTtlDays] = useState("");
+  const [createSuccess, setCreateSuccess] = useState<string | null>(null);
+
+  const [ttlInput, setTtlInput] = useState("");
+
+  const paramId = useMemo(() => {
+    const raw =
+      searchParams.get("id") ??
+      searchParams.get("communityId") ??
+      searchParams.get("selected");
+    if (!raw) return null;
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) ? parsed : null;
+  }, [searchParams]);
+
+  const selectedItem = useMemo(
+    () => items.find((item) => item.id === selectedId) ?? null,
+    [items, selectedId]
+  );
+
+  const runSearch = async (overrideQuery?: string) => {
+    const nextQuery = (overrideQuery ?? query).trim();
+    setIsLoading(true);
+    setError(null);
+    try {
+      const res = await fetchAdminCommunities(nextQuery || undefined);
+      setItems(res.items);
+      setNextCursor(res.next_cursor ?? null);
+      if (paramId) {
+        setSelectedId(paramId);
+      } else {
+        setSelectedId(res.items[0]?.id ?? null);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to load communities.");
+      setItems([]);
+      setNextCursor(null);
+      setSelectedId(null);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const loadMore = async () => {
+    if (!nextCursor || isLoading) return;
+    setIsLoading(true);
+    try {
+      const res = await fetchAdminCommunities(query.trim() || undefined, nextCursor);
+      setItems((prev) => [...prev, ...res.items]);
+      setNextCursor(res.next_cursor ?? null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to load more communities.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const fetchDetail = async (id: number) => {
+    setSelectedDetail(null);
+    setDomains([]);
+    setDomainInput("");
+    setDomainError(null);
+    setActionError(null);
+    setIsDetailLoading(true);
+    try {
+      const detail = await fetchAdminCommunity(id);
+      setSelectedDetail(detail);
+      setTtlInput(detail.verification_ttl_days?.toString() ?? "");
+      const domainRes = await fetchAdminCommunityDomains(id);
+      setDomains(domainRes.items ?? []);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Unable to load community detail.");
+    } finally {
+      setIsDetailLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!canCreate) return;
+    void runSearch();
+  }, [canCreate]);
+
+  useEffect(() => {
+    if (!selectedId) {
+      setSelectedDetail(null);
+      setDomains([]);
+      return;
+    }
+    void fetchDetail(selectedId);
+  }, [selectedId]);
+
+  const handleCreate = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setActionError(null);
+    setCreateSuccess(null);
+
+    if (!createName.trim()) {
+      setActionError("Community name is required.");
+      return;
+    }
+
+    const ttlValue = createTtlDays.trim();
+    let ttlNumber: number | undefined;
+    if (ttlValue) {
+      const parsed = Number(ttlValue);
+      if (!Number.isFinite(parsed) || parsed <= 0) {
+        setActionError("Verification TTL must be a positive number of days.");
+        return;
+      }
+      ttlNumber = parsed;
+    }
+
+    setIsSaving(true);
+    try {
+      const response = await createAdminCommunity({
+        kind: createKind,
+        name: createName.trim(),
+        description: createDescription.trim() || undefined,
+        imageUrl: createImageUrl.trim() || undefined,
+        verificationTtlDays: ttlNumber,
+      });
+      setCreateSuccess(`Created community #${response.id}.`);
+      setCreateName("");
+      setCreateDescription("");
+      setCreateImageUrl("");
+      setCreateTtlDays("");
+      await runSearch();
+      if (response.id) {
+        setSelectedId(response.id);
+      }
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Unable to create community.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleUpdateTtl = async () => {
+    if (!selectedId) return;
+    const ttlValue = ttlInput.trim();
+    if (!ttlValue) {
+      setActionError("Enter a verification TTL in days.");
+      return;
+    }
+    const parsed = Number(ttlValue);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      setActionError("Verification TTL must be a positive number of days.");
+      return;
+    }
+
+    setIsSaving(true);
+    setActionError(null);
+    try {
+      await updateAdminCommunity(selectedId, { verificationTtlDays: parsed });
+      await fetchDetail(selectedId);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Unable to update TTL.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDeleteCommunity = async () => {
+    if (!selectedId) return;
+    if (!window.confirm("Delete this community? This cannot be undone.")) return;
+    setIsSaving(true);
+    setActionError(null);
+    try {
+      await deleteAdminCommunity(selectedId);
+      setItems((prev) => prev.filter((item) => item.id !== selectedId));
+      setSelectedId(null);
+      setSelectedDetail(null);
+      setDomains([]);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Unable to delete community.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleAddDomain = async () => {
+    if (!selectedId) return;
+    const trimmed = domainInput.trim().toLowerCase();
+    if (!trimmed) {
+      setDomainError("Enter a domain.");
+      return;
+    }
+    setDomainError(null);
+    setIsSaving(true);
+    try {
+      await addAdminCommunityDomain(selectedId, trimmed);
+      setDomains((prev) => [...prev, trimmed]);
+      setDomainInput("");
+    } catch (err) {
+      setDomainError(err instanceof Error ? err.message : "Unable to add domain.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleRemoveDomain = async (domain: string) => {
+    if (!selectedId) return;
+    if (!window.confirm(`Remove ${domain} from this community? This cannot be undone.`)) return;
+    setIsSaving(true);
+    setDomainError(null);
+    try {
+      await deleteAdminCommunityDomain(selectedId, domain);
+      setDomains((prev) => prev.filter((item) => item !== domain));
+    } catch (err) {
+      setDomainError(err instanceof Error ? err.message : "Unable to remove domain.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  if (!canCreate) {
+    return (
+      <div className="rounded-2xl border border-border bg-bg p-6">
+        <h1 className="text-2xl font-semibold text-strong">Communities</h1>
+        <p className="mt-2 text-sm text-text-secondary">
+          You do not have permission to manage communities.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <header className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase text-text-light">Communities</p>
+          <h1 className="mt-2 text-2xl font-semibold text-strong">Manage communities</h1>
+        </div>
+        <Link
+          to="/community-requests"
+          className="text-sm font-semibold text-brand hover:text-brand/90"
+        >
+          Review requests
+        </Link>
+      </header>
+
+      <div className="grid gap-6 lg:grid-cols-[1fr_1.2fr]">
+        <section className="space-y-4 rounded-2xl border border-border bg-bg p-5">
+          <div className="space-y-2">
+            <label className="text-xs font-semibold uppercase text-text-light" htmlFor="community-search">
+              Search communities
+            </label>
+            <div className="flex gap-2">
+              <input
+                id="community-search"
+                type="text"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-text-primary outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+                placeholder="Search by name"
+              />
+              <button
+                type="button"
+                onClick={() => runSearch()}
+                className="rounded-lg border border-border px-4 py-2 text-sm font-semibold text-text-primary transition hover:bg-bg-muted"
+              >
+                Search
+              </button>
+            </div>
+          </div>
+
+          {error && (
+            <div className="rounded-xl border border-brand/30 bg-brand/10 px-4 py-3 text-sm text-brand">
+              {error}
+            </div>
+          )}
+
+          {isLoading && items.length === 0 && (
+            <p className="text-sm text-text-secondary">Loading communities...</p>
+          )}
+          {!isLoading && items.length === 0 && (
+            <p className="text-sm text-text-secondary">No communities found.</p>
+          )}
+
+          <div className="space-y-2">
+            {items.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setSelectedId(item.id)}
+                className={`w-full rounded-xl border px-3 py-3 text-left transition ${
+                  selectedId === item.id
+                    ? "border-brand/40 bg-brand/5"
+                    : "border-border hover:bg-bg-muted"
+                }`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-semibold text-strong">{item.name}</p>
+                    <p className="text-xs text-text-light">
+                      {formatKindLabel(item.kind)} · #{item.id}
+                    </p>
+                  </div>
+                  <span className="text-xs text-text-light">{item.member_count ?? 0} members</span>
+                </div>
+              </button>
+            ))}
+          </div>
+
+          {nextCursor && (
+            <button
+              type="button"
+              onClick={loadMore}
+              className="w-full rounded-lg border border-border px-4 py-2 text-sm font-semibold text-text-primary transition hover:bg-bg-muted"
+            >
+              Load more
+            </button>
+          )}
+        </section>
+
+        <section className="space-y-5">
+          <div className="rounded-2xl border border-border bg-bg p-6">
+            <h2 className="text-lg font-semibold text-strong">Create community</h2>
+            <form className="mt-4 space-y-4" onSubmit={handleCreate}>
+              <div className="space-y-2">
+                <label className="text-xs font-semibold uppercase text-text-light" htmlFor="create-kind">
+                  Type
+                </label>
+                <select
+                  id="create-kind"
+                  value={createKind}
+                  onChange={(event) => setCreateKind(event.target.value as "company" | "school" | "sector")}
+                  className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-text-primary outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+                >
+                  <option value="company">Company</option>
+                  <option value="school">School</option>
+                  <option value="sector">Sector</option>
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-semibold uppercase text-text-light" htmlFor="create-name">
+                  Name
+                </label>
+                <input
+                  id="create-name"
+                  type="text"
+                  value={createName}
+                  onChange={(event) => setCreateName(event.target.value)}
+                  className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-text-primary outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+                  placeholder="Community name"
+                  required
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-semibold uppercase text-text-light" htmlFor="create-description">
+                  Description (optional)
+                </label>
+                <textarea
+                  id="create-description"
+                  value={createDescription}
+                  onChange={(event) => setCreateDescription(event.target.value)}
+                  className="min-h-[90px] w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-text-primary outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-semibold uppercase text-text-light" htmlFor="create-image">
+                  Image URL (optional)
+                </label>
+                <input
+                  id="create-image"
+                  type="url"
+                  value={createImageUrl}
+                  onChange={(event) => setCreateImageUrl(event.target.value)}
+                  className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-text-primary outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+                  placeholder="https://..."
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-semibold uppercase text-text-light" htmlFor="create-ttl">
+                  Verification TTL (days)
+                </label>
+                <input
+                  id="create-ttl"
+                  type="number"
+                  value={createTtlDays}
+                  onChange={(event) => setCreateTtlDays(event.target.value)}
+                  className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-text-primary outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+                  placeholder="90"
+                  min={1}
+                />
+              </div>
+
+              {actionError && (
+                <div className="rounded-lg border border-brand/30 bg-brand/10 px-4 py-3 text-sm text-brand">
+                  {actionError}
+                </div>
+              )}
+
+              {createSuccess && (
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+                  {createSuccess}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={isSaving}
+                className="inline-flex w-full items-center justify-center rounded-lg bg-brand px-4 py-2.5 text-sm font-semibold text-white transition hover:-translate-y-px hover:bg-brand/90 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isSaving ? "Creating..." : "Create community"}
+              </button>
+            </form>
+          </div>
+
+          <div className="rounded-2xl border border-border bg-bg p-6">
+            <h2 className="text-lg font-semibold text-strong">Community details</h2>
+            {isDetailLoading && (
+              <p className="mt-3 text-sm text-text-secondary">Loading community...</p>
+            )}
+            {!isDetailLoading && !selectedDetail && (
+              <p className="mt-3 text-sm text-text-secondary">Select a community to manage.</p>
+            )}
+            {selectedDetail && (
+              <div className="mt-4 space-y-4 text-sm text-text-secondary">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-base font-semibold text-strong">{selectedDetail.name}</p>
+                    <p className="text-xs text-text-light">
+                      {formatKindLabel(selectedDetail.kind)} · #{selectedDetail.id}
+                    </p>
+                  </div>
+                  <span className="text-xs text-text-light">
+                    {selectedDetail.member_count ?? 0} members
+                  </span>
+                </div>
+
+                {selectedDetail.description && (
+                  <p className="text-sm text-text-secondary">{selectedDetail.description}</p>
+                )}
+
+                <p className="text-xs text-text-light">
+                  Created {formatDate(selectedDetail.created_at)}
+                </p>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold uppercase text-text-light" htmlFor="ttl-update">
+                    Verification TTL (days)
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      id="ttl-update"
+                      type="number"
+                      value={ttlInput}
+                      onChange={(event) => setTtlInput(event.target.value)}
+                      className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-text-primary outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+                      min={1}
+                    />
+                    <button
+                      type="button"
+                      onClick={handleUpdateTtl}
+                      className="rounded-lg border border-border px-4 py-2 text-sm font-semibold text-text-primary transition hover:bg-bg-muted"
+                    >
+                      Update
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-3 border-t border-border pt-4">
+                  <h3 className="text-sm font-semibold text-strong">Allowed domains</h3>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={domainInput}
+                      onChange={(event) => setDomainInput(event.target.value)}
+                      className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-text-primary outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+                      placeholder="amazon.com"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleAddDomain}
+                      className="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand/90"
+                    >
+                      Add
+                    </button>
+                  </div>
+                  {domainError && <p className="text-xs text-brand">{domainError}</p>}
+                  {domains.length === 0 && (
+                    <p className="text-xs text-text-light">No domains added yet.</p>
+                  )}
+                  <div className="space-y-2">
+                    {domains.map((domain) => (
+                      <div
+                        key={domain}
+                        className="flex items-center justify-between rounded-lg border border-border px-3 py-2 text-xs text-text-secondary"
+                      >
+                        <span>{domain}</span>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveDomain(domain)}
+                          className="text-xs font-semibold text-brand hover:text-brand/90"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleDeleteCommunity}
+                  className="w-full rounded-lg border border-brand/40 px-4 py-2 text-sm font-semibold text-brand transition hover:bg-brand/10"
+                >
+                  Delete community
+                </button>
+              </div>
+            )}
+          </div>
+        </section>
+      </div>
+    </div>
+  );
+}

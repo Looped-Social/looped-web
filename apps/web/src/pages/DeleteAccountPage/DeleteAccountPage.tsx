@@ -58,19 +58,16 @@ export function DeleteAccountPage() {
     setActionError(null);
 
     try {
-      await deleteUser();
+      const response = await deleteUser();
+      const firebaseStatus = response.firebase_status;
+      const firebaseNote = firebaseStatus ? ` Firebase status: ${firebaseStatus}.` : "";
       setCompletion({
         title: "Account deleted",
-        message: "Your account and data have been deleted. You have been signed out.",
+        message: `Your account and data have been deleted. You have been signed out.${firebaseNote}`,
       });
       await signOut();
     } catch (err) {
-      const message =
-        err instanceof UserApiError
-          ? err.details || err.message
-          : err instanceof Error
-            ? err.message
-            : "Unable to delete your account.";
+      const message = getDeleteErrorMessage(err);
       setActionError(message);
     } finally {
       setAction("idle");
@@ -270,4 +267,38 @@ export function DeleteAccountPage() {
       )}
     </PageShell>
   );
+}
+
+function getDeleteErrorMessage(error: unknown): string {
+  if (error instanceof UserApiError) {
+    const detail = error.details ?? error.message;
+    const code = parseErrorCode(detail);
+
+    if (code === "firebase_delete_failed") {
+      return "We deleted your account, but Firebase cleanup failed. Contact support if you need help signing out everywhere.";
+    }
+    if (code === "firebase_admin_not_configured") {
+      return "We deleted your account, but Firebase cleanup is not configured yet.";
+    }
+
+    return detail || "Unable to delete your account.";
+  }
+
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return "Unable to delete your account.";
+}
+
+function parseErrorCode(detail?: string): string | null {
+  if (!detail) return null;
+  try {
+    const parsed = JSON.parse(detail) as { code?: string; error?: string; message?: string };
+    return parsed.code ?? parsed.error ?? parsed.message ?? null;
+  } catch {
+    return detail.includes("firebase_delete_failed") || detail.includes("firebase_admin_not_configured")
+      ? detail
+      : null;
+  }
 }
