@@ -3,15 +3,23 @@ import { Link, useOutletContext, useSearchParams } from "react-router";
 
 import {
   addAdminCommunityDomain,
+  callbackAdminCommunityLogo,
   createAdminCommunity,
   deleteAdminCommunity,
   deleteAdminCommunityDomain,
   fetchAdminCommunities,
   fetchAdminCommunity,
   fetchAdminCommunityDomains,
+  fetchAdminCommunityLogos,
+  presignAdminCommunityLogo,
+  selectAdminCommunityLogo,
   updateAdminCommunity,
 } from "../lib/adminApi";
-import type { AdminCommunity } from "../types/admin";
+import type {
+  AdminCommunity,
+  AdminCommunityLogoListResponse,
+  AdminCommunityLogoUpload,
+} from "../types/admin";
 import type { AdminRouteContext } from "./admin";
 
 function formatDate(value?: string | null) {
@@ -28,6 +36,55 @@ function formatKindLabel(value: string) {
   return value.replace(/_/g, " ");
 }
 
+function normalizeBaseUrl(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  const hasProtocol = trimmed.startsWith("http://") || trimmed.startsWith("https://");
+  return hasProtocol ? trimmed.replace(/\/$/, "") : `https://${trimmed.replace(/\/$/, "")}`;
+}
+
+function resolveUploadUrl(upload: AdminCommunityLogoUpload) {
+  if (upload.cdn_url) return upload.cdn_url;
+  if (upload.image_url) return upload.image_url;
+  if (upload.url) return upload.url;
+  if (!upload.key) return null;
+  const base = normalizeBaseUrl(
+    (import.meta.env.VITE_CLOUDFRONT_DOMAIN as string | undefined) ??
+      (import.meta.env.VITE_CLOUDFRONT_URL as string | undefined) ??
+      ""
+  );
+  if (!base) return null;
+  const safeKey = upload.key.replace(/^\/+/, "");
+  return `${base}/${safeKey}`;
+}
+
+async function getImageDimensions(file: File): Promise<{ width: number; height: number }> {
+  if ("createImageBitmap" in window) {
+    try {
+      const bitmap = await createImageBitmap(file);
+      const dimensions = { width: bitmap.width, height: bitmap.height };
+      bitmap.close();
+      return dimensions;
+    } catch {
+      // Fallback to Image when createImageBitmap fails for a file type.
+    }
+  }
+
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = () => {
+      resolve({ width: image.naturalWidth, height: image.naturalHeight });
+      URL.revokeObjectURL(url);
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("Unable to read image dimensions."));
+    };
+    image.src = url;
+  });
+}
+
 export default function CommunitiesRoute() {
   const { admin } = useOutletContext<AdminRouteContext>();
   const canCreate = admin.permissions.includes("create_community");
@@ -41,6 +98,16 @@ export default function CommunitiesRoute() {
   const [domains, setDomains] = useState<string[]>([]);
   const [domainInput, setDomainInput] = useState("");
   const [domainError, setDomainError] = useState<string | null>(null);
+  const [logos, setLogos] = useState<AdminCommunityLogoListResponse | null>(null);
+  const [logoError, setLogoError] = useState<string | null>(null);
+  const [isLogoLoading, setIsLogoLoading] = useState(false);
+  const [isLogoSaving, setIsLogoSaving] = useState(false);
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [logoUploadStatus, setLogoUploadStatus] = useState<
+    "idle" | "uploading" | "success" | "error"
+  >("idle");
+  const [logoUploadMessage, setLogoUploadMessage] = useState<string | null>(null);
+  const [customLogoUrl, setCustomLogoUrl] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -70,6 +137,12 @@ export default function CommunitiesRoute() {
     () => items.find((item) => item.id === selectedId) ?? null,
     [items, selectedId]
   );
+  const selectedLogoSource = logos?.selected_source ?? "none";
+  const selectedLogoUrl = logos?.selected_image_url ?? null;
+  const selectedUploadId = logos?.selected_upload_id ?? null;
+  const logoDevUrl = logos?.logo_dev_url ?? null;
+  const logoUploads = logos?.uploads ?? [];
+  const isSector = selectedDetail?.kind === "sector";
 
   const runSearch = async (overrideQuery?: string) => {
     const nextQuery = (overrideQuery ?? query).trim();
@@ -114,6 +187,12 @@ export default function CommunitiesRoute() {
     setDomainInput("");
     setDomainError(null);
     setActionError(null);
+    setLogos(null);
+    setLogoError(null);
+    setLogoUploadStatus("idle");
+    setLogoUploadMessage(null);
+    setLogoFile(null);
+    setCustomLogoUrl("");
     setIsDetailLoading(true);
     try {
       const detail = await fetchAdminCommunity(id);
@@ -126,6 +205,25 @@ export default function CommunitiesRoute() {
     } finally {
       setIsDetailLoading(false);
     }
+
+    await fetchLogos(id);
+  };
+
+  const fetchLogos = async (id: number) => {
+    setIsLogoLoading(true);
+    setLogoError(null);
+    try {
+      const response = await fetchAdminCommunityLogos(id);
+      setLogos(response);
+      if (response.selected_source === "custom") {
+        setCustomLogoUrl(response.selected_image_url ?? "");
+      }
+    } catch (err) {
+      setLogoError(err instanceof Error ? err.message : "Unable to load community logos.");
+      setLogos(null);
+    } finally {
+      setIsLogoLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -137,6 +235,12 @@ export default function CommunitiesRoute() {
     if (!selectedId) {
       setSelectedDetail(null);
       setDomains([]);
+      setLogos(null);
+      setLogoError(null);
+      setLogoFile(null);
+      setLogoUploadMessage(null);
+      setLogoUploadStatus("idle");
+      setCustomLogoUrl("");
       return;
     }
     void fetchDetail(selectedId);
@@ -263,6 +367,104 @@ export default function CommunitiesRoute() {
       setDomainError(err instanceof Error ? err.message : "Unable to remove domain.");
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleLogoUpload = async () => {
+    if (!selectedId || !logoFile) return;
+    setLogoUploadStatus("uploading");
+    setLogoUploadMessage(null);
+    setLogoError(null);
+    setIsLogoSaving(true);
+    try {
+      const contentType = logoFile.type || "application/octet-stream";
+      const { width, height } = await getImageDimensions(logoFile);
+      const presign = await presignAdminCommunityLogo(selectedId, {
+        contentType,
+        sizeBytes: logoFile.size,
+      });
+      const uploadUrl = presign.uploadUrl ?? presign.upload_url;
+      if (!uploadUrl) {
+        throw new Error("Upload URL missing from presign response.");
+      }
+      const uploadHeaders: Record<string, string> = { ...(presign.headers ?? {}) };
+      const hasContentType = Object.keys(uploadHeaders).some(
+        (key) => key.toLowerCase() === "content-type"
+      );
+      if (!hasContentType && contentType) {
+        uploadHeaders["Content-Type"] = contentType;
+      }
+      const uploadResponse = await fetch(uploadUrl, {
+        method: "PUT",
+        headers: uploadHeaders,
+        body: logoFile,
+      });
+      if (!uploadResponse.ok) {
+        throw new Error("Logo upload failed.");
+      }
+      const callbackSignature = presign.callbackSignature ?? presign.callback_signature;
+      await callbackAdminCommunityLogo(selectedId, {
+        key: presign.key,
+        mimeType: contentType,
+        width,
+        height,
+      }, callbackSignature ?? undefined);
+      setLogoUploadStatus("success");
+      setLogoUploadMessage("Logo uploaded. Select it below to use it.");
+      setLogoFile(null);
+      await fetchLogos(selectedId);
+    } catch (err) {
+      setLogoUploadStatus("error");
+      setLogoUploadMessage(err instanceof Error ? err.message : "Unable to upload logo.");
+    } finally {
+      setIsLogoSaving(false);
+    }
+  };
+
+  const handleSelectLogoDev = async () => {
+    if (!selectedId) return;
+    setIsLogoSaving(true);
+    setLogoError(null);
+    try {
+      await selectAdminCommunityLogo(selectedId, { useLogoDev: true });
+      await fetchLogos(selectedId);
+    } catch (err) {
+      setLogoError(err instanceof Error ? err.message : "Unable to select Logo.dev.");
+    } finally {
+      setIsLogoSaving(false);
+    }
+  };
+
+  const handleSelectUpload = async (upload: AdminCommunityLogoUpload) => {
+    if (!selectedId || !upload.key) return;
+    setIsLogoSaving(true);
+    setLogoError(null);
+    try {
+      await selectAdminCommunityLogo(selectedId, { imageKey: upload.key });
+      await fetchLogos(selectedId);
+    } catch (err) {
+      setLogoError(err instanceof Error ? err.message : "Unable to select uploaded logo.");
+    } finally {
+      setIsLogoSaving(false);
+    }
+  };
+
+  const handleSelectCustom = async () => {
+    if (!selectedId) return;
+    const trimmed = customLogoUrl.trim();
+    if (!trimmed) {
+      setLogoError("Enter a custom logo URL.");
+      return;
+    }
+    setIsLogoSaving(true);
+    setLogoError(null);
+    try {
+      await selectAdminCommunityLogo(selectedId, { imageUrl: trimmed });
+      await fetchLogos(selectedId);
+    } catch (err) {
+      setLogoError(err instanceof Error ? err.message : "Unable to select custom logo.");
+    } finally {
+      setIsLogoSaving(false);
     }
   };
 
@@ -556,6 +758,190 @@ export default function CommunitiesRoute() {
                       </div>
                     ))}
                   </div>
+                </div>
+
+                <div className="space-y-3 border-t border-border pt-4">
+                  <div className="space-y-1">
+                    <h3 className="text-sm font-semibold text-strong">Community logo</h3>
+                    <p className="text-xs text-text-light">
+                      Default icons come from Logo.dev for company and school communities.
+                    </p>
+                  </div>
+
+                  {logoError && <p className="text-xs text-brand">{logoError}</p>}
+
+                  {isLogoLoading ? (
+                    <p className="text-xs text-text-light">Loading logos...</p>
+                  ) : (
+                    <div className="space-y-4">
+                      <div className="rounded-lg border border-border bg-bg-muted/30 px-3 py-3 text-xs text-text-secondary">
+                        <p className="text-xs font-semibold uppercase text-text-light">Current logo</p>
+                        {selectedLogoUrl ? (
+                          <div className="mt-2 flex items-center gap-3">
+                            <img
+                              src={selectedLogoUrl}
+                              alt={`${selectedDetail.name} logo`}
+                              className="h-12 w-12 rounded-full border border-border bg-white object-contain"
+                            />
+                            <div>
+                              <p className="text-xs text-text-light">Source</p>
+                              <p className="text-sm font-semibold text-text-primary">
+                                {selectedLogoSource}
+                              </p>
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="mt-2 text-xs text-text-light">No logo selected yet.</p>
+                        )}
+                      </div>
+
+                      {logoDevUrl ? (
+                        <div className="rounded-lg border border-border px-3 py-3">
+                          <div className="flex flex-wrap items-center justify-between gap-3">
+                            <div className="flex items-center gap-3">
+                              <img
+                                src={logoDevUrl}
+                                alt="Logo.dev preview"
+                                className="h-12 w-12 rounded-full border border-border bg-white object-contain"
+                              />
+                              <div>
+                                <p className="text-xs font-semibold text-text-primary">Logo.dev</p>
+                                <p className="text-xs text-text-light">
+                                  Auto-generated from the primary community domain.
+                                </p>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={handleSelectLogoDev}
+                              disabled={isLogoSaving || selectedLogoSource === "logo_dev"}
+                              className="rounded-full border border-border px-4 py-1.5 text-xs font-semibold text-text-primary transition hover:bg-bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {selectedLogoSource === "logo_dev" ? "Selected" : "Use Logo.dev"}
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-xs text-text-light">
+                          {isSector
+                            ? "Logo.dev is not available for sectors."
+                            : "Logo.dev appears once a domain is set for company or school communities."}
+                        </p>
+                      )}
+
+                      <div className="space-y-2">
+                        <p className="text-xs font-semibold uppercase text-text-light">Upload a logo</p>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <input
+                            type="file"
+                            accept="image/png,image/jpeg,image/webp"
+                            onChange={(event) => {
+                              setLogoFile(event.target.files?.[0] ?? null);
+                              setLogoUploadStatus("idle");
+                              setLogoUploadMessage(null);
+                            }}
+                            className="w-full text-sm text-text-secondary file:mr-4 file:rounded-full file:border-0 file:bg-bg-muted file:px-4 file:py-2 file:text-xs file:font-semibold file:text-text-primary hover:file:bg-bg-muted/70 sm:w-auto"
+                          />
+                          <button
+                            type="button"
+                            onClick={handleLogoUpload}
+                            disabled={!logoFile || isLogoSaving}
+                            className="rounded-full bg-brand px-4 py-2 text-xs font-semibold text-white transition hover:bg-brand/90 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {logoUploadStatus === "uploading" ? "Uploading..." : "Upload"}
+                          </button>
+                        </div>
+                        {logoUploadMessage && (
+                          <p
+                            className={`text-xs ${
+                              logoUploadStatus === "error" ? "text-brand" : "text-text-light"
+                            }`}
+                          >
+                            {logoUploadMessage}
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="space-y-2">
+                        <p className="text-xs font-semibold uppercase text-text-light">Uploaded logos</p>
+                        {logoUploads.length === 0 && (
+                          <p className="text-xs text-text-light">No uploaded logos yet.</p>
+                        )}
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          {logoUploads.map((upload, index) => {
+                            const uploadUrl = resolveUploadUrl(upload);
+                            const isSelected =
+                              selectedLogoSource === "upload" &&
+                              ((selectedUploadId && upload.id === selectedUploadId) ||
+                                (Boolean(uploadUrl) && uploadUrl === selectedLogoUrl));
+                            const uploadKey = upload.key ?? uploadUrl ?? `upload-${index}`;
+                            return (
+                              <div
+                                key={uploadKey}
+                                className="flex items-center justify-between gap-2 rounded-lg border border-border px-3 py-2 text-xs text-text-secondary"
+                              >
+                                <div className="flex items-center gap-2">
+                                  {uploadUrl ? (
+                                    <img
+                                      src={uploadUrl}
+                                      alt="Uploaded logo"
+                                      className="h-10 w-10 rounded-full border border-border bg-white object-contain"
+                                    />
+                                  ) : (
+                                    <div className="flex h-10 w-10 items-center justify-center rounded-full border border-border bg-bg-muted text-[10px] text-text-light">
+                                      Logo
+                                    </div>
+                                  )}
+                                  <span className="text-[10px] text-text-light">
+                                    {upload.key ?? "Uploaded logo"}
+                                  </span>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => handleSelectUpload(upload)}
+                                  disabled={isLogoSaving || isSelected || !upload.key}
+                                  className="rounded-full border border-border px-3 py-1 text-[10px] font-semibold text-text-primary transition hover:bg-bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                  {isSelected ? "Selected" : "Use"}
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <p className="text-xs font-semibold uppercase text-text-light">Custom URL</p>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <input
+                            type="url"
+                            value={customLogoUrl}
+                            onChange={(event) => setCustomLogoUrl(event.target.value)}
+                            placeholder="https://example.com/logo.png"
+                            className="w-full rounded-full border border-border bg-bg px-3 py-2 text-xs text-text-primary outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20 sm:flex-1"
+                          />
+                          <button
+                            type="button"
+                            onClick={handleSelectCustom}
+                            disabled={isLogoSaving}
+                            className="rounded-full border border-border px-4 py-2 text-xs font-semibold text-text-primary transition hover:bg-bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            Use custom URL
+                          </button>
+                        </div>
+                        {selectedLogoSource === "custom" && selectedLogoUrl && (
+                          <div className="flex items-center gap-2 text-xs text-text-light">
+                            <img
+                              src={selectedLogoUrl}
+                              alt="Custom logo preview"
+                              className="h-8 w-8 rounded-full border border-border bg-white object-contain"
+                            />
+                            <span>Custom logo selected.</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <button

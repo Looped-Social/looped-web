@@ -134,6 +134,38 @@ export type AdminCommunityDomainListResponse = {
   items: string[];
 };
 
+export type AdminCommunityLogoUpload = {
+  id?: number | null;
+  media_asset_id?: number | null;
+  key?: string | null;
+  mime_type?: string | null;
+  cdn_url?: string | null;
+  image_url?: string | null;
+  url?: string | null;
+  width?: number | null;
+  height?: number | null;
+  created_at?: string | null;
+};
+
+export type AdminCommunityLogoListResponse = {
+  community_id?: number | null;
+  kind?: string | null;
+  uploads: AdminCommunityLogoUpload[];
+  logo_dev_url?: string | null;
+  selected_source?: "logo_dev" | "upload" | "custom" | "none" | string;
+  selected_image_url?: string | null;
+  selected_upload_id?: number | null;
+};
+
+export type AdminCommunityLogoPresignResponse = {
+  uploadUrl?: string;
+  upload_url?: string;
+  key: string;
+  headers?: Record<string, string>;
+  callbackSignature?: string;
+  callback_signature?: string;
+};
+
 export type AdminSector = {
   id: number;
   kind: "sector" | string;

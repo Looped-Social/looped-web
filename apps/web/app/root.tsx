@@ -10,16 +10,6 @@ import {
 import type { Route } from "./+types/root";
 import "./app.css";
 
-// Toggle to serve a site-wide 404 without removing routes/content.
-const forceNotFound = import.meta.env.VITE_FORCE_NOT_FOUND === "true";
-
-export async function loader() {
-  if (forceNotFound) {
-    throw new Response("Not Found", { status: 404 });
-  }
-  return null;
-}
-
 export function Layout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">

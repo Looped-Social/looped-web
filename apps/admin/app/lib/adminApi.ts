@@ -4,6 +4,8 @@ import type {
   AdminCommunityCreateRequest,
   AdminCommunityDomainListResponse,
   AdminCommunityListResponse,
+  AdminCommunityLogoListResponse,
+  AdminCommunityLogoPresignResponse,
   AdminCommunityUpdateRequest,
   AdminSector,
   AdminSectorCompanyListResponse,
@@ -244,6 +246,42 @@ export async function addAdminCommunityDomain(
 export async function deleteAdminCommunityDomain(id: number, domain: string): Promise<void> {
   await adminFetch(`/v1/admin/communities/${id}/domains?domain=${encodeURIComponent(domain)}`, {
     method: "DELETE",
+  });
+}
+
+export async function fetchAdminCommunityLogos(id: number): Promise<AdminCommunityLogoListResponse> {
+  return adminFetch<AdminCommunityLogoListResponse>(`/v1/admin/communities/${id}/logos`);
+}
+
+export async function presignAdminCommunityLogo(
+  id: number,
+  payload: { contentType: string; sizeBytes: number }
+): Promise<AdminCommunityLogoPresignResponse> {
+  return adminFetch<AdminCommunityLogoPresignResponse>(`/v1/admin/communities/${id}/logos/presign`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function callbackAdminCommunityLogo(
+  id: number,
+  payload: { key: string; mimeType: string; width: number; height: number },
+  signature?: string
+): Promise<{ status: string }> {
+  return adminFetch<{ status: string }>(`/v1/admin/communities/${id}/logos/callback`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+    headers: signature ? { "X-Media-Signature": signature } : undefined,
+  });
+}
+
+export async function selectAdminCommunityLogo(
+  id: number,
+  payload: { useLogoDev?: boolean; imageKey?: string; imageUrl?: string }
+): Promise<{ status: string }> {
+  return adminFetch<{ status: string }>(`/v1/admin/communities/${id}/logo`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
   });
 }
 
