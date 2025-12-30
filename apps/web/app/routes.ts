@@ -11,6 +11,7 @@ export default [
   route("community-rules", "routes/community-rules.tsx"),
   route("community-request", "routes/community-request.tsx"),
   route("faq", "routes/faq.tsx"),
+  route("attributions", "routes/attributions.tsx"),
   route("login", "routes/login.tsx"),
   route("delete-account", "routes/delete-account.tsx"),
 ] satisfies RouteConfig;

@@ -138,6 +138,11 @@ export function Footer() {
                   Content Policy
                 </Link>
               </li>
+              <li>
+                <Link className="transition hover:text-strong" to="/attributions">
+                  Attributions
+                </Link>
+              </li>
             </ul>
           </div>
         </div>

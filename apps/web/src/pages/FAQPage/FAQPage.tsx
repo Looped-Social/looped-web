@@ -12,12 +12,12 @@ const faqs: FAQItemProps[] = [
   {
     question: "What is Looped?",
     answer:
-      "Looped is a workplace- and college-verified social media app. You can view posts without verification, but to post in a community (workplace, school, or sector) you must be verified in that community.",
+      "Looped is a workplace- and college-verified social media app. You can view posts without verification, but to post in a workplace, school, or sector community you must be verified. Major and department communities do not require verification to post.",
   },
   {
     question: "Can I view posts without verification?",
     answer:
-      "Yes. Anyone can view posts. Verification is required to post or participate in a community.",
+      "Yes. Anyone can view posts. Verification is required to post in workplace, school, or sector communities. Major and department communities do not require verification to post.",
   },
   {
     question: "How does verification work?",
@@ -64,7 +64,12 @@ const faqs: FAQItemProps[] = [
   {
     question: "Can I join multiple communities?",
     answer:
-      "Yes. If you're verified at multiple workplaces, schools, or sectors, you can participate in all of their communities on Looped.",
+      "Yes. If you're verified at multiple workplaces, schools, or sectors, you can participate in all of their communities. For majors and departments, you can join up to 2 majors and 2 departments at a time (4 total), and changing your major or department starts a 6-month cooldown for that category.",
+  },
+  {
+    question: "How do major and department communities work?",
+    answer:
+      "Majors and departments are open communities that don't require verification to post. You can join up to 2 majors and 2 departments at a time (4 total). If you switch to a new major or department, you must wait 6 months before changing that category again.",
   },
   {
     question: "What kind of content is allowed?",

@@ -8,7 +8,6 @@ const finePrintLinks = [
   { label: "Privacy Policy", to: "/privacy-policy" },
   { label: "Cookie Policy", to: "/cookies" },
   { label: "User Agreement", to: "/terms" },
-  { label: "FAQ", to: "/faq" },
 ];
 
 export function Navbar() {
@@ -61,6 +60,9 @@ export function Navbar() {
             </Link>
             <Link className="transition-colors hover:text-strong" to="/privacy">
               Privacy
+            </Link>
+            <Link className="transition-colors hover:text-strong" to="/faq">
+              FAQ
             </Link>
 
             <div className="relative" ref={dropdownRef}>
@@ -174,6 +176,13 @@ export function Navbar() {
                 onClick={() => setIsMobileOpen(false)}
               >
                 Privacy
+              </Link>
+              <Link
+                to="/faq"
+                className="rounded-lg px-3 py-2 transition hover:bg-bg-muted"
+                onClick={() => setIsMobileOpen(false)}
+              >
+                FAQ
               </Link>
 
               <div className="rounded-lg bg-bg-muted">

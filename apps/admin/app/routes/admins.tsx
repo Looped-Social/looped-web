@@ -65,6 +65,7 @@ export default function AdminsRoute() {
       setActionError("Enter an email for the invite.");
       return;
     }
+    if (!window.confirm(`Create an admin invite for ${inviteEmail.trim()}?`)) return;
     setIsSaving(true);
     setActionError(null);
     try {
@@ -85,6 +86,28 @@ export default function AdminsRoute() {
 
   const handleUpdate = async (payload: Partial<AdminListItem>) => {
     if (!selectedAdmin) return;
+    const nextRole = payload.role ?? selectedAdmin.role;
+    const nextStatus = payload.status ?? selectedAdmin.status;
+    const nextPermissions = payload.permissions ?? selectedAdmin.permissions;
+    const permissionsChanged =
+      nextPermissions.length !== selectedAdmin.permissions.length ||
+      nextPermissions.some((perm) => !selectedAdmin.permissions.includes(perm));
+    const hasChanges =
+      nextRole !== selectedAdmin.role ||
+      nextStatus !== selectedAdmin.status ||
+      permissionsChanged;
+    if (!hasChanges) return;
+
+    const changes: string[] = [];
+    if (nextRole !== selectedAdmin.role) changes.push(`role to ${nextRole}`);
+    if (nextStatus !== selectedAdmin.status) changes.push(`status to ${nextStatus}`);
+    if (permissionsChanged) changes.push("permissions");
+    const confirmMessage =
+      changes.length > 0
+        ? `Update ${selectedAdmin.email} (${changes.join(", ")})?`
+        : `Update ${selectedAdmin.email}?`;
+    if (!window.confirm(confirmMessage)) return;
+
     setIsSaving(true);
     setActionError(null);
     try {

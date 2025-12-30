@@ -188,6 +188,7 @@ export default function ReportsRoute() {
 
   const handleResolve = async () => {
     if (!selectedReport) return;
+    if (!window.confirm("Resolve this report?")) return;
     setIsSaving(true);
     setActionError(null);
     try {

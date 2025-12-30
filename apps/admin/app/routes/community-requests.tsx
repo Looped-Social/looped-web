@@ -148,6 +148,7 @@ export default function CommunityRequestsRoute() {
 
   const handleApprove = async () => {
     if (!selectedItem || !canTakeAction) return;
+    if (!window.confirm("Approve this community request?")) return;
     setIsSaving(true);
     setActionError(null);
 

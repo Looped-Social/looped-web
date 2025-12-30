@@ -104,7 +104,8 @@ export type CommunityRequestApproveResponse = {
 
 export type AdminCommunity = {
   id: number;
-  kind: "company" | "school" | "sector" | string;
+  kind: "company" | "school" | "sector" | "specialization" | string;
+  specialization_type?: "major" | "department" | string | null;
   name: string;
   description?: string | null;
   member_count?: number | null;
@@ -119,15 +120,23 @@ export type AdminCommunityListResponse = {
 };
 
 export type AdminCommunityCreateRequest = {
-  kind: "company" | "school" | "sector";
+  kind: "company" | "school" | "sector" | "specialization";
   name: string;
   description?: string;
   imageUrl?: string;
   verificationTtlDays?: number;
+  specializationType?: "major" | "department";
 };
 
 export type AdminCommunityUpdateRequest = {
-  verificationTtlDays: number;
+  verificationTtlDays?: number;
+  description?: string;
+};
+
+export type AdminCommunityUpdateResponse = {
+  id: number;
+  description?: string | null;
+  verification_ttl_days?: number | null;
 };
 
 export type AdminCommunityDomainListResponse = {

@@ -36,6 +36,17 @@ function formatKindLabel(value: string) {
   return value.replace(/_/g, " ");
 }
 
+function formatCommunityKindLabel(community: AdminCommunity) {
+  if (community.kind === "specialization") {
+    if (community.specialization_type === "major") return "Major";
+    if (community.specialization_type === "department") return "Department";
+    return "Specialization";
+  }
+  if (community.kind === "major") return "Major";
+  if (community.kind === "department") return "Department";
+  return formatKindLabel(community.kind);
+}
+
 function normalizeBaseUrl(value: string) {
   const trimmed = value.trim();
   if (!trimmed) return "";
@@ -114,14 +125,21 @@ export default function CommunitiesRoute() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
-  const [createKind, setCreateKind] = useState<"company" | "school" | "sector">("company");
+  const [createKind, setCreateKind] = useState<
+    "company" | "school" | "sector" | "major" | "department"
+  >("company");
+  const [kindFilter, setKindFilter] = useState<
+    "all" | "company" | "school" | "sector" | "major" | "department"
+  >("all");
   const [createName, setCreateName] = useState("");
   const [createDescription, setCreateDescription] = useState("");
   const [createImageUrl, setCreateImageUrl] = useState("");
   const [createTtlDays, setCreateTtlDays] = useState("");
   const [createSuccess, setCreateSuccess] = useState<string | null>(null);
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
 
   const [ttlInput, setTtlInput] = useState("");
+  const [descriptionInput, setDescriptionInput] = useState("");
 
   const paramId = useMemo(() => {
     const raw =
@@ -143,13 +161,32 @@ export default function CommunitiesRoute() {
   const logoDevUrl = logos?.logo_dev_url ?? null;
   const logoUploads = logos?.uploads ?? [];
   const isSector = selectedDetail?.kind === "sector";
+  const isSpecialization =
+    selectedDetail?.kind === "specialization" ||
+    selectedDetail?.kind === "major" ||
+    selectedDetail?.kind === "department" ||
+    Boolean(selectedDetail?.specialization_type);
+  const isCreateSpecialization = createKind === "major" || createKind === "department";
+  const kindFilters = [
+    { label: "All", value: "all" },
+    { label: "Company", value: "company" },
+    { label: "School", value: "school" },
+    { label: "Sector", value: "sector" },
+    { label: "Major", value: "major" },
+    { label: "Department", value: "department" },
+  ] as const;
 
   const runSearch = async (overrideQuery?: string) => {
     const nextQuery = (overrideQuery ?? query).trim();
     setIsLoading(true);
     setError(null);
     try {
-      const res = await fetchAdminCommunities(nextQuery || undefined);
+      const res = await fetchAdminCommunities(
+        nextQuery || undefined,
+        undefined,
+        30,
+        kindFilter === "all" ? undefined : kindFilter
+      );
       setItems(res.items);
       setNextCursor(res.next_cursor ?? null);
       if (paramId) {
@@ -171,7 +208,12 @@ export default function CommunitiesRoute() {
     if (!nextCursor || isLoading) return;
     setIsLoading(true);
     try {
-      const res = await fetchAdminCommunities(query.trim() || undefined, nextCursor);
+      const res = await fetchAdminCommunities(
+        query.trim() || undefined,
+        nextCursor,
+        30,
+        kindFilter === "all" ? undefined : kindFilter
+      );
       setItems((prev) => [...prev, ...res.items]);
       setNextCursor(res.next_cursor ?? null);
     } catch (err) {
@@ -198,6 +240,7 @@ export default function CommunitiesRoute() {
       const detail = await fetchAdminCommunity(id);
       setSelectedDetail(detail);
       setTtlInput(detail.verification_ttl_days?.toString() ?? "");
+      setDescriptionInput(detail.description ?? "");
       const domainRes = await fetchAdminCommunityDomains(id);
       setDomains(domainRes.items ?? []);
     } catch (err) {
@@ -228,8 +271,11 @@ export default function CommunitiesRoute() {
 
   useEffect(() => {
     if (!canCreate) return;
-    void runSearch();
-  }, [canCreate]);
+    const handle = window.setTimeout(() => {
+      void runSearch();
+    }, 300);
+    return () => window.clearTimeout(handle);
+  }, [canCreate, kindFilter, query]);
 
   useEffect(() => {
     if (!selectedId) {
@@ -241,6 +287,7 @@ export default function CommunitiesRoute() {
       setLogoUploadMessage(null);
       setLogoUploadStatus("idle");
       setCustomLogoUrl("");
+      setDescriptionInput("");
       return;
     }
     void fetchDetail(selectedId);
@@ -258,7 +305,7 @@ export default function CommunitiesRoute() {
 
     const ttlValue = createTtlDays.trim();
     let ttlNumber: number | undefined;
-    if (ttlValue) {
+    if (ttlValue && !isCreateSpecialization) {
       const parsed = Number(ttlValue);
       if (!Number.isFinite(parsed) || parsed <= 0) {
         setActionError("Verification TTL must be a positive number of days.");
@@ -266,15 +313,24 @@ export default function CommunitiesRoute() {
       }
       ttlNumber = parsed;
     }
+    const createKindLabel = isCreateSpecialization
+      ? createKind === "major"
+        ? "Major"
+        : "Department"
+      : formatKindLabel(createKind);
+    if (!window.confirm(`Create ${createKindLabel} community "${createName.trim()}"?`)) {
+      return;
+    }
 
     setIsSaving(true);
     try {
       const response = await createAdminCommunity({
-        kind: createKind,
+        kind: isCreateSpecialization ? "specialization" : createKind,
         name: createName.trim(),
         description: createDescription.trim() || undefined,
         imageUrl: createImageUrl.trim() || undefined,
-        verificationTtlDays: ttlNumber,
+        verificationTtlDays: isCreateSpecialization ? undefined : ttlNumber,
+        specializationType: isCreateSpecialization ? createKind : undefined,
       });
       setCreateSuccess(`Created community #${response.id}.`);
       setCreateName("");
@@ -285,6 +341,7 @@ export default function CommunitiesRoute() {
       if (response.id) {
         setSelectedId(response.id);
       }
+      setIsCreateOpen(false);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Unable to create community.");
     } finally {
@@ -304,6 +361,7 @@ export default function CommunitiesRoute() {
       setActionError("Verification TTL must be a positive number of days.");
       return;
     }
+    if (!window.confirm(`Update verification TTL to ${parsed} days?`)) return;
 
     setIsSaving(true);
     setActionError(null);
@@ -312,6 +370,34 @@ export default function CommunitiesRoute() {
       await fetchDetail(selectedId);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Unable to update TTL.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleUpdateDescription = async () => {
+    if (!selectedId || !selectedDetail) return;
+    const nextDescription = descriptionInput.trim();
+    const currentDescription = (selectedDetail.description ?? "").trim();
+    if (nextDescription === currentDescription) {
+      setActionError("Bio is unchanged.");
+      return;
+    }
+    if (
+      !window.confirm(
+        nextDescription ? "Update the community bio?" : "Clear the community bio?"
+      )
+    ) {
+      return;
+    }
+
+    setIsSaving(true);
+    setActionError(null);
+    try {
+      await updateAdminCommunity(selectedId, { description: nextDescription });
+      await fetchDetail(selectedId);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Unable to update bio.");
     } finally {
       setIsSaving(false);
     }
@@ -342,6 +428,7 @@ export default function CommunitiesRoute() {
       setDomainError("Enter a domain.");
       return;
     }
+    if (!window.confirm(`Add ${trimmed} to this community?`)) return;
     setDomainError(null);
     setIsSaving(true);
     try {
@@ -372,6 +459,7 @@ export default function CommunitiesRoute() {
 
   const handleLogoUpload = async () => {
     if (!selectedId || !logoFile) return;
+    if (!window.confirm(`Upload "${logoFile.name}" as a community logo?`)) return;
     setLogoUploadStatus("uploading");
     setLogoUploadMessage(null);
     setLogoError(null);
@@ -423,6 +511,7 @@ export default function CommunitiesRoute() {
 
   const handleSelectLogoDev = async () => {
     if (!selectedId) return;
+    if (!window.confirm("Use Logo.dev as the active community logo?")) return;
     setIsLogoSaving(true);
     setLogoError(null);
     try {
@@ -437,6 +526,7 @@ export default function CommunitiesRoute() {
 
   const handleSelectUpload = async (upload: AdminCommunityLogoUpload) => {
     if (!selectedId || !upload.key) return;
+    if (!window.confirm("Use this uploaded logo for the community?")) return;
     setIsLogoSaving(true);
     setLogoError(null);
     try {
@@ -456,6 +546,7 @@ export default function CommunitiesRoute() {
       setLogoError("Enter a custom logo URL.");
       return;
     }
+    if (!window.confirm("Use this custom logo URL for the community?")) return;
     setIsLogoSaving(true);
     setLogoError(null);
     try {
@@ -486,16 +577,48 @@ export default function CommunitiesRoute() {
           <p className="text-xs font-semibold uppercase text-text-light">Communities</p>
           <h1 className="mt-2 text-2xl font-semibold text-strong">Manage communities</h1>
         </div>
-        <Link
-          to="/community-requests"
-          className="text-sm font-semibold text-brand hover:text-brand/90"
-        >
-          Review requests
-        </Link>
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={() => {
+              setActionError(null);
+              setCreateSuccess(null);
+              setIsCreateOpen(true);
+            }}
+            className="rounded-full bg-brand px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand/90"
+          >
+            Create community
+          </button>
+          <Link
+            to="/community-requests"
+            className="text-sm font-semibold text-brand hover:text-brand/90"
+          >
+            Review requests
+          </Link>
+        </div>
       </header>
 
       <div className="grid gap-6 lg:grid-cols-[1fr_1.2fr]">
         <section className="space-y-4 rounded-2xl border border-border bg-bg p-5">
+          <div className="space-y-2">
+            <p className="text-xs font-semibold uppercase text-text-light">Filter by type</p>
+            <div className="flex flex-wrap gap-2">
+              {kindFilters.map((filter) => (
+                <button
+                  key={filter.value}
+                  type="button"
+                  onClick={() => setKindFilter(filter.value)}
+                  className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+                    kindFilter === filter.value
+                      ? "border-brand bg-brand/10 text-brand"
+                      : "border-border text-text-secondary hover:text-text-primary"
+                  }`}
+                >
+                  {filter.label}
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="space-y-2">
             <label className="text-xs font-semibold uppercase text-text-light" htmlFor="community-search">
               Search communities
@@ -506,6 +629,12 @@ export default function CommunitiesRoute() {
                 type="text"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    void runSearch();
+                  }
+                }}
                 className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-text-primary outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
                 placeholder="Search by name"
               />
@@ -548,7 +677,7 @@ export default function CommunitiesRoute() {
                   <div>
                     <p className="text-sm font-semibold text-strong">{item.name}</p>
                     <p className="text-xs text-text-light">
-                      {formatKindLabel(item.kind)} · #{item.id}
+                      {formatCommunityKindLabel(item)} · #{item.id}
                     </p>
                   </div>
                   <span className="text-xs text-text-light">{item.member_count ?? 0} members</span>
@@ -570,103 +699,6 @@ export default function CommunitiesRoute() {
 
         <section className="space-y-5">
           <div className="rounded-2xl border border-border bg-bg p-6">
-            <h2 className="text-lg font-semibold text-strong">Create community</h2>
-            <form className="mt-4 space-y-4" onSubmit={handleCreate}>
-              <div className="space-y-2">
-                <label className="text-xs font-semibold uppercase text-text-light" htmlFor="create-kind">
-                  Type
-                </label>
-                <select
-                  id="create-kind"
-                  value={createKind}
-                  onChange={(event) => setCreateKind(event.target.value as "company" | "school" | "sector")}
-                  className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-text-primary outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
-                >
-                  <option value="company">Company</option>
-                  <option value="school">School</option>
-                  <option value="sector">Sector</option>
-                </select>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-xs font-semibold uppercase text-text-light" htmlFor="create-name">
-                  Name
-                </label>
-                <input
-                  id="create-name"
-                  type="text"
-                  value={createName}
-                  onChange={(event) => setCreateName(event.target.value)}
-                  className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-text-primary outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
-                  placeholder="Community name"
-                  required
-                />
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-xs font-semibold uppercase text-text-light" htmlFor="create-description">
-                  Description (optional)
-                </label>
-                <textarea
-                  id="create-description"
-                  value={createDescription}
-                  onChange={(event) => setCreateDescription(event.target.value)}
-                  className="min-h-[90px] w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-text-primary outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-xs font-semibold uppercase text-text-light" htmlFor="create-image">
-                  Image URL (optional)
-                </label>
-                <input
-                  id="create-image"
-                  type="url"
-                  value={createImageUrl}
-                  onChange={(event) => setCreateImageUrl(event.target.value)}
-                  className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-text-primary outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
-                  placeholder="https://..."
-                />
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-xs font-semibold uppercase text-text-light" htmlFor="create-ttl">
-                  Verification TTL (days)
-                </label>
-                <input
-                  id="create-ttl"
-                  type="number"
-                  value={createTtlDays}
-                  onChange={(event) => setCreateTtlDays(event.target.value)}
-                  className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-text-primary outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
-                  placeholder="90"
-                  min={1}
-                />
-              </div>
-
-              {actionError && (
-                <div className="rounded-lg border border-brand/30 bg-brand/10 px-4 py-3 text-sm text-brand">
-                  {actionError}
-                </div>
-              )}
-
-              {createSuccess && (
-                <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-                  {createSuccess}
-                </div>
-              )}
-
-              <button
-                type="submit"
-                disabled={isSaving}
-                className="inline-flex w-full items-center justify-center rounded-lg bg-brand px-4 py-2.5 text-sm font-semibold text-white transition hover:-translate-y-px hover:bg-brand/90 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {isSaving ? "Creating..." : "Create community"}
-              </button>
-            </form>
-          </div>
-
-          <div className="rounded-2xl border border-border bg-bg p-6">
             <h2 className="text-lg font-semibold text-strong">Community details</h2>
             {isDetailLoading && (
               <p className="mt-3 text-sm text-text-secondary">Loading community...</p>
@@ -680,7 +712,7 @@ export default function CommunitiesRoute() {
                   <div>
                     <p className="text-base font-semibold text-strong">{selectedDetail.name}</p>
                     <p className="text-xs text-text-light">
-                      {formatKindLabel(selectedDetail.kind)} · #{selectedDetail.id}
+                      {formatCommunityKindLabel(selectedDetail)} · #{selectedDetail.id}
                     </p>
                   </div>
                   <span className="text-xs text-text-light">
@@ -697,27 +729,53 @@ export default function CommunitiesRoute() {
                 </p>
 
                 <div className="space-y-2">
-                  <label className="text-xs font-semibold uppercase text-text-light" htmlFor="ttl-update">
-                    Verification TTL (days)
+                  <label className="text-xs font-semibold uppercase text-text-light" htmlFor="bio-update">
+                    Community bio
                   </label>
-                  <div className="flex gap-2">
-                    <input
-                      id="ttl-update"
-                      type="number"
-                      value={ttlInput}
-                      onChange={(event) => setTtlInput(event.target.value)}
-                      className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-text-primary outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
-                      min={1}
-                    />
+                  <textarea
+                    id="bio-update"
+                    value={descriptionInput}
+                    onChange={(event) => setDescriptionInput(event.target.value)}
+                    className="min-h-[90px] w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-text-primary outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+                    placeholder="Write a short community bio..."
+                  />
+                  <div className="flex flex-wrap items-center gap-2">
                     <button
                       type="button"
-                      onClick={handleUpdateTtl}
-                      className="rounded-lg border border-border px-4 py-2 text-sm font-semibold text-text-primary transition hover:bg-bg-muted"
+                      onClick={handleUpdateDescription}
+                      disabled={isSaving}
+                      className="rounded-lg border border-border px-4 py-2 text-sm font-semibold text-text-primary transition hover:bg-bg-muted disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      Update
+                      Update bio
                     </button>
+                    <span className="text-xs text-text-light">Leave blank to clear.</span>
                   </div>
                 </div>
+
+                {!isSpecialization && (
+                  <div className="space-y-2">
+                    <label className="text-xs font-semibold uppercase text-text-light" htmlFor="ttl-update">
+                      Verification TTL (days)
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        id="ttl-update"
+                        type="number"
+                        value={ttlInput}
+                        onChange={(event) => setTtlInput(event.target.value)}
+                        className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-text-primary outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+                        min={1}
+                      />
+                      <button
+                        type="button"
+                        onClick={handleUpdateTtl}
+                        className="rounded-lg border border-border px-4 py-2 text-sm font-semibold text-text-primary transition hover:bg-bg-muted"
+                      >
+                        Update
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 <div className="space-y-3 border-t border-border pt-4">
                   <h3 className="text-sm font-semibold text-strong">Allowed domains</h3>
@@ -823,8 +881,8 @@ export default function CommunitiesRoute() {
                         </div>
                       ) : (
                         <p className="text-xs text-text-light">
-                          {isSector
-                            ? "Logo.dev is not available for sectors."
+                          {isSector || isSpecialization
+                            ? "Logo.dev is only available for company or school communities."
                             : "Logo.dev appears once a domain is set for company or school communities."}
                         </p>
                       )}
@@ -956,6 +1014,133 @@ export default function CommunitiesRoute() {
           </div>
         </section>
       </div>
+
+      {isCreateOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
+          <div
+            className="absolute inset-0 bg-black/40"
+            onClick={() => setIsCreateOpen(false)}
+          />
+          <div className="relative w-full max-w-lg rounded-2xl border border-border bg-bg p-6 shadow-[0_24px_60px_rgba(15,23,42,0.35)]">
+            <div className="flex items-center justify-between gap-4">
+              <h2 className="text-lg font-semibold text-strong">Create community</h2>
+              <button
+                type="button"
+                onClick={() => setIsCreateOpen(false)}
+                className="rounded-full border border-border px-3 py-1 text-xs font-semibold text-text-secondary transition hover:bg-bg-muted"
+              >
+                Close
+              </button>
+            </div>
+            <form className="mt-4 space-y-4" onSubmit={handleCreate}>
+              <div className="space-y-2">
+                <label className="text-xs font-semibold uppercase text-text-light" htmlFor="create-kind">
+                  Type
+                </label>
+                <select
+                  id="create-kind"
+                  value={createKind}
+                  onChange={(event) =>
+                    setCreateKind(
+                      event.target.value as
+                        | "company"
+                        | "school"
+                        | "sector"
+                        | "major"
+                        | "department"
+                    )
+                  }
+                  className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-text-primary outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+                >
+                  <option value="company">Company</option>
+                  <option value="school">School</option>
+                  <option value="sector">Sector</option>
+                  <option value="major">Major</option>
+                  <option value="department">Department</option>
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-semibold uppercase text-text-light" htmlFor="create-name">
+                  Name
+                </label>
+                <input
+                  id="create-name"
+                  type="text"
+                  value={createName}
+                  onChange={(event) => setCreateName(event.target.value)}
+                  className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-text-primary outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+                  placeholder="Community name"
+                  required
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-semibold uppercase text-text-light" htmlFor="create-description">
+                  Description (optional)
+                </label>
+                <textarea
+                  id="create-description"
+                  value={createDescription}
+                  onChange={(event) => setCreateDescription(event.target.value)}
+                  className="min-h-[90px] w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-text-primary outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-semibold uppercase text-text-light" htmlFor="create-image">
+                  Image URL (optional)
+                </label>
+                <input
+                  id="create-image"
+                  type="url"
+                  value={createImageUrl}
+                  onChange={(event) => setCreateImageUrl(event.target.value)}
+                  className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-text-primary outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+                  placeholder="https://..."
+                />
+              </div>
+
+              {!isCreateSpecialization && (
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold uppercase text-text-light" htmlFor="create-ttl">
+                    Verification TTL (days)
+                  </label>
+                  <input
+                    id="create-ttl"
+                    type="number"
+                    value={createTtlDays}
+                    onChange={(event) => setCreateTtlDays(event.target.value)}
+                    className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-text-primary outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+                    placeholder="90"
+                    min={1}
+                  />
+                </div>
+              )}
+
+              {actionError && (
+                <div className="rounded-lg border border-brand/30 bg-brand/10 px-4 py-3 text-sm text-brand">
+                  {actionError}
+                </div>
+              )}
+
+              {createSuccess && (
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+                  {createSuccess}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={isSaving}
+                className="inline-flex w-full items-center justify-center rounded-lg bg-brand px-4 py-2.5 text-sm font-semibold text-white transition hover:-translate-y-px hover:bg-brand/90 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isSaving ? "Creating..." : "Create community"}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

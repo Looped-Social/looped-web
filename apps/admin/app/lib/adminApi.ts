@@ -7,6 +7,7 @@ import type {
   AdminCommunityLogoListResponse,
   AdminCommunityLogoPresignResponse,
   AdminCommunityUpdateRequest,
+  AdminCommunityUpdateResponse,
   AdminSector,
   AdminSectorCompanyListResponse,
   AdminSectorCreateRequest,
@@ -185,11 +186,13 @@ export async function deleteCommunityRequest(id: number): Promise<{ status: stri
 export async function fetchAdminCommunities(
   query?: string,
   cursor?: string,
-  limit = 30
+  limit = 30,
+  kind?: string
 ): Promise<AdminCommunityListResponse> {
   const params = new URLSearchParams({ limit: String(limit) });
   if (query) params.set("query", query);
   if (cursor) params.set("cursor", cursor);
+  if (kind) params.set("kind", kind);
   return adminFetch<AdminCommunityListResponse>(`/v1/admin/communities?${params.toString()}`);
 }
 
@@ -200,23 +203,25 @@ export async function fetchAdminCommunity(id: number): Promise<AdminCommunity> {
 export async function createAdminCommunity(
   payload: AdminCommunityCreateRequest
 ): Promise<{ id: number }> {
+  const { specializationType, ...rest } = payload;
+  const body = {
+    ...rest,
+    ...(specializationType ? { specialization_type: specializationType } : {}),
+  };
   return adminFetch<{ id: number }>(`/v1/admin/communities`, {
     method: "POST",
-    body: JSON.stringify(payload),
+    body: JSON.stringify(body),
   });
 }
 
 export async function updateAdminCommunity(
   id: number,
   payload: AdminCommunityUpdateRequest
-): Promise<{ id: number; verification_ttl_days: number }> {
-  return adminFetch<{ id: number; verification_ttl_days: number }>(
-    `/v1/admin/communities/${id}`,
-    {
-      method: "PATCH",
-      body: JSON.stringify(payload),
-    }
-  );
+): Promise<AdminCommunityUpdateResponse> {
+  return adminFetch<AdminCommunityUpdateResponse>(`/v1/admin/communities/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
 }
 
 export async function deleteAdminCommunity(id: number): Promise<{ status: string }> {

@@ -76,35 +76,23 @@ export function AdminShell({ children, admin, userEmail, onSignOut }: AdminShell
           ))}
         </div>
 
-        <aside className="hidden w-60 flex-shrink-0 rounded-2xl border border-border bg-bg px-4 py-5  lg:block">
-          <p className="text-xs font-semibold uppercase text-text-light">
-            Navigation
-          </p>
-          <nav className="mt-5 space-y-1.5 text-sm">
+        <aside className="hidden w-60 flex-shrink-0 self-start rounded-2xl border border-border bg-bg px-4 py-5 lg:block">
+          <p className="text-xs font-semibold uppercase text-text-light">Navigation</p>
+          <nav className="mt-4 space-y-2 text-sm">
             {visibleNavItems.map((item) => (
               <NavLink
                 key={item.to}
                 to={item.to}
                 end={item.to === "/"}
                 className={({ isActive }) =>
-                  `flex items-center justify-between rounded-xl px-3 py-2.5 transition ${
+                  `flex items-center rounded-lg border px-3 py-2.5 transition ${
                     isActive
-                      ? "bg-bg-muted text-strong"
-                      : "text-text-secondary hover:bg-bg-muted/70 hover:text-strong"
+                      ? "border-brand/40 bg-brand/10 text-brand"
+                      : "border-transparent text-text-secondary hover:bg-bg-muted/70 hover:text-strong"
                   }`
                 }
               >
-                {({ isActive }) => (
-                  <>
-                    <span>{item.label}</span>
-                    <span
-                      className={`h-2 w-2 rounded-full ${
-                        isActive ? "bg-brand" : "bg-border"
-                      }`}
-                      aria-hidden
-                    />
-                  </>
-                )}
+                <span>{item.label}</span>
               </NavLink>
             ))}
           </nav>

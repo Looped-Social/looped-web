@@ -118,6 +118,7 @@ export default function VerificationsRoute() {
 
   const handleApprove = async () => {
     if (!selectedItem) return;
+    if (!window.confirm("Approve this verification?")) return;
     setIsSaving(true);
     setActionError(null);
     try {

@@ -181,6 +181,7 @@ export default function UsersRoute() {
 
   const handleUnban = async () => {
     if (!selectedItem) return;
+    if (!window.confirm("Unban this user?")) return;
     setIsSaving(true);
     setActionError(null);
     try {

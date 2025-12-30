@@ -195,6 +195,7 @@ export default function AppealsRoute() {
 
   const handleApprove = async () => {
     if (!selectedAppeal) return;
+    if (!window.confirm("Approve this appeal?")) return;
     setIsSaving(true);
     setActionError(null);
     try {

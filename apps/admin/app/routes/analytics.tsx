@@ -1,6 +1,7 @@
 import type { Route } from "./+types/analytics";
 
 import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
+import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 import {
   fetchCommunityLeaderboard,
@@ -14,6 +15,7 @@ import type {
 } from "../types/admin";
 
 const COMMUNITY_LIMIT = 50;
+const COMMUNITY_PAGE_SIZE = 10;
 const HASHTAG_LIMIT = 50;
 
 const rangePresets = [
@@ -23,17 +25,9 @@ const rangePresets = [
   { value: "90d", label: "Past 90 days" },
 ] as const;
 
-const communityMetricOptions = [
-  { value: "likes", label: "Likes" },
-  { value: "shares", label: "Shares" },
-  { value: "followers", label: "Followers" },
-  { value: "verifications", label: "Verifications" },
-  { value: "accounts", label: "Accounts" },
-] as const;
-
 type BaseRangePreset = (typeof rangePresets)[number]["value"];
 type RangePreset = BaseRangePreset | "custom";
-type CommunityMetric = (typeof communityMetricOptions)[number]["value"];
+type CommunityMetric = "likes" | "shares" | "followers" | "verifications" | "accounts";
 
 type DateRange = {
   preset: RangePreset;
@@ -237,12 +231,13 @@ export function meta({}: Route.MetaArgs) {
 }
 
 export default function AnalyticsRoute() {
-  const [communityMetric, setCommunityMetric] = useState<CommunityMetric>("likes");
+  const communityMetric: CommunityMetric = "likes";
   const [communityRange, setCommunityRange] = useState<DateRange>(() => createRange("7d"));
   const [communityId, setCommunityId] = useState("");
   const [communityItems, setCommunityItems] = useState<CommunityLeaderboardItem[]>([]);
   const [communityError, setCommunityError] = useState<string | null>(null);
   const [communityLoading, setCommunityLoading] = useState(false);
+  const [communityPage, setCommunityPage] = useState(1);
 
   const [hashtagRange, setHashtagRange] = useState<DateRange>(() => createRange("7d"));
   const [hashtagCommunityId, setHashtagCommunityId] = useState("");
@@ -255,14 +250,47 @@ export default function AnalyticsRoute() {
   const [userError, setUserError] = useState<string | null>(null);
   const [userLoading, setUserLoading] = useState(false);
 
-  const communityMetricLabel =
-    communityMetricOptions.find((option) => option.value === communityMetric)?.label ??
-    "Metric";
+  const communityMetricLabel = "Likes";
 
   const communityMax = useMemo(() => {
     const values = communityItems.map((item) => getCommunityMetricValue(item, communityMetric));
     return Math.max(1, ...values);
   }, [communityItems, communityMetric]);
+
+  const communityPageCount = Math.max(
+    1,
+    Math.ceil(communityItems.length / COMMUNITY_PAGE_SIZE)
+  );
+  const communityPageItems = communityItems.slice(
+    (communityPage - 1) * COMMUNITY_PAGE_SIZE,
+    communityPage * COMMUNITY_PAGE_SIZE
+  );
+  const communityChartData = useMemo(
+    () =>
+      communityPageItems.map((item) => ({
+        name: getCommunityLabel(item),
+        value: getCommunityMetricValue(item, communityMetric),
+      })),
+    [communityPageItems, communityMetric]
+  );
+
+  const hashtagChartData = useMemo(
+    () =>
+      hashtagItems.slice(0, 10).map((item) => ({
+        name: getHashtagLabel(item),
+        value: typeof item.usage_count === "number" ? item.usage_count : 0,
+      })),
+    [hashtagItems]
+  );
+
+  const userChartData = useMemo(() => {
+    if (!userStats) return [];
+    return [
+      { name: "Total users", value: userStats.total_users ?? 0 },
+      { name: "New users", value: userStats.new_users ?? 0 },
+      { name: "Deleted users", value: userStats.deleted_users ?? 0 },
+    ];
+  }, [userStats]);
 
   const hashtagMax = useMemo(() => {
     const values = hashtagItems.map((item) =>
@@ -301,7 +329,11 @@ export default function AnalyticsRoute() {
     return () => {
       active = false;
     };
-  }, [communityMetric, communityRange, communityId]);
+  }, [communityRange, communityId, communityMetric]);
+
+  useEffect(() => {
+    setCommunityPage(1);
+  }, [communityItems]);
 
   useEffect(() => {
     let active = true;
@@ -361,15 +393,6 @@ export default function AnalyticsRoute() {
   return (
     <div className="space-y-6">
       <section className="rounded-3xl border border-border bg-bg p-6">
-        <p className="text-xs font-semibold uppercase text-text-light">Analytics</p>
-        <h1 className="mt-2 text-3xl font-semibold text-strong">Useful analytics dashboards</h1>
-        <p className="mt-2 max-w-2xl text-sm text-text-secondary">
-          Track community momentum, trending hashtags, and user movement. Use the
-          range controls to compare recent activity with long-term trends.
-        </p>
-      </section>
-
-      <section className="rounded-3xl border border-border bg-bg p-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <p className="text-xs font-semibold uppercase text-text-light">
@@ -379,7 +402,7 @@ export default function AnalyticsRoute() {
               Top communities by {communityMetricLabel.toLowerCase()}
             </h2>
             <p className="mt-1 text-sm text-text-secondary">
-              Showing the top {COMMUNITY_LIMIT} communities for the selected range.
+              Showing {COMMUNITY_PAGE_SIZE} communities per page.
             </p>
           </div>
           <div className="rounded-full border border-border bg-bg px-3 py-1 text-xs font-semibold text-text-secondary">
@@ -389,6 +412,33 @@ export default function AnalyticsRoute() {
 
         <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
           <div className="space-y-3">
+            {communityChartData.length > 0 && (
+              <div className="rounded-2xl border border-border bg-bg px-4 py-4">
+                <p className="text-xs font-semibold uppercase text-text-light">
+                  Likes chart
+                </p>
+                <div className="mt-3 h-64">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart
+                      layout="vertical"
+                      data={communityChartData}
+                      margin={{ top: 4, right: 16, left: 12, bottom: 4 }}
+                    >
+                      <XAxis type="number" tickLine={false} axisLine={false} />
+                      <YAxis
+                        type="category"
+                        dataKey="name"
+                        width={140}
+                        tickLine={false}
+                        axisLine={false}
+                      />
+                      <Tooltip cursor={{ fill: "rgba(234,64,74,0.08)" }} />
+                      <Bar dataKey="value" fill="#ea404a" radius={[6, 6, 6, 6]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            )}
             {communityError && (
               <div className="rounded-xl border border-border bg-bg px-4 py-3 text-sm text-text-secondary">
                 <p className="text-sm font-semibold text-text-primary">
@@ -414,7 +464,7 @@ export default function AnalyticsRoute() {
               </div>
             )}
 
-            {communityItems.map((item, index) => {
+            {communityPageItems.map((item, index) => {
               const metricValue = getCommunityMetricValue(item, communityMetric);
               const percent = Math.min(100, (metricValue / communityMax) * 100);
               const communityIdValue = getCommunityId(item);
@@ -455,6 +505,34 @@ export default function AnalyticsRoute() {
                 </div>
               );
             })}
+
+            {communityItems.length > COMMUNITY_PAGE_SIZE && (
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border bg-bg px-4 py-3 text-xs text-text-secondary">
+                <span>
+                  Page {communityPage} of {communityPageCount}
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setCommunityPage((prev) => Math.max(1, prev - 1))}
+                    disabled={communityPage === 1}
+                    className="rounded-full border border-border px-3 py-1 text-xs font-semibold text-text-primary transition hover:bg-bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    Prev
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setCommunityPage((prev) => Math.min(communityPageCount, prev + 1))
+                    }
+                    disabled={communityPage >= communityPageCount}
+                    className="rounded-full border border-border px-3 py-1 text-xs font-semibold text-text-primary transition hover:bg-bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           <aside className="space-y-4">
@@ -462,25 +540,9 @@ export default function AnalyticsRoute() {
               <p className="text-xs font-semibold uppercase text-text-light">
                 Leaderboard filters
               </p>
-              <label className="mt-3 block text-xs font-semibold uppercase text-text-light">
-                Metric
-                <select
-                  value={communityMetric}
-                  onChange={(event) => setCommunityMetric(event.target.value as CommunityMetric)}
-                  className="mt-1 w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm font-medium text-text-primary"
-                >
-                  {communityMetricOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              {communityMetric === "accounts" && (
-                <p className="mt-2 text-xs text-text-light">
-                  Accounts equals followers plus verifications.
-                </p>
-              )}
+              <p className="mt-3 text-xs text-text-secondary">
+                Metric: <span className="font-semibold text-text-primary">Likes</span>
+              </p>
               <label className="mt-3 block text-xs font-semibold uppercase text-text-light">
                 Community ID (optional)
                 <input
@@ -518,6 +580,33 @@ export default function AnalyticsRoute() {
 
         <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
           <div className="space-y-3">
+            {hashtagChartData.length > 0 && (
+              <div className="rounded-2xl border border-border bg-bg px-4 py-4">
+                <p className="text-xs font-semibold uppercase text-text-light">
+                  Hashtag usage chart
+                </p>
+                <div className="mt-3 h-64">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart
+                      layout="vertical"
+                      data={hashtagChartData}
+                      margin={{ top: 4, right: 16, left: 12, bottom: 4 }}
+                    >
+                      <XAxis type="number" tickLine={false} axisLine={false} />
+                      <YAxis
+                        type="category"
+                        dataKey="name"
+                        width={140}
+                        tickLine={false}
+                        axisLine={false}
+                      />
+                      <Tooltip cursor={{ fill: "rgba(234,64,74,0.08)" }} />
+                      <Bar dataKey="value" fill="#ea404a" radius={[6, 6, 6, 6]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            )}
             {hashtagError && (
               <div className="rounded-xl border border-border bg-bg px-4 py-3 text-sm text-text-secondary">
                 <p className="text-sm font-semibold text-text-primary">
@@ -644,28 +733,50 @@ export default function AnalyticsRoute() {
               </div>
             )}
             {userStats && (
-              <div className="grid gap-4 sm:grid-cols-3">
-                <div className="rounded-2xl border border-border bg-bg px-4 py-4">
-                  <p className="text-xs font-semibold uppercase text-text-light">Total users</p>
-                  <p className="mt-3 text-2xl font-semibold text-strong">
-                    {formatNumber(userStats.total_users)}
-                  </p>
+              <>
+                {userChartData.length > 0 && (
+                  <div className="rounded-2xl border border-border bg-bg px-4 py-4">
+                    <p className="text-xs font-semibold uppercase text-text-light">
+                      User movement chart
+                    </p>
+                    <div className="mt-3 h-52">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart
+                          data={userChartData}
+                          margin={{ top: 4, right: 16, left: 12, bottom: 4 }}
+                        >
+                          <XAxis dataKey="name" tickLine={false} axisLine={false} />
+                          <YAxis tickLine={false} axisLine={false} />
+                          <Tooltip cursor={{ fill: "rgba(234,64,74,0.08)" }} />
+                          <Bar dataKey="value" fill="#ea404a" radius={[6, 6, 0, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+                )}
+                <div className="grid gap-4 sm:grid-cols-3">
+                  <div className="rounded-2xl border border-border bg-bg px-4 py-4">
+                    <p className="text-xs font-semibold uppercase text-text-light">Total users</p>
+                    <p className="mt-3 text-2xl font-semibold text-strong">
+                      {formatNumber(userStats.total_users)}
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-border bg-bg px-4 py-4">
+                    <p className="text-xs font-semibold uppercase text-text-light">New users</p>
+                    <p className="mt-3 text-2xl font-semibold text-strong">
+                      {formatNumber(userStats.new_users)}
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-border bg-bg px-4 py-4">
+                    <p className="text-xs font-semibold uppercase text-text-light">
+                      Deleted users
+                    </p>
+                    <p className="mt-3 text-2xl font-semibold text-strong">
+                      {formatNumber(userStats.deleted_users)}
+                    </p>
+                  </div>
                 </div>
-                <div className="rounded-2xl border border-border bg-bg px-4 py-4">
-                  <p className="text-xs font-semibold uppercase text-text-light">New users</p>
-                  <p className="mt-3 text-2xl font-semibold text-strong">
-                    {formatNumber(userStats.new_users)}
-                  </p>
-                </div>
-                <div className="rounded-2xl border border-border bg-bg px-4 py-4">
-                  <p className="text-xs font-semibold uppercase text-text-light">
-                    Deleted users
-                  </p>
-                  <p className="mt-3 text-2xl font-semibold text-strong">
-                    {formatNumber(userStats.deleted_users)}
-                  </p>
-                </div>
-              </div>
+              </>
             )}
           </div>
 

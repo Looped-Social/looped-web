@@ -54,10 +54,14 @@ export default function SectorsRoute() {
   const [createImageUrl, setCreateImageUrl] = useState("");
   const [createTtlDays, setCreateTtlDays] = useState("");
   const [createSuccess, setCreateSuccess] = useState<string | null>(null);
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
 
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importStatus, setImportStatus] = useState<"idle" | "uploading" | "success" | "error">("idle");
   const [importMessage, setImportMessage] = useState<string | null>(null);
+  const [visibleCompanies, setVisibleCompanies] = useState(10);
+  const [visibleDirectDomains, setVisibleDirectDomains] = useState(10);
+  const [visibleInheritedDomains, setVisibleInheritedDomains] = useState(10);
 
   const selectedItem = useMemo(
     () => items.find((item) => item.id === selectedId) ?? null,
@@ -104,6 +108,9 @@ export default function SectorsRoute() {
     setDomainInput("");
     setCompanyQuery("");
     setCompanyResults([]);
+    setVisibleCompanies(10);
+    setVisibleDirectDomains(10);
+    setVisibleInheritedDomains(10);
     try {
       const item = items.find((sector) => sector.id === sectorId) ?? null;
       setSelectedSector(item);
@@ -128,8 +135,11 @@ export default function SectorsRoute() {
 
   useEffect(() => {
     if (!canCreate) return;
-    void runSearch();
-  }, [canCreate]);
+    const handle = window.setTimeout(() => {
+      void runSearch();
+    }, 300);
+    return () => window.clearTimeout(handle);
+  }, [canCreate, query]);
 
   useEffect(() => {
     if (!selectedId) {
@@ -162,6 +172,7 @@ export default function SectorsRoute() {
       }
       ttlNumber = parsed;
     }
+    if (!window.confirm(`Create sector "${createName.trim()}"?`)) return;
 
     setIsSaving(true);
     try {
@@ -180,6 +191,7 @@ export default function SectorsRoute() {
       if (response.id) {
         setSelectedId(response.id);
       }
+      setIsCreateOpen(false);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Unable to create sector.");
     } finally {
@@ -225,6 +237,7 @@ export default function SectorsRoute() {
 
   const handleLinkCompany = async (companyId: number) => {
     if (!selectedId) return;
+    if (!window.confirm(`Link company #${companyId} to this sector?`)) return;
     setIsSaving(true);
     setActionError(null);
     try {
@@ -266,6 +279,7 @@ export default function SectorsRoute() {
       setDomainError("Enter a domain.");
       return;
     }
+    if (!window.confirm(`Add ${trimmed} to this sector?`)) return;
     setDomainError(null);
     setIsSaving(true);
     try {
@@ -296,6 +310,7 @@ export default function SectorsRoute() {
 
   const handleImport = async () => {
     if (!importFile) return;
+    if (!window.confirm("Import the selected CSV into sectors?")) return;
     setImportStatus("uploading");
     setImportMessage(null);
     try {
@@ -328,9 +343,22 @@ export default function SectorsRoute() {
           <p className="text-xs font-semibold uppercase text-text-light">Sectors</p>
           <h1 className="mt-2 text-2xl font-semibold text-strong">Manage sectors and company links</h1>
         </div>
-        <Link to="/communities" className="text-sm font-semibold text-brand hover:text-brand/90">
-          Manage communities
-        </Link>
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={() => {
+              setActionError(null);
+              setCreateSuccess(null);
+              setIsCreateOpen(true);
+            }}
+            className="rounded-full bg-brand px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand/90"
+          >
+            Create sector
+          </button>
+          <Link to="/communities" className="text-sm font-semibold text-brand hover:text-brand/90">
+            Manage communities
+          </Link>
+        </div>
       </header>
 
       <div className="grid gap-6 lg:grid-cols-[1fr_1.2fr]">
@@ -345,6 +373,12 @@ export default function SectorsRoute() {
                 type="text"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    void runSearch();
+                  }
+                }}
                 className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-text-primary outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
                 placeholder="Search by name"
               />
@@ -409,7 +443,273 @@ export default function SectorsRoute() {
 
         <section className="space-y-5">
           <div className="rounded-2xl border border-border bg-bg p-6">
-            <h2 className="text-lg font-semibold text-strong">Create sector</h2>
+            <h2 className="text-lg font-semibold text-strong">Bulk import (CSV)</h2>
+            <p className="mt-2 text-sm text-text-secondary">
+              Upload the official dataset CSV with headers:
+            </p>
+            <p className="mt-2 rounded-lg bg-bg-muted px-3 py-2 text-xs text-text-secondary">
+              community_type,display_name,sector,authorized_domains,description,website,rank,source
+            </p>
+            <p className="mt-2 text-xs text-text-light">
+              community_type supports company, school, sector, major, department, or specialization. If you use
+              specialization, include a specialization_type column with major or department.
+            </p>
+
+            <div className="mt-4 space-y-3">
+              <input
+                type="file"
+                accept=".csv,text/csv"
+                onChange={(event) => setImportFile(event.target.files?.[0] ?? null)}
+                className="w-full text-sm text-text-secondary file:mr-4 file:rounded-full file:border-0 file:bg-bg-muted file:px-4 file:py-2 file:text-sm file:font-semibold file:text-text-primary hover:file:bg-bg-muted/70"
+              />
+              {importMessage && (
+                <div
+                  className={`rounded-lg border px-4 py-3 text-sm ${
+                    importStatus === "error"
+                      ? "border-brand/30 bg-brand/10 text-brand"
+                      : "border-emerald-200 bg-emerald-50 text-emerald-700"
+                  }`}
+                >
+                  {importMessage}
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={handleImport}
+                disabled={!importFile || importStatus === "uploading"}
+                className="inline-flex w-full items-center justify-center rounded-lg bg-brand px-4 py-2.5 text-sm font-semibold text-white transition hover:-translate-y-px hover:bg-brand/90 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {importStatus === "uploading" ? "Uploading..." : "Upload CSV"}
+              </button>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-border bg-bg p-6">
+            <h2 className="text-lg font-semibold text-strong">Sector details</h2>
+            {isDetailLoading && (
+              <p className="mt-3 text-sm text-text-secondary">Loading sector...</p>
+            )}
+            {!isDetailLoading && !selectedSector && (
+              <p className="mt-3 text-sm text-text-secondary">Select a sector to manage.</p>
+            )}
+            {selectedSector && (
+              <div className="mt-4 space-y-4 text-sm text-text-secondary">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-base font-semibold text-strong">{selectedSector.name}</p>
+                    <p className="text-xs text-text-light">#{selectedSector.id}</p>
+                  </div>
+                  <span className="text-xs text-text-light">
+                    TTL {selectedSector.verification_ttl_days ?? "none"}
+                  </span>
+                </div>
+
+                {selectedSector.description && (
+                  <p className="text-sm text-text-secondary">{selectedSector.description}</p>
+                )}
+
+                <p className="text-xs text-text-light">
+                  Created {formatDate(selectedSector.created_at)}
+                </p>
+
+                <div className="space-y-3 border-t border-border pt-4">
+                  <h3 className="text-sm font-semibold text-strong">Linked companies</h3>
+                  {sectorCompanies.length === 0 && (
+                    <p className="text-xs text-text-light">No companies linked yet.</p>
+                  )}
+                  <div className="space-y-2">
+                    {sectorCompanies.slice(0, visibleCompanies).map((company) => (
+                      <div
+                        key={company.id}
+                        className="flex items-center justify-between rounded-lg border border-border px-3 py-2 text-xs text-text-secondary"
+                      >
+                        <span>
+                          {company.name} #{company.id}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleUnlinkCompany(company.id)}
+                          className="text-xs font-semibold text-brand hover:text-brand/90"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  {sectorCompanies.length > visibleCompanies && (
+                    <button
+                      type="button"
+                      onClick={() => setVisibleCompanies((prev) => prev + 10)}
+                      className="rounded-lg border border-border px-3 py-2 text-xs font-semibold text-text-primary transition hover:bg-bg-muted"
+                    >
+                      Load more companies
+                    </button>
+                  )}
+
+                  <div className="mt-3 space-y-2">
+                    <label className="text-xs font-semibold uppercase text-text-light" htmlFor="company-search">
+                      Add company
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        id="company-search"
+                        type="text"
+                        value={companyQuery}
+                        onChange={(event) => setCompanyQuery(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.preventDefault();
+                            void handleCompanySearch();
+                          }
+                        }}
+                        className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-text-primary outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+                        placeholder="Search companies"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleCompanySearch}
+                        className="rounded-lg border border-border px-4 py-2 text-sm font-semibold text-text-primary transition hover:bg-bg-muted"
+                      >
+                        Search
+                      </button>
+                    </div>
+                    <div className="space-y-2">
+                      {companyResults.map((company) => (
+                        <div
+                          key={company.id}
+                          className="flex items-center justify-between rounded-lg border border-border px-3 py-2 text-xs text-text-secondary"
+                        >
+                          <span>
+                            {company.name} #{company.id}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleLinkCompany(company.id)}
+                            className="text-xs font-semibold text-brand hover:text-brand/90"
+                          >
+                            Link
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-3 border-t border-border pt-4">
+                  <h3 className="text-sm font-semibold text-strong">Domains</h3>
+                  <p className="text-xs text-text-light">
+                    Inherited domains come from linked companies and cannot be edited here.
+                  </p>
+                  <div className="space-y-2">
+                    <label className="text-xs font-semibold uppercase text-text-light" htmlFor="domain-input">
+                      Add domain
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        id="domain-input"
+                        type="text"
+                        value={domainInput}
+                        onChange={(event) => setDomainInput(event.target.value)}
+                        className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-text-primary outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+                        placeholder="sector.com"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleAddDomain}
+                        className="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand/90"
+                      >
+                        Add
+                      </button>
+                    </div>
+                    {domainError && <p className="text-xs text-brand">{domainError}</p>}
+                  </div>
+
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold uppercase text-text-light">Direct domains</p>
+                    {directDomains.length === 0 && (
+                      <p className="text-xs text-text-light">No direct domains yet.</p>
+                    )}
+                    {directDomains.slice(0, visibleDirectDomains).map((domain) => (
+                      <div
+                        key={domain}
+                        className="flex items-center justify-between rounded-lg border border-border px-3 py-2 text-xs text-text-secondary"
+                      >
+                        <span>{domain}</span>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveDomain(domain)}
+                          className="text-xs font-semibold text-brand hover:text-brand/90"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ))}
+                    {directDomains.length > visibleDirectDomains && (
+                      <button
+                        type="button"
+                        onClick={() => setVisibleDirectDomains((prev) => prev + 10)}
+                        className="rounded-lg border border-border px-3 py-2 text-xs font-semibold text-text-primary transition hover:bg-bg-muted"
+                      >
+                        Load more domains
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold uppercase text-text-light">Inherited domains</p>
+                    {inheritedDomains.length === 0 && (
+                      <p className="text-xs text-text-light">No inherited domains.</p>
+                    )}
+                    {inheritedDomains.slice(0, visibleInheritedDomains).map((domain) => (
+                      <div
+                        key={domain}
+                        className="rounded-lg border border-border px-3 py-2 text-xs text-text-secondary"
+                      >
+                        {domain}
+                      </div>
+                    ))}
+                    {inheritedDomains.length > visibleInheritedDomains && (
+                      <button
+                        type="button"
+                        onClick={() => setVisibleInheritedDomains((prev) => prev + 10)}
+                        className="rounded-lg border border-border px-3 py-2 text-xs font-semibold text-text-primary transition hover:bg-bg-muted"
+                      >
+                        Load more domains
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleDeleteSector}
+                  className="w-full rounded-lg border border-brand/40 px-4 py-2 text-sm font-semibold text-brand transition hover:bg-brand/10"
+                >
+                  Delete sector
+                </button>
+              </div>
+            )}
+          </div>
+        </section>
+      </div>
+
+      {isCreateOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
+          <div
+            className="absolute inset-0 bg-black/40"
+            onClick={() => setIsCreateOpen(false)}
+          />
+          <div className="relative w-full max-w-lg rounded-2xl border border-border bg-bg p-6 shadow-[0_24px_60px_rgba(15,23,42,0.35)]">
+            <div className="flex items-center justify-between gap-4">
+              <h2 className="text-lg font-semibold text-strong">Create sector</h2>
+              <button
+                type="button"
+                onClick={() => setIsCreateOpen(false)}
+                className="rounded-full border border-border px-3 py-1 text-xs font-semibold text-text-secondary transition hover:bg-bg-muted"
+              >
+                Close
+              </button>
+            </div>
             <form className="mt-4 space-y-4" onSubmit={handleCreate}>
               <div className="space-y-2">
                 <label className="text-xs font-semibold uppercase text-text-light" htmlFor="create-sector-name">
@@ -488,220 +788,8 @@ export default function SectorsRoute() {
               </button>
             </form>
           </div>
-
-          <div className="rounded-2xl border border-border bg-bg p-6">
-            <h2 className="text-lg font-semibold text-strong">Bulk import (CSV)</h2>
-            <p className="mt-2 text-sm text-text-secondary">
-              Upload the official dataset CSV with headers:
-            </p>
-            <p className="mt-2 rounded-lg bg-bg-muted px-3 py-2 text-xs text-text-secondary">
-              community_type,display_name,sector,authorized_domains,description,website,rank,source
-            </p>
-
-            <div className="mt-4 space-y-3">
-              <input
-                type="file"
-                accept=".csv,text/csv"
-                onChange={(event) => setImportFile(event.target.files?.[0] ?? null)}
-                className="w-full text-sm text-text-secondary file:mr-4 file:rounded-full file:border-0 file:bg-bg-muted file:px-4 file:py-2 file:text-sm file:font-semibold file:text-text-primary hover:file:bg-bg-muted/70"
-              />
-              {importMessage && (
-                <div
-                  className={`rounded-lg border px-4 py-3 text-sm ${
-                    importStatus === "error"
-                      ? "border-brand/30 bg-brand/10 text-brand"
-                      : "border-emerald-200 bg-emerald-50 text-emerald-700"
-                  }`}
-                >
-                  {importMessage}
-                </div>
-              )}
-              <button
-                type="button"
-                onClick={handleImport}
-                disabled={!importFile || importStatus === "uploading"}
-                className="inline-flex w-full items-center justify-center rounded-lg bg-brand px-4 py-2.5 text-sm font-semibold text-white transition hover:-translate-y-px hover:bg-brand/90 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {importStatus === "uploading" ? "Uploading..." : "Upload CSV"}
-              </button>
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-border bg-bg p-6">
-            <h2 className="text-lg font-semibold text-strong">Sector details</h2>
-            {isDetailLoading && (
-              <p className="mt-3 text-sm text-text-secondary">Loading sector...</p>
-            )}
-            {!isDetailLoading && !selectedSector && (
-              <p className="mt-3 text-sm text-text-secondary">Select a sector to manage.</p>
-            )}
-            {selectedSector && (
-              <div className="mt-4 space-y-4 text-sm text-text-secondary">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <p className="text-base font-semibold text-strong">{selectedSector.name}</p>
-                    <p className="text-xs text-text-light">#{selectedSector.id}</p>
-                  </div>
-                  <span className="text-xs text-text-light">
-                    TTL {selectedSector.verification_ttl_days ?? "none"}
-                  </span>
-                </div>
-
-                {selectedSector.description && (
-                  <p className="text-sm text-text-secondary">{selectedSector.description}</p>
-                )}
-
-                <p className="text-xs text-text-light">
-                  Created {formatDate(selectedSector.created_at)}
-                </p>
-
-                <div className="space-y-3 border-t border-border pt-4">
-                  <h3 className="text-sm font-semibold text-strong">Linked companies</h3>
-                  {sectorCompanies.length === 0 && (
-                    <p className="text-xs text-text-light">No companies linked yet.</p>
-                  )}
-                  <div className="space-y-2">
-                    {sectorCompanies.map((company) => (
-                      <div
-                        key={company.id}
-                        className="flex items-center justify-between rounded-lg border border-border px-3 py-2 text-xs text-text-secondary"
-                      >
-                        <span>
-                          {company.name} #{company.id}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => handleUnlinkCompany(company.id)}
-                          className="text-xs font-semibold text-brand hover:text-brand/90"
-                        >
-                          Remove
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="mt-3 space-y-2">
-                    <label className="text-xs font-semibold uppercase text-text-light" htmlFor="company-search">
-                      Add company
-                    </label>
-                    <div className="flex gap-2">
-                      <input
-                        id="company-search"
-                        type="text"
-                        value={companyQuery}
-                        onChange={(event) => setCompanyQuery(event.target.value)}
-                        className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-text-primary outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
-                        placeholder="Search companies"
-                      />
-                      <button
-                        type="button"
-                        onClick={handleCompanySearch}
-                        className="rounded-lg border border-border px-4 py-2 text-sm font-semibold text-text-primary transition hover:bg-bg-muted"
-                      >
-                        Search
-                      </button>
-                    </div>
-                    <div className="space-y-2">
-                      {companyResults.map((company) => (
-                        <div
-                          key={company.id}
-                          className="flex items-center justify-between rounded-lg border border-border px-3 py-2 text-xs text-text-secondary"
-                        >
-                          <span>
-                            {company.name} #{company.id}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => handleLinkCompany(company.id)}
-                            className="text-xs font-semibold text-brand hover:text-brand/90"
-                          >
-                            Link
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-3 border-t border-border pt-4">
-                  <h3 className="text-sm font-semibold text-strong">Domains</h3>
-                  <p className="text-xs text-text-light">
-                    Inherited domains come from linked companies and cannot be edited here.
-                  </p>
-                  <div className="space-y-2">
-                    <label className="text-xs font-semibold uppercase text-text-light" htmlFor="domain-input">
-                      Add domain
-                    </label>
-                    <div className="flex gap-2">
-                      <input
-                        id="domain-input"
-                        type="text"
-                        value={domainInput}
-                        onChange={(event) => setDomainInput(event.target.value)}
-                        className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-text-primary outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
-                        placeholder="sector.com"
-                      />
-                      <button
-                        type="button"
-                        onClick={handleAddDomain}
-                        className="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand/90"
-                      >
-                        Add
-                      </button>
-                    </div>
-                    {domainError && <p className="text-xs text-brand">{domainError}</p>}
-                  </div>
-
-                  <div className="space-y-2">
-                    <p className="text-xs font-semibold uppercase text-text-light">Direct domains</p>
-                    {directDomains.length === 0 && (
-                      <p className="text-xs text-text-light">No direct domains yet.</p>
-                    )}
-                    {directDomains.map((domain) => (
-                      <div
-                        key={domain}
-                        className="flex items-center justify-between rounded-lg border border-border px-3 py-2 text-xs text-text-secondary"
-                      >
-                        <span>{domain}</span>
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveDomain(domain)}
-                          className="text-xs font-semibold text-brand hover:text-brand/90"
-                        >
-                          Remove
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="space-y-2">
-                    <p className="text-xs font-semibold uppercase text-text-light">Inherited domains</p>
-                    {inheritedDomains.length === 0 && (
-                      <p className="text-xs text-text-light">No inherited domains.</p>
-                    )}
-                    {inheritedDomains.map((domain) => (
-                      <div
-                        key={domain}
-                        className="rounded-lg border border-border px-3 py-2 text-xs text-text-secondary"
-                      >
-                        {domain}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={handleDeleteSector}
-                  className="w-full rounded-lg border border-brand/40 px-4 py-2 text-sm font-semibold text-brand transition hover:bg-brand/10"
-                >
-                  Delete sector
-                </button>
-              </div>
-            )}
-          </div>
-        </section>
-      </div>
+        </div>
+      )}
     </div>
   );
 }

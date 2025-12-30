@@ -96,6 +96,7 @@ export default function PostsRoute() {
 
   const handleRestore = async () => {
     if (!post) return;
+    if (!window.confirm("Restore this post?")) return;
     setIsSaving(true);
     setActionError(null);
     try {
