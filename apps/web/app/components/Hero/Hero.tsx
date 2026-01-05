@@ -50,7 +50,7 @@ export function Hero() {
           </h1>
 
           <p className="mt-2 max-w-none text-[24px] font-normal leading-relaxed text-text-primary md:text-[28px]">
-            Looped is where real employees and students speak freely, anonymous by design
+            Looped is where real employees and students speak freely
           </p>
 
           <div id="download" className="mt-2">

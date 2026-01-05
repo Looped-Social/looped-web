@@ -12,6 +12,7 @@ export function Footer() {
         <div className="grid gap-8 md:grid-cols-4 md:[grid-template-columns:2fr_1fr_1fr_1fr]">
           <div className="space-y-4">
             <Logo />
+            <p className="text-xs text-text-secondary">Connect Diffrently</p>
             <p className="max-w-sm text-sm text-text-secondary">
               Your community, verified. Where real employees and students speak freely.
             </p>
