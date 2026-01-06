@@ -3,7 +3,7 @@
 ## Project Overview
 **Looped** is a workplace-verified social iOS app built with SwiftUI. It's a pseudonymous social platform where employees verify their employment and then post/message within their company's channels. Think "YikYak for any employer."
 
-This repository currently contains the marketing/landing experience for Looped – a single-page MVP designed to drive app downloads and user acquisition – and will evolve into the full web client for the Looped social platform.
+This repository currently contains the marketing/landing experience for Looped and the authenticated web client for the Looped social platform. Both live in `apps/web` and are served from the same domain (`mylooped.app`).
 
 All backend business logic and data persistence live in a separately deployed Spring Boot application. This frontend never owns backend business rules or server-side rendering logic; it should only consume APIs exposed by the Spring Boot service.
 
@@ -18,12 +18,17 @@ All backend business logic and data persistence live in a separately deployed Sp
 - **App Platform**: iOS only
 - **Target Audience**: Working professionals looking for workplace social interaction
 
-## Landing Page Requirements
+## Public Marketing Requirements
 
 ### Core Functionality
 - Single page MVP with minimal complexity
 - Hero section with app download link
 - Focus on conversion optimization and user retention
+
+## Routing & Auth Model
+- **Public routes**: `/`, `/privacy`, `/terms`, `/about`, `/download`, etc. stay accessible without auth.
+- **App routes**: everything under `/app/*` is gated and requires auth.
+- **Root behavior**: signed-in users visiting `/` should be redirected to `/app`; unauthenticated users visiting `/app/*` should be redirected to `/` (or `/signin` if added later).
 
 
 

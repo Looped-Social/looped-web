@@ -1,7 +1,7 @@
 # Looped Admin Dashboard
 
 ## Project Overview
-The Looped admin dashboard is a separate web app for internal/admin workflows. It is deployed independently from the marketing site and runs on a dedicated subdomain (e.g., `admin.mylooped.app`).
+The Looped admin dashboard is a separate web app for internal/admin workflows. It is deployed independently from the main `mylooped.app` web experience (landing + app routes) and runs on a dedicated subdomain (e.g., `admin.mylooped.app`).
 
 ## Monorepo Context
 - This app lives in `apps/admin` within the Looped web monorepo.

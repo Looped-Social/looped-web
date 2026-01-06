@@ -1,7 +1,7 @@
 Looped Admin
 ===========
 
-Admin dashboard for Looped, built with React Router v7, Vite, TypeScript, and Tailwind CSS v4. This app is deployed separately from the marketing site and lives inside the Looped web monorepo.
+Admin dashboard for Looped, built with React Router v7, Vite, TypeScript, and Tailwind CSS v4. This app is deployed separately from the main `mylooped.app` web experience (landing + app routes) and lives inside the Looped web monorepo.
 
 Repo Context
 ------------
