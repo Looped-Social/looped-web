@@ -10,6 +10,7 @@ type LogoProps = {
   size?: "xs" | "sm" | "md" | "lg" | "xl";
   width?: number | string;
   height?: number | string;
+  to?: string;
 };
 
 //hello to you
@@ -31,6 +32,7 @@ export function Logo({
   size = "md",
   width,
   height,
+  to = "/",
 }: LogoProps) {
   const { theme } = useTheme();
   const logoSrc = theme === "dark" ? loopedLogoDark : loopedLogo;
@@ -41,7 +43,7 @@ export function Logo({
 
   return (
     <Link
-      to="/"
+      to={to}
       className={`inline-flex w-fit shrink-0 cursor-pointer items-center gap-0 text-text-primary no-underline transition-opacity duration-200 hover:opacity-80 ${className}`}
     >
       <img src={logoSrc} alt="Looped" className={imageClasses} style={imageStyle} />

@@ -17,10 +17,11 @@ This repository is a monorepo for Looped web properties. The marketing/landing e
 
 ## Development Conventions
 - **Workspaces**: Use npm workspaces at repo root. Install deps from the root.
-- **Shared Code**: Put cross-app UI in `packages/ui`; keep app-specific UI in each app’s `app/components`.
-- **Styling**: Tailwind CSS v4+ only; no CSS-in-JS. Use `@import "@looped/config/theme.css"` in each app’s `app.css`.
+- **Shared Code**: Put cross-app UI in `packages/ui`; keep app-specific UI in each app’s `app/components`. Prefer reusable components for post cards, buttons, headers, profile screens, and tab bars to keep UI consistent and easy to extend.
+- **Styling**: Tailwind CSS v4+ only; no CSS-in-JS. Use `@import "@looped/config/theme.css"` in each app’s `app.css`. Typography and color tokens live in `packages/config/src/theme.css` and are the single source of truth so visual changes are centralized and reusable. Avoid hard-coded hex values or font names in components.
 - **Routing**: React Router v7 only.
 - **Public vs App Routes**: keep public routes like `/`, `/privacy`, `/terms`, etc. accessible without auth; the app lives under `/app/*` and is auth-gated. Signed-in users hitting `/` should be routed to `/app`.
+- **Web App Split**: marketing UI lives in `apps/web/src/marketing`, app UI lives in `apps/web/src/app`. Route modules are split under `apps/web/app/routes/marketing` and `apps/web/app/routes/app`.
 
 ## Deployment Model
 - Separate deploys per app.

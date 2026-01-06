@@ -12,6 +12,7 @@ All backend business logic and data persistence live in a separately deployed Sp
 - Shared UI should go in `packages/ui` (Tailwind-only React components like Button, Input, Card); shared theme tokens live in `packages/config/src/theme.css`.
 - Before duplicating UI or hooks, look up one level (`../..`) to check `packages/ui` and `packages/config` for shared components and theme utilities.
 - Install dependencies from the repo root using npm workspaces; run dev from the root or with `npm run -w apps/web dev`.
+- **App vs Marketing Split**: marketing UI lives in `apps/web/src/marketing`, app UI lives in `apps/web/src/app`. Route modules are split under `apps/web/app/routes/marketing` and `apps/web/app/routes/app`.
 
 ## Brand & Design
 - **Primary Color**: #ea404a 
@@ -42,12 +43,12 @@ All backend business logic and data persistence live in a separately deployed Sp
 ### Styling & Architecture
 - **Styling Framework**: Tailwind CSS v4+ (no CSS-in-JS or other CSS frameworks)
 - **Tailwind Versioning**: Use Tailwind 4 and beyond only; avoid patterns that rely on Tailwind 3-specific tooling.
-- **Component Organization**: Prefer a folder-per-component structure (e.g., `ComponentName/ComponentName.tsx`) and keep styling primarily in Tailwind utility classes within the JSX/TSX. Add tests or stories alongside components where helpful.
+- **Component Organization**: Prefer a folder-per-component structure (e.g., `ComponentName/ComponentName.tsx`) and keep styling primarily in Tailwind utility classes within the JSX/TSX. Promote reusable UI (post cards, buttons, headers, profile screens, tab bars) into shared components to keep continuity across routes and speed up iteration.
 - **Global Styles & Theme**:
-  - Define design tokens (colors, typography, spacing) primarily via the Tailwind theme configuration.
+  - Define design tokens (colors, typography, spacing) primarily via the Tailwind theme configuration in `packages/config/src/theme.css`.
   - Keep the primary brand color as `#ea404a`.
   - Use CSS variables at the `:root` level only when necessary, and integrate them with Tailwind (e.g., via theme extensions).
-- **Typography**: Use Google Fonts Poppins as the primary font family, wired through Tailwind's font family utilities.
+- **Typography**: Use Google Fonts Poppins as the primary font family, wired through Tailwind's font family utilities in the shared theme so changes are centralized and reusable. Avoid hard-coded font families and colors inside components.
 - **Responsive Design** (mobile-first):
   - Follow Tailwind's mobile-first responsive design: base/unprefixed classes target mobile, with `sm:`, `md:`, `lg:`, `xl:` prefixes for larger breakpoints.
   - Support all device sizes (mobile, tablet, desktop) using Tailwind's responsive utilities instead of hand-written media queries where possible.
