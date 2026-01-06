@@ -107,6 +107,7 @@ export type AdminCommunity = {
   kind: "company" | "school" | "sector" | "specialization" | string;
   specialization_type?: "major" | "department" | string | null;
   name: string;
+  short_name?: string | null;
   description?: string | null;
   member_count?: number | null;
   image_url?: string | null;
@@ -126,17 +127,20 @@ export type AdminCommunityCreateRequest = {
   imageUrl?: string;
   verificationTtlDays?: number;
   specializationType?: "major" | "department";
+  shortName?: string;
 };
 
 export type AdminCommunityUpdateRequest = {
   verificationTtlDays?: number;
   description?: string;
+  shortName?: string;
 };
 
 export type AdminCommunityUpdateResponse = {
   id: number;
   description?: string | null;
   verification_ttl_days?: number | null;
+  short_name?: string | null;
 };
 
 export type AdminCommunityDomainListResponse = {

@@ -1,18 +1,24 @@
 import { Link } from "react-router";
 
 import { AppStoreButton } from "../AppStoreButton/AppStoreButton";
-import { Logo } from "@looped/ui";
+import { LoopedMoto, LoopedMotoDark, useTheme } from "@looped/ui";
 
 export function Footer() {
+  const { theme } = useTheme();
   const currentYear = new Date().getFullYear();
+  const motoSrc = theme === "dark" ? LoopedMotoDark : LoopedMoto;
 
   return (
     <footer className="mt-16 border-t border-border bg-bg-muted">
       <div className="mx-auto max-w-6xl px-4 py-12 md:py-14">
         <div className="grid gap-8 md:grid-cols-4 md:[grid-template-columns:2fr_1fr_1fr_1fr]">
           <div className="space-y-4">
-            <Logo />
-            <p className="text-xs text-text-secondary">Connect Diffrently</p>
+            <Link
+              to="/"
+              className="inline-flex w-fit shrink-0 items-center transition-opacity duration-200 hover:opacity-80"
+            >
+              <img src={motoSrc} alt="Looped" className="h-20 w-auto" />
+            </Link>
             <p className="max-w-sm text-sm text-text-secondary">
               Your community, verified. Where real employees and students speak freely.
             </p>

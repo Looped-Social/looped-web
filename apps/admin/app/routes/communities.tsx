@@ -135,11 +135,13 @@ export default function CommunitiesRoute() {
   const [createDescription, setCreateDescription] = useState("");
   const [createImageUrl, setCreateImageUrl] = useState("");
   const [createTtlDays, setCreateTtlDays] = useState("");
+  const [createShortName, setCreateShortName] = useState("");
   const [createSuccess, setCreateSuccess] = useState<string | null>(null);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
 
   const [ttlInput, setTtlInput] = useState("");
   const [descriptionInput, setDescriptionInput] = useState("");
+  const [shortNameInput, setShortNameInput] = useState("");
 
   const paramId = useMemo(() => {
     const raw =
@@ -241,6 +243,7 @@ export default function CommunitiesRoute() {
       setSelectedDetail(detail);
       setTtlInput(detail.verification_ttl_days?.toString() ?? "");
       setDescriptionInput(detail.description ?? "");
+      setShortNameInput(detail.short_name ?? "");
       const domainRes = await fetchAdminCommunityDomains(id);
       setDomains(domainRes.items ?? []);
     } catch (err) {
@@ -288,6 +291,7 @@ export default function CommunitiesRoute() {
       setLogoUploadStatus("idle");
       setCustomLogoUrl("");
       setDescriptionInput("");
+      setShortNameInput("");
       return;
     }
     void fetchDetail(selectedId);
@@ -331,12 +335,14 @@ export default function CommunitiesRoute() {
         imageUrl: createImageUrl.trim() || undefined,
         verificationTtlDays: isCreateSpecialization ? undefined : ttlNumber,
         specializationType: isCreateSpecialization ? createKind : undefined,
+        shortName: createShortName.trim() || undefined,
       });
       setCreateSuccess(`Created community #${response.id}.`);
       setCreateName("");
       setCreateDescription("");
       setCreateImageUrl("");
       setCreateTtlDays("");
+      setCreateShortName("");
       await runSearch();
       if (response.id) {
         setSelectedId(response.id);
@@ -398,6 +404,36 @@ export default function CommunitiesRoute() {
       await fetchDetail(selectedId);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Unable to update bio.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleUpdateShortName = async () => {
+    if (!selectedId || !selectedDetail) return;
+    const nextShortName = shortNameInput.trim();
+    const currentShortName = (selectedDetail.short_name ?? "").trim();
+    if (nextShortName === currentShortName) {
+      setActionError("Short name is unchanged.");
+      return;
+    }
+    if (
+      !window.confirm(
+        nextShortName
+          ? `Update short name to "${nextShortName}"?`
+          : "Clear the short name override?"
+      )
+    ) {
+      return;
+    }
+
+    setIsSaving(true);
+    setActionError(null);
+    try {
+      await updateAdminCommunity(selectedId, { shortName: nextShortName });
+      await fetchDetail(selectedId);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Unable to update short name.");
     } finally {
       setIsSaving(false);
     }
@@ -727,6 +763,39 @@ export default function CommunitiesRoute() {
                 <p className="text-xs text-text-light">
                   Created {formatDate(selectedDetail.created_at)}
                 </p>
+
+                <div className="space-y-2">
+                  <label
+                    className="text-xs font-semibold uppercase text-text-light"
+                    htmlFor="short-name-update"
+                  >
+                    Short name
+                  </label>
+                  <input
+                    id="short-name-update"
+                    type="text"
+                    value={shortNameInput}
+                    onChange={(event) => setShortNameInput(event.target.value)}
+                    className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-text-primary outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+                    placeholder="Auto"
+                  />
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleUpdateShortName}
+                      disabled={isSaving}
+                      className="rounded-lg border border-border px-4 py-2 text-sm font-semibold text-text-primary transition hover:bg-bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      Update short name
+                    </button>
+                    <span className="text-xs text-text-light">
+                      Leave blank and update to clear override.
+                    </span>
+                  </div>
+                  <p className="text-xs text-text-light">
+                    Defaults to the first domain label when unset.
+                  </p>
+                </div>
 
                 <div className="space-y-2">
                   <label className="text-xs font-semibold uppercase text-text-light" htmlFor="bio-update">
@@ -1073,6 +1142,23 @@ export default function CommunitiesRoute() {
                   placeholder="Community name"
                   required
                 />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-semibold uppercase text-text-light" htmlFor="create-short-name">
+                  Short name (optional)
+                </label>
+                <input
+                  id="create-short-name"
+                  type="text"
+                  value={createShortName}
+                  onChange={(event) => setCreateShortName(event.target.value)}
+                  className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-text-primary outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+                  placeholder="UNC"
+                />
+                <p className="text-xs text-text-light">
+                  Leave blank to use the default derived from the first domain.
+                </p>
               </div>
 
               <div className="space-y-2">

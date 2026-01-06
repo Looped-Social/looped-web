@@ -203,11 +203,7 @@ export async function fetchAdminCommunity(id: number): Promise<AdminCommunity> {
 export async function createAdminCommunity(
   payload: AdminCommunityCreateRequest
 ): Promise<{ id: number }> {
-  const { specializationType, ...rest } = payload;
-  const body = {
-    ...rest,
-    ...(specializationType ? { specialization_type: specializationType } : {}),
-  };
+  const body = payload;
   return adminFetch<{ id: number }>(`/v1/admin/communities`, {
     method: "POST",
     body: JSON.stringify(body),
