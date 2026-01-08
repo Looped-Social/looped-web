@@ -34,7 +34,7 @@ export type AdminInviteResponse = {
 
 export type AdminUpdateRequest = {
   role?: AdminRole;
-  status?: AdminStatus;
+  status?: AdminStatus | string;
   permissions?: string[];
 };
 
@@ -48,21 +48,34 @@ export type AdminUpdateResponse = {
 export type VerificationItem = {
   id: number;
   user_id: number;
-  email: string | null;
-  method: "email" | "video" | "thirdparty" | string;
+  user_handle?: string | null;
+  user_display_name?: string | null;
+  email?: string | null;
+  method: "email" | "video" | "thirdparty" | "photo_id" | string;
   status: "pending" | "approved" | "rejected" | string;
   submitted_at: string;
-  company_domain: string | null;
-  media_key: string | null;
-  metadata: Record<string, unknown> | null;
-  reviewed_at: string | null;
-  reviewed_by: number | null;
-  reject_reason: string | null;
+  company_domain?: string | null;
+  media_key?: string | null;
+  metadata?: Record<string, unknown> | null;
+  reviewed_at?: string | null;
+  reviewed_by?: number | null;
+  reject_reason?: string | null;
 };
 
 export type VerificationListResponse = {
   items: VerificationItem[];
   next_cursor?: string | null;
+};
+
+export type VerificationDocument = {
+  kind: "selfie" | "id_front" | "id_back" | string;
+  key: string;
+  download_url: string;
+  expires_in_seconds: number;
+};
+
+export type VerificationDetail = VerificationItem & {
+  documents?: VerificationDocument[];
 };
 
 export type CommunityRequestItem = {

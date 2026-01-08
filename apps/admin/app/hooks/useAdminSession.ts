@@ -103,7 +103,7 @@ export function useAdminSession() {
     };
   }, []);
 
-  const startSignIn = async (action: () => Promise<void>) => {
+  const startSignIn = async (action: () => Promise<unknown>) => {
     setState((prev) => ({ ...prev, status: "checking", error: null }));
     try {
       await action();

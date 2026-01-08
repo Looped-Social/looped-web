@@ -34,6 +34,7 @@ import type {
   UserDetail,
   UserListResponse,
   UserStatsResponse,
+  VerificationDetail,
   VerificationListResponse,
 } from "../types/admin";
 
@@ -124,25 +125,43 @@ export async function fetchAdminMe(token: string): Promise<AdminMe> {
 
 export async function fetchAdminVerifications(
   status: "pending" | "approved" | "rejected",
+  method?: string,
   cursor?: string,
   limit = 20
 ): Promise<VerificationListResponse> {
   const params = new URLSearchParams({ status, limit: String(limit) });
+  if (method) params.set("method", method);
   if (cursor) params.set("cursor", cursor);
   return adminFetch<VerificationListResponse>(`/v1/admin/verifications?${params.toString()}`);
 }
 
-export async function approveVerification(id: number): Promise<{ status: string }> {
-  return adminFetch<{ status: string }>(`/v1/admin/verifications/${id}/approve`, {
-    method: "POST",
-  });
+export async function fetchAdminVerification(id: number): Promise<VerificationDetail> {
+  return adminFetch<VerificationDetail>(`/v1/admin/verifications/${id}`);
 }
 
-export async function rejectVerification(id: number, reason: string): Promise<{ status: string }> {
-  return adminFetch<{ status: string }>(`/v1/admin/verifications/${id}/reject`, {
-    method: "POST",
-    body: JSON.stringify({ reason }),
-  });
+export async function approveVerification(
+  id: number
+): Promise<{ status: "approved" | string; media_deleted: boolean }> {
+  return adminFetch<{ status: "approved" | string; media_deleted: boolean }>(
+    `/v1/admin/verifications/${id}/approve`,
+    {
+      method: "POST",
+    }
+  );
+}
+
+export async function rejectVerification(
+  id: number,
+  reason?: string
+): Promise<{ status: "rejected" | string; delete_after_at: string }> {
+  const trimmed = reason?.trim();
+  return adminFetch<{ status: "rejected" | string; delete_after_at: string }>(
+    `/v1/admin/verifications/${id}/reject`,
+    {
+      method: "POST",
+      body: trimmed ? JSON.stringify({ reason: trimmed }) : undefined,
+    }
+  );
 }
 
 export async function fetchAdminCommunityRequests(

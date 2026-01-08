@@ -8,6 +8,8 @@ type AdminHomeProps = {
   admin: AdminMe;
 };
 
+const verificationMethod = "photo_id";
+
 export function AdminHome({ admin }: AdminHomeProps) {
   const canVerify = admin.permissions.includes("verify_users");
   const canViewReports = admin.permissions.includes("view_reports");
@@ -26,7 +28,7 @@ export function AdminHome({ admin }: AdminHomeProps) {
   useEffect(() => {
     if (!canVerify) return;
     let active = true;
-    fetchAdminVerifications("pending", undefined, 5)
+    fetchAdminVerifications("pending", verificationMethod, undefined, 5)
       .then((res) => {
         if (!active) return;
         setVerificationState({ items: res.items, nextCursor: res.next_cursor ?? null });
