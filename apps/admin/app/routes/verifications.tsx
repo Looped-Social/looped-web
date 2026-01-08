@@ -3,13 +3,15 @@ import { useOutletContext } from "react-router";
 
 import {
   approveVerification,
+  fetchAdminVerification,
   fetchAdminVerifications,
   rejectVerification,
 } from "../lib/adminApi";
-import type { VerificationItem } from "../types/admin";
+import type { VerificationDetail, VerificationDocument, VerificationItem } from "../types/admin";
 import type { AdminRouteContext } from "./admin";
 
 const statusOptions = ["pending", "approved", "rejected"] as const;
+const verificationMethod = "photo_id";
 
 function formatDate(value?: string | null) {
   if (!value) return "N/A";
@@ -39,6 +41,27 @@ function formatStatusLabel(value: string) {
   return value.replace(/_/g, " ");
 }
 
+function formatDocumentKind(value: string) {
+  return value.replace(/_/g, " ").replace(/\b\w/g, (match) => match.toUpperCase());
+}
+
+function getApplicantLabel(item: VerificationItem) {
+  const displayName = item.user_display_name?.trim();
+  const handle = item.user_handle?.trim();
+  if (displayName && handle) return `${displayName} (@${handle})`;
+  if (displayName) return displayName;
+  if (handle) return `@${handle}`;
+  return item.email ?? "Unknown applicant";
+}
+
+function getApplicantSecondary(item: VerificationItem) {
+  return item.email ?? null;
+}
+
+function isPhotoIdDetail(value: VerificationDetail | null, id: number): value is VerificationDetail {
+  return value !== null && value.id === id;
+}
+
 export default function VerificationsRoute() {
   const { admin } = useOutletContext<AdminRouteContext>();
   const canVerify = admin.permissions.includes("verify_users");
@@ -46,6 +69,9 @@ export default function VerificationsRoute() {
   const [items, setItems] = useState<VerificationItem[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [selectedDetail, setSelectedDetail] = useState<VerificationDetail | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -69,7 +95,7 @@ export default function VerificationsRoute() {
     let active = true;
     setIsLoading(true);
     setError(null);
-    fetchAdminVerifications(status)
+    fetchAdminVerifications(status, verificationMethod)
       .then((res) => {
         if (!active) return;
         setItems(res.items);
@@ -91,11 +117,49 @@ export default function VerificationsRoute() {
     };
   }, [canVerify, status]);
 
+  useEffect(() => {
+    if (!selectedItem) {
+      setSelectedDetail(null);
+      setDetailError(null);
+      setDetailLoading(false);
+      return;
+    }
+
+    if (selectedItem.method !== verificationMethod) {
+      setSelectedDetail(null);
+      setDetailError(null);
+      setDetailLoading(false);
+      return;
+    }
+
+    let active = true;
+    setDetailLoading(true);
+    setDetailError(null);
+    fetchAdminVerification(selectedItem.id)
+      .then((res) => {
+        if (!active) return;
+        setSelectedDetail(res);
+      })
+      .catch((err) => {
+        if (!active) return;
+        setSelectedDetail(null);
+        setDetailError(err instanceof Error ? err.message : "Unable to load verification details.");
+      })
+      .finally(() => {
+        if (!active) return;
+        setDetailLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [selectedItem?.id, selectedItem?.method]);
+
   const loadMore = async () => {
     if (!nextCursor || isLoading) return;
     setIsLoading(true);
     try {
-      const res = await fetchAdminVerifications(status, nextCursor);
+      const res = await fetchAdminVerifications(status, verificationMethod, nextCursor);
       setItems((prev) => [...prev, ...res.items]);
       setNextCursor(res.next_cursor ?? null);
     } catch (err) {
@@ -222,6 +286,7 @@ export default function VerificationsRoute() {
           )}
           {items.map((item) => {
             const isActive = item.id === selectedItem?.id;
+            const secondary = getApplicantSecondary(item);
             return (
               <button
                 key={item.id}
@@ -236,11 +301,11 @@ export default function VerificationsRoute() {
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <p className="text-sm font-semibold text-text-primary">
-                      {item.email ?? "Unknown email"}
+                      {getApplicantLabel(item)}
                     </p>
-                    <p className="mt-1 text-xs text-text-secondary">
-                      {item.company_domain ?? "No company domain"}
-                    </p>
+                    {secondary && (
+                      <p className="mt-1 text-xs text-text-secondary">{secondary}</p>
+                    )}
                   </div>
                   <span className="rounded-full bg-bg-muted px-2.5 py-1 text-xs font-semibold text-text-primary">
                     {item.method}
@@ -285,11 +350,11 @@ export default function VerificationsRoute() {
                   Applicant
                 </p>
                 <p className="mt-1 text-sm font-semibold text-text-primary">
-                  {selectedItem.email ?? "Unknown email"}
+                  {getApplicantLabel(selectedItem)}
                 </p>
-                <p className="text-xs text-text-light">
-                  {selectedItem.company_domain ?? "N/A"}
-                </p>
+                {getApplicantSecondary(selectedItem) && (
+                  <p className="text-xs text-text-light">{getApplicantSecondary(selectedItem)}</p>
+                )}
               </div>
               <div className="rounded-xl border border-border bg-bg-muted/30 p-3">
                 <p className="text-xs font-semibold uppercase text-text-light">
@@ -302,6 +367,84 @@ export default function VerificationsRoute() {
                   <p className="mt-1 text-xs text-text-light">{selectedItem.media_key}</p>
                 )}
               </div>
+
+              {selectedItem.method === verificationMethod && (
+                <div className="rounded-xl border border-border bg-bg-muted/30 p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs font-semibold uppercase text-text-light">
+                      Documents
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedDetail(null);
+                        setDetailError(null);
+                        setDetailLoading(true);
+                        fetchAdminVerification(selectedItem.id)
+                          .then((res) => setSelectedDetail(res))
+                          .catch((err) =>
+                            setDetailError(
+                              err instanceof Error
+                                ? err.message
+                                : "Unable to refresh verification documents."
+                            )
+                          )
+                          .finally(() => setDetailLoading(false));
+                      }}
+                      className="text-xs font-semibold uppercase text-brand"
+                    >
+                      Refresh
+                    </button>
+                  </div>
+
+                  {detailLoading && (
+                    <p className="mt-2 text-xs text-text-light">Loading documents...</p>
+                  )}
+
+                  {detailError && (
+                    <p className="mt-2 whitespace-pre-wrap text-xs text-brand">{detailError}</p>
+                  )}
+
+                  {!detailLoading && !detailError && (
+                    <div className="mt-3 space-y-3">
+                      {(isPhotoIdDetail(selectedDetail, selectedItem.id)
+                        ? (selectedDetail.documents ?? [])
+                        : []
+                      ).map((doc: VerificationDocument) => (
+                        <div key={`${doc.kind}:${doc.key}`} className="space-y-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="text-xs font-semibold text-text-primary">
+                              {formatDocumentKind(doc.kind)}
+                            </p>
+                            <a
+                              href={doc.download_url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-xs font-semibold uppercase text-brand"
+                            >
+                              Open
+                            </a>
+                          </div>
+                          <img
+                            src={doc.download_url}
+                            alt={doc.kind}
+                            className="w-full rounded-xl border border-border bg-bg object-contain"
+                          />
+                          <p className="text-[11px] text-text-light">
+                            Expires in {doc.expires_in_seconds}s
+                          </p>
+                        </div>
+                      ))}
+
+                      {isPhotoIdDetail(selectedDetail, selectedItem.id) &&
+                        (selectedDetail.documents?.length ?? 0) === 0 && (
+                          <p className="text-xs text-text-light">No documents attached.</p>
+                        )}
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div className="rounded-xl border border-border bg-bg-muted/30 p-3">
                 <p className="text-xs font-semibold uppercase text-text-light">
                   Status
