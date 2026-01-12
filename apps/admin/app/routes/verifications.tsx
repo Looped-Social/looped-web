@@ -1,13 +1,14 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useOutletContext } from "react-router";
 
+import { VerificationDocumentGallery } from "../components/VerificationDocumentGallery/VerificationDocumentGallery";
 import {
   approveVerification,
   fetchAdminVerification,
   fetchAdminVerifications,
   rejectVerification,
 } from "../lib/adminApi";
-import type { VerificationDetail, VerificationDocument, VerificationItem } from "../types/admin";
+import type { VerificationDetail, VerificationItem } from "../types/admin";
 import type { AdminRouteContext } from "./admin";
 
 const statusOptions = ["pending", "approved", "rejected"] as const;
@@ -39,10 +40,6 @@ function statusBadgeClass(status: string) {
 
 function formatStatusLabel(value: string) {
   return value.replace(/_/g, " ");
-}
-
-function formatDocumentKind(value: string) {
-  return value.replace(/_/g, " ").replace(/\b\w/g, (match) => match.toUpperCase());
 }
 
 function getApplicantLabel(item: VerificationItem) {
@@ -78,6 +75,7 @@ export default function VerificationsRoute() {
   const [isSaving, setIsSaving] = useState(false);
   const [confirmReject, setConfirmReject] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
+  const rejectReasonRef = useRef<HTMLTextAreaElement | null>(null);
 
   const selectedItem = useMemo(
     () => items.find((item) => item.id === selectedId) ?? items[0] ?? null,
@@ -88,6 +86,10 @@ export default function VerificationsRoute() {
     setConfirmReject(false);
     setActionError(null);
     setRejectReason("");
+    requestAnimationFrame(() => {
+      if (!rejectReasonRef.current) return;
+      rejectReasonRef.current.style.height = "auto";
+    });
   }, [selectedItem?.id]);
 
   useEffect(() => {
@@ -258,7 +260,7 @@ export default function VerificationsRoute() {
         </div>
       </header>
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+      <div className="grid gap-6 lg:grid-cols-[360px_minmax(0,1fr)] lg:items-start">
         <section className="space-y-3">
           {error && (
             <div className="rounded-xl border border-border bg-bg px-4 py-3 text-sm text-text-secondary">
@@ -338,145 +340,134 @@ export default function VerificationsRoute() {
         </section>
 
         <aside className="rounded-2xl border border-border bg-bg p-5 lg:sticky lg:top-24">
-          <h2 className="text-lg font-semibold text-strong">Review details</h2>
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h2 className="text-lg font-semibold text-strong">Review details</h2>
+              {selectedItem && (
+                <p className="mt-1 text-xs text-text-light">
+                  Submitted {formatDate(selectedItem.submitted_at)}
+                </p>
+              )}
+            </div>
+            {selectedItem && (
+              <span
+                className={`rounded-full px-2.5 py-1 text-xs font-semibold ${statusBadgeClass(
+                  selectedItem.status
+                )}`}
+              >
+                {formatStatusLabel(selectedItem.status)}
+              </span>
+            )}
+          </div>
           {!selectedItem ? (
             <p className="mt-3 text-sm text-text-secondary">
               Select a verification request to review the details.
             </p>
           ) : (
-            <div className="mt-4 space-y-4 text-sm text-text-secondary">
-              <div>
-                <p className="text-xs font-semibold uppercase text-text-light">
-                  Applicant
-                </p>
-                <p className="mt-1 text-sm font-semibold text-text-primary">
-                  {getApplicantLabel(selectedItem)}
-                </p>
-                {getApplicantSecondary(selectedItem) && (
-                  <p className="text-xs text-text-light">{getApplicantSecondary(selectedItem)}</p>
-                )}
-              </div>
-              <div className="rounded-xl border border-border bg-bg-muted/30 p-3">
-                <p className="text-xs font-semibold uppercase text-text-light">
-                  Method
-                </p>
-                <p className="mt-1 text-sm font-semibold text-text-primary">
-                  {selectedItem.method}
-                </p>
-                {selectedItem.media_key && (
-                  <p className="mt-1 text-xs text-text-light">{selectedItem.media_key}</p>
-                )}
-              </div>
-
-              {selectedItem.method === verificationMethod && (
-                <div className="rounded-xl border border-border bg-bg-muted/30 p-3">
-                  <div className="flex items-center justify-between gap-2">
+            <div className="mt-4 space-y-5 text-sm text-text-secondary">
+              <div className="grid gap-4 lg:grid-cols-[minmax(0,320px)_minmax(0,1fr)] lg:items-start">
+                <div className="space-y-4">
+                  <div>
                     <p className="text-xs font-semibold uppercase text-text-light">
-                      Documents
+                      Applicant
                     </p>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedDetail(null);
-                        setDetailError(null);
-                        setDetailLoading(true);
-                        fetchAdminVerification(selectedItem.id)
-                          .then((res) => setSelectedDetail(res))
-                          .catch((err) =>
-                            setDetailError(
-                              err instanceof Error
-                                ? err.message
-                                : "Unable to refresh verification documents."
-                            )
-                          )
-                          .finally(() => setDetailLoading(false));
-                      }}
-                      className="text-xs font-semibold uppercase text-brand"
-                    >
-                      Refresh
-                    </button>
+                    <p className="mt-1 text-sm font-semibold text-text-primary">
+                      {getApplicantLabel(selectedItem)}
+                    </p>
+                    {getApplicantSecondary(selectedItem) && (
+                      <p className="text-xs text-text-light">{getApplicantSecondary(selectedItem)}</p>
+                    )}
                   </div>
 
-                  {detailLoading && (
-                    <p className="mt-2 text-xs text-text-light">Loading documents...</p>
-                  )}
+                  <div className="rounded-xl border border-border bg-bg-muted/30 p-3">
+                    <p className="text-xs font-semibold uppercase text-text-light">
+                      Method
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-text-primary">
+                      {selectedItem.method}
+                    </p>
+                    {selectedItem.media_key && (
+                      <p className="mt-1 text-xs text-text-light">{selectedItem.media_key}</p>
+                    )}
+                  </div>
 
-                  {detailError && (
-                    <p className="mt-2 whitespace-pre-wrap text-xs text-brand">{detailError}</p>
-                  )}
+                  <div className="space-y-3">
+                    <label className="text-xs font-semibold uppercase text-text-light">
+                      Rejection reason
+                    </label>
+                    <textarea
+                      ref={rejectReasonRef}
+                      value={rejectReason}
+                      onChange={(event) => {
+                        setRejectReason(event.target.value);
+                        event.currentTarget.style.height = "auto";
+                        event.currentTarget.style.height = `${event.currentTarget.scrollHeight}px`;
+                      }}
+                      rows={2}
+                      placeholder="Provide a clear reason for rejection..."
+                      className="w-full resize-none overflow-hidden rounded-xl border border-border bg-bg px-3 py-2 text-sm text-text-primary outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+                    />
+                  </div>
 
-                  {!detailLoading && !detailError && (
-                    <div className="mt-3 space-y-3">
-                      {(isPhotoIdDetail(selectedDetail, selectedItem.id)
-                        ? (selectedDetail.documents ?? [])
-                        : []
-                      ).map((doc: VerificationDocument) => (
-                        <div key={`${doc.kind}:${doc.key}`} className="space-y-2">
-                          <div className="flex items-center justify-between gap-2">
-                            <p className="text-xs font-semibold text-text-primary">
-                              {formatDocumentKind(doc.kind)}
-                            </p>
-                            <a
-                              href={doc.download_url}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-xs font-semibold uppercase text-brand"
-                            >
-                              Open
-                            </a>
-                          </div>
-                          <img
-                            src={doc.download_url}
-                            alt={doc.kind}
-                            className="w-full rounded-xl border border-border bg-bg object-contain"
-                          />
-                          <p className="text-[11px] text-text-light">
-                            Expires in {doc.expires_in_seconds}s
-                          </p>
-                        </div>
-                      ))}
-
-                      {isPhotoIdDetail(selectedDetail, selectedItem.id) &&
-                        (selectedDetail.documents?.length ?? 0) === 0 && (
-                          <p className="text-xs text-text-light">No documents attached.</p>
-                        )}
+                  {selectedItem.reject_reason && (
+                    <div className="rounded-xl border border-border bg-bg-muted/30 p-3">
+                      <p className="text-xs font-semibold uppercase text-text-light">
+                        Reject reason
+                      </p>
+                      <p className="mt-2 text-xs text-text-secondary">{selectedItem.reject_reason}</p>
                     </div>
                   )}
                 </div>
-              )}
 
-              <div className="rounded-xl border border-border bg-bg-muted/30 p-3">
-                <p className="text-xs font-semibold uppercase text-text-light">
-                  Status
-                </p>
-                <div className="mt-2 flex items-center justify-between text-sm">
-                  <span className="text-text-secondary">Current status</span>
-                  <span
-                    className={`rounded-full px-2 py-1 text-xs font-semibold ${statusBadgeClass(
-                      selectedItem.status
-                    )}`}
-                  >
-                    {formatStatusLabel(selectedItem.status)}
-                  </span>
-                </div>
-                {selectedItem.reject_reason && (
-                  <p className="mt-1 text-xs text-text-light">
-                    Reject reason: {selectedItem.reject_reason}
-                  </p>
+                {selectedItem.method === verificationMethod && (
+                  <div className="rounded-xl border border-border bg-bg-muted/30 p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-xs font-semibold uppercase text-text-light">
+                        Documents
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedDetail(null);
+                          setDetailError(null);
+                          setDetailLoading(true);
+                          fetchAdminVerification(selectedItem.id)
+                            .then((res) => setSelectedDetail(res))
+                            .catch((err) =>
+                              setDetailError(
+                                err instanceof Error
+                                  ? err.message
+                                  : "Unable to refresh verification documents."
+                              )
+                            )
+                            .finally(() => setDetailLoading(false));
+                        }}
+                        className="text-xs font-semibold uppercase text-brand"
+                      >
+                        Refresh
+                      </button>
+                    </div>
+
+                    {detailLoading && (
+                      <p className="mt-2 text-xs text-text-light">Loading documents...</p>
+                    )}
+
+                    {detailError && (
+                      <p className="mt-2 whitespace-pre-wrap text-xs text-brand">{detailError}</p>
+                    )}
+
+                    {!detailLoading && !detailError && (
+                      <div className="mt-3">
+                        {isPhotoIdDetail(selectedDetail, selectedItem.id) &&
+                        (selectedDetail.documents?.length ?? 0) > 0 ? (
+                          <VerificationDocumentGallery documents={selectedDetail.documents ?? []} />
+                        ) : (
+                          <p className="text-xs text-text-light">No documents attached.</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 )}
-              </div>
-
-              <div className="space-y-3">
-                <label className="text-xs font-semibold uppercase text-text-light">
-                  Rejection reason
-                </label>
-                <textarea
-                  value={rejectReason}
-                  onChange={(event) => setRejectReason(event.target.value)}
-                  rows={3}
-                  placeholder="Provide a clear reason for rejection..."
-                  className="w-full rounded-xl border border-border bg-bg px-3 py-2 text-sm text-text-primary  outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
-                />
               </div>
 
               {actionError && (
@@ -490,7 +481,7 @@ export default function VerificationsRoute() {
                   type="button"
                   onClick={handleApprove}
                   disabled={isSaving}
-                  className="rounded-full bg-brand px-4 py-2 text-sm font-semibold text-white  transition hover:bg-brand/90 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="rounded-full bg-brand px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand/90 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {isSaving ? "Saving..." : "Approve"}
                 </button>
