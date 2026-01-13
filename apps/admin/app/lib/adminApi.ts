@@ -16,6 +16,8 @@ import type {
   AdminInviteResponse,
   AdminListResponse,
   AdminMe,
+  AdminSpecializationsSettingsResponse,
+  AdminSpecializationsSettingsUpdateRequest,
   AdminUpdateRequest,
   AdminUpdateResponse,
   AnnouncementSendRequest,
@@ -33,6 +35,10 @@ import type {
   ReportListResponse,
   UserDetail,
   UserListResponse,
+  UserCommunityBanCreateRequest,
+  UserCommunityBanCreateResponse,
+  UserCommunityBanListResponse,
+  UserCommunityBanRevokeResponse,
   UserStatsResponse,
   VerificationDetail,
   VerificationListResponse,
@@ -164,6 +170,24 @@ export async function rejectVerification(
   );
 }
 
+export async function deleteVerificationMedia(
+  id: number
+): Promise<{
+  media_deleted: boolean;
+  media_deleted_at?: string;
+  already_deleted?: boolean;
+  no_media?: boolean;
+}> {
+  return adminFetch<{
+    media_deleted: boolean;
+    media_deleted_at?: string;
+    already_deleted?: boolean;
+    no_media?: boolean;
+  }>(`/v1/admin/verifications/${id}/delete-media`, {
+    method: "POST",
+  });
+}
+
 export async function fetchAdminCommunityRequests(
   status: "pending" | "approved" | "rejected",
   cursor?: string,
@@ -242,6 +266,19 @@ export async function updateAdminCommunity(
 export async function deleteAdminCommunity(id: number): Promise<{ status: string }> {
   return adminFetch<{ status: string }>(`/v1/admin/communities/${id}`, {
     method: "DELETE",
+  });
+}
+
+export async function fetchAdminSpecializationsSettings(): Promise<AdminSpecializationsSettingsResponse> {
+  return adminFetch<AdminSpecializationsSettingsResponse>(`/v1/admin/settings/specializations`);
+}
+
+export async function updateAdminSpecializationsSettings(
+  payload: AdminSpecializationsSettingsUpdateRequest
+): Promise<AdminSpecializationsSettingsResponse> {
+  return adminFetch<AdminSpecializationsSettingsResponse>(`/v1/admin/settings/specializations`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
   });
 }
 
@@ -411,7 +448,7 @@ export async function restoreAdminPost(id: number): Promise<{ status: string }> 
 export async function fetchAdminUsers(
   query: string,
   cursor?: string,
-  limit = 20
+  limit = 50
 ): Promise<UserListResponse> {
   const params = new URLSearchParams({ query, limit: String(limit) });
   if (cursor) params.set("cursor", cursor);
@@ -474,7 +511,7 @@ export async function fetchAdminUser(id: number): Promise<UserDetail> {
 
 export async function banAdminUser(
   id: number,
-  payload: { duration_seconds?: number; expires_at?: string; reason?: string }
+  payload: { duration_seconds?: number; expires_at?: string; reason: string }
 ): Promise<{ status: string; id: number; expires_at?: string | null }> {
   return adminFetch<{ status: string; id: number; expires_at?: string | null }>(
     `/v1/admin/users/${id}/ban`,
@@ -489,6 +526,39 @@ export async function unbanAdminUser(id: number): Promise<{ status: string }> {
   return adminFetch<{ status: string }>(`/v1/admin/users/${id}/unban`, {
     method: "POST",
   });
+}
+
+export async function fetchAdminUserCommunityBans(
+  id: number,
+  active = true
+): Promise<UserCommunityBanListResponse> {
+  const params = new URLSearchParams();
+  params.set("active", active ? "true" : "false");
+  return adminFetch<UserCommunityBanListResponse>(
+    `/v1/admin/users/${id}/community-bans?${params.toString()}`
+  );
+}
+
+export async function createAdminUserCommunityBans(
+  id: number,
+  payload: UserCommunityBanCreateRequest
+): Promise<UserCommunityBanCreateResponse> {
+  return adminFetch<UserCommunityBanCreateResponse>(`/v1/admin/users/${id}/community-bans`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function revokeAdminUserCommunityBan(
+  userId: number,
+  banId: number
+): Promise<UserCommunityBanRevokeResponse> {
+  return adminFetch<UserCommunityBanRevokeResponse>(
+    `/v1/admin/users/${userId}/community-bans/${banId}/revoke`,
+    {
+      method: "POST",
+    }
+  );
 }
 
 export async function fetchAdminAdmins(): Promise<AdminListResponse> {

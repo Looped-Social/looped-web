@@ -54,12 +54,16 @@ export type VerificationItem = {
   method: "email" | "video" | "thirdparty" | "photo_id" | string;
   status: "pending" | "approved" | "rejected" | string;
   submitted_at: string;
+  community_id?: number | null;
+  community_name?: string | null;
   company_domain?: string | null;
   media_key?: string | null;
   metadata?: Record<string, unknown> | null;
   reviewed_at?: string | null;
   reviewed_by?: number | null;
   reject_reason?: string | null;
+  delete_after_at?: string | null;
+  media_deleted_at?: string | null;
 };
 
 export type VerificationListResponse = {
@@ -125,6 +129,7 @@ export type AdminCommunity = {
   member_count?: number | null;
   image_url?: string | null;
   verification_ttl_days?: number | null;
+  specialization_join_cooldown_months?: number | null;
   created_at?: string | null;
 };
 
@@ -140,6 +145,7 @@ export type AdminCommunityCreateRequest = {
   imageUrl?: string;
   verificationTtlDays?: number;
   specializationType?: "major" | "department";
+  specializationJoinCooldownMonths?: number;
   shortName?: string;
 };
 
@@ -147,6 +153,7 @@ export type AdminCommunityUpdateRequest = {
   verificationTtlDays?: number;
   description?: string;
   shortName?: string;
+  specializationJoinCooldownMonths?: number;
 };
 
 export type AdminCommunityUpdateResponse = {
@@ -154,6 +161,15 @@ export type AdminCommunityUpdateResponse = {
   description?: string | null;
   verification_ttl_days?: number | null;
   short_name?: string | null;
+  specialization_join_cooldown_months?: number | null;
+};
+
+export type AdminSpecializationsSettingsResponse = {
+  default_join_cooldown_months: number;
+};
+
+export type AdminSpecializationsSettingsUpdateRequest = {
+  defaultJoinCooldownMonths: number;
 };
 
 export type AdminCommunityDomainListResponse = {
@@ -245,6 +261,42 @@ export type UserBan = {
   reason?: string | null;
   created_at?: string | null;
   created_by?: number | null;
+};
+
+export type UserCommunityBan = {
+  id: number;
+  scope: "community" | "all_communities" | string;
+  community_id: number | null;
+  community_name: string | null;
+  reason: string | null;
+  created_at: string | null;
+  expires_at: string | null;
+  created_by: number | null;
+  revoked_at: string | null;
+  revoked_by: number | null;
+};
+
+export type UserCommunityBanListResponse = {
+  items: UserCommunityBan[];
+};
+
+export type UserCommunityBanCreateRequest = {
+  communityIds?: number[];
+  allCommunities?: boolean;
+  reason: string;
+  duration_seconds?: number;
+};
+
+export type UserCommunityBanCreateResponse = {
+  status: "banned" | string;
+  user_id: number;
+  ban_ids: number[];
+};
+
+export type UserCommunityBanRevokeResponse = {
+  status: "revoked" | string;
+  user_id: number;
+  ban_id: number;
 };
 
 export type UserListItem = {

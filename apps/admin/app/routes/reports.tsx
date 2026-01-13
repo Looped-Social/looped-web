@@ -258,6 +258,11 @@ export default function ReportsRoute() {
 
   const handleBanUser = async () => {
     if (!selectedReport || selectedReport.target_type !== "user") return;
+    const trimmedReason = banReason.trim();
+    if (!trimmedReason) {
+      setActionError("Ban reason is required.");
+      return;
+    }
     setIsSaving(true);
     setActionError(null);
     try {
@@ -266,7 +271,7 @@ export default function ReportsRoute() {
         banDuration && Number.isFinite(duration) ? duration * 3600 : undefined;
       await banAdminUser(selectedReport.target_id, {
         duration_seconds: durationSeconds,
-        reason: banReason.trim() || undefined,
+        reason: trimmedReason,
       });
       setBanReason("");
       setBanDuration("");

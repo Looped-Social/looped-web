@@ -3,11 +3,15 @@ import { useOutletContext } from "react-router";
 
 import {
   banAdminUser,
+  createAdminUserCommunityBans,
+  fetchAdminCommunities,
   fetchAdminUser,
+  fetchAdminUserCommunityBans,
   fetchAdminUsers,
+  revokeAdminUserCommunityBan,
   unbanAdminUser,
 } from "../lib/adminApi";
-import type { UserDetail, UserListItem } from "../types/admin";
+import type { AdminCommunity, UserCommunityBan, UserDetail, UserListItem } from "../types/admin";
 import type { AdminRouteContext } from "./admin";
 
 function formatDate(value?: string | null) {
@@ -40,6 +44,38 @@ function formatStatusLabel(value: string) {
   return value.replace(/_/g, " ");
 }
 
+function formatCommunityBanScope(value: string) {
+  if (value === "all_communities") return "All communities";
+  if (value === "community") return "Community";
+  return value.replace(/_/g, " ");
+}
+
+function datetimeLocalToIso(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const [datePart, timePart] = trimmed.split("T");
+  if (!datePart || !timePart) return null;
+  const [yearRaw, monthRaw, dayRaw] = datePart.split("-");
+  const [hourRaw, minuteRaw] = timePart.split(":");
+  const year = Number(yearRaw);
+  const month = Number(monthRaw);
+  const day = Number(dayRaw);
+  const hour = Number(hourRaw);
+  const minute = Number(minuteRaw);
+  if (
+    !Number.isInteger(year) ||
+    !Number.isInteger(month) ||
+    !Number.isInteger(day) ||
+    !Number.isInteger(hour) ||
+    !Number.isInteger(minute)
+  ) {
+    return null;
+  }
+  const date = new Date(year, month - 1, day, hour, minute, 0, 0);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toISOString();
+}
+
 const RECENT_SEARCHES_KEY = "looped-admin-user-searches";
 
 export default function UsersRoute() {
@@ -58,7 +94,29 @@ export default function UsersRoute() {
   const [isSaving, setIsSaving] = useState(false);
   const [confirmBan, setConfirmBan] = useState(false);
   const [banReason, setBanReason] = useState("");
-  const [banDuration, setBanDuration] = useState("");
+  const [banExpiryMode, setBanExpiryMode] = useState<"permanent" | "duration" | "expires_at">(
+    "permanent"
+  );
+  const [banDurationValue, setBanDurationValue] = useState("");
+  const [banDurationUnit, setBanDurationUnit] = useState<"hours" | "days">("days");
+  const [banExpiresAt, setBanExpiresAt] = useState("");
+  const [communityBans, setCommunityBans] = useState<UserCommunityBan[]>([]);
+  const [communityBansView, setCommunityBansView] = useState<"active" | "all">("active");
+  const [communityBansError, setCommunityBansError] = useState<string | null>(null);
+  const [isCommunityBansLoading, setIsCommunityBansLoading] = useState(false);
+  const [communityBanScope, setCommunityBanScope] = useState<"selected" | "all_communities">(
+    "selected"
+  );
+  const [communityBanReason, setCommunityBanReason] = useState("");
+  const [communityBanDurationDays, setCommunityBanDurationDays] = useState("");
+  const [communityBanCommunityIdInput, setCommunityBanCommunityIdInput] = useState("");
+  const [communityBanSelected, setCommunityBanSelected] = useState<
+    { id: number; label: string }[]
+  >([]);
+  const [communitySearchQuery, setCommunitySearchQuery] = useState("");
+  const [communitySearchResults, setCommunitySearchResults] = useState<AdminCommunity[]>([]);
+  const [communitySearchError, setCommunitySearchError] = useState<string | null>(null);
+  const [isCommunitySearchLoading, setIsCommunitySearchLoading] = useState(false);
   const [recentSearches, setRecentSearches] = useState<string[]>(() => {
     if (typeof window === "undefined") return [];
     try {
@@ -75,6 +133,8 @@ export default function UsersRoute() {
     [items, selectedId]
   );
   const moderationStats = selectedDetail?.moderation_stats ?? null;
+  const currentBan = selectedDetail?.ban ?? selectedItem?.ban ?? null;
+  const currentBanStatus = currentBan?.status ?? (currentBan ? "banned" : "active");
 
   const updateRecentSearches = (value: string) => {
     const normalized = value.trim();
@@ -139,6 +199,8 @@ export default function UsersRoute() {
     setSelectedId(id);
     setSelectedDetail(null);
     setIsDetailLoading(true);
+    setCommunityBans([]);
+    setCommunityBansError(null);
     try {
       const detail = await fetchAdminUser(id);
       setSelectedDetail(detail);
@@ -153,27 +215,175 @@ export default function UsersRoute() {
     setConfirmBan(false);
     setActionError(null);
     setBanReason("");
-    setBanDuration("");
+    setBanExpiryMode("permanent");
+    setBanDurationValue("");
+    setBanDurationUnit("days");
+    setBanExpiresAt("");
+    setCommunityBansError(null);
+    setCommunityBansView("active");
+    setCommunityBanScope("selected");
+    setCommunityBanReason("");
+    setCommunityBanDurationDays("");
+    setCommunityBanCommunityIdInput("");
+    setCommunityBanSelected([]);
+    setCommunitySearchQuery("");
+    setCommunitySearchResults([]);
+    setCommunitySearchError(null);
+    setIsCommunitySearchLoading(false);
   }, [selectedItem?.id]);
+
+  useEffect(() => {
+    if (!selectedItem) return;
+    setIsCommunityBansLoading(true);
+    setCommunityBansError(null);
+    fetchAdminUserCommunityBans(selectedItem.id, communityBansView === "active")
+      .then((res) => setCommunityBans(res.items ?? []))
+      .catch((err) =>
+        setCommunityBansError(err instanceof Error ? err.message : "Unable to load community bans.")
+      )
+      .finally(() => setIsCommunityBansLoading(false));
+  }, [communityBansView, selectedItem?.id]);
+
+  useEffect(() => {
+    if (communityBanScope !== "selected") return;
+    const rawQuery = communitySearchQuery.trim();
+    if (rawQuery.length < 2) {
+      setCommunitySearchResults([]);
+      setCommunitySearchError(null);
+      setIsCommunitySearchLoading(false);
+      return;
+    }
+
+    const handle = window.setTimeout(() => {
+      setIsCommunitySearchLoading(true);
+      setCommunitySearchError(null);
+      fetchAdminCommunities(rawQuery, undefined, 10)
+        .then((res) => setCommunitySearchResults(res.items ?? []))
+        .catch((err) =>
+          setCommunitySearchError(
+            err instanceof Error ? err.message : "Unable to search communities."
+          )
+        )
+        .finally(() => setIsCommunitySearchLoading(false));
+    }, 250);
+
+    return () => window.clearTimeout(handle);
+  }, [communityBanScope, communitySearchQuery]);
 
   const handleBan = async () => {
     if (!selectedItem) return;
+    const trimmedReason = banReason.trim();
+    if (!trimmedReason) {
+      setActionError("Ban reason is required.");
+      return;
+    }
+
+    let durationSeconds: number | undefined;
+    let expiresAtIso: string | undefined;
+    if (banExpiryMode === "duration") {
+      const parsed = Number(banDurationValue.trim());
+      if (!Number.isFinite(parsed) || !Number.isInteger(parsed) || parsed <= 0) {
+        setActionError("Duration must be a positive whole number.");
+        return;
+      }
+      durationSeconds = banDurationUnit === "hours" ? parsed * 3600 : parsed * 86400;
+    }
+    if (banExpiryMode === "expires_at") {
+      const iso = datetimeLocalToIso(banExpiresAt);
+      if (!iso) {
+        setActionError("Enter a valid expires at date/time.");
+        return;
+      }
+      expiresAtIso = iso;
+    }
+
     setIsSaving(true);
     setActionError(null);
     try {
-      const duration = Number(banDuration);
-      const durationSeconds =
-        banDuration && Number.isFinite(duration) ? duration * 3600 : undefined;
       await banAdminUser(selectedItem.id, {
-        duration_seconds: durationSeconds,
-        reason: banReason.trim() || undefined,
+        ...(typeof durationSeconds === "number" ? { duration_seconds: durationSeconds } : {}),
+        ...(expiresAtIso ? { expires_at: expiresAtIso } : {}),
+        reason: trimmedReason,
       });
       setBanReason("");
-      setBanDuration("");
+      setBanExpiryMode("permanent");
+      setBanDurationValue("");
+      setBanDurationUnit("days");
+      setBanExpiresAt("");
       setConfirmBan(false);
       await fetchDetail(selectedItem.id);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Unable to ban user.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleCreateCommunityBan = async () => {
+    if (!selectedItem) return;
+    const reason = communityBanReason.trim();
+    if (!reason) {
+      setActionError("Community ban reason is required.");
+      return;
+    }
+
+    const durationRaw = communityBanDurationDays.trim();
+    let durationSeconds: number | undefined;
+    if (durationRaw) {
+      const parsed = Number(durationRaw);
+      if (!Number.isFinite(parsed) || !Number.isInteger(parsed) || parsed <= 0) {
+        setActionError("Community ban duration must be a positive whole number of days.");
+        return;
+      }
+      durationSeconds = parsed * 86400;
+    }
+
+    const selectedIds = communityBanSelected.map((item) => item.id);
+    if (communityBanScope === "selected" && selectedIds.length === 0) {
+      setActionError("Select at least one community id.");
+      return;
+    }
+
+    const confirmation =
+      communityBanScope === "all_communities"
+        ? "Ban this user from all communities?"
+        : `Ban this user from ${selectedIds.length} community(ies)?`;
+    if (!window.confirm(confirmation)) return;
+
+    setIsSaving(true);
+    setActionError(null);
+    try {
+      await createAdminUserCommunityBans(selectedItem.id, {
+        ...(communityBanScope === "all_communities"
+          ? { allCommunities: true }
+          : { communityIds: selectedIds }),
+        reason,
+        ...(typeof durationSeconds === "number" ? { duration_seconds: durationSeconds } : {}),
+      });
+      setCommunityBanReason("");
+      setCommunityBanDurationDays("");
+      setCommunityBanCommunityIdInput("");
+      setCommunityBanSelected([]);
+      const res = await fetchAdminUserCommunityBans(selectedItem.id, communityBansView === "active");
+      setCommunityBans(res.items ?? []);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Unable to create community ban.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleRevokeCommunityBan = async (banId: number) => {
+    if (!selectedItem) return;
+    if (!window.confirm("Revoke this community ban?")) return;
+    setIsSaving(true);
+    setActionError(null);
+    try {
+      await revokeAdminUserCommunityBan(selectedItem.id, banId);
+      const res = await fetchAdminUserCommunityBans(selectedItem.id, communityBansView === "active");
+      setCommunityBans(res.items ?? []);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Unable to revoke community ban.");
     } finally {
       setIsSaving(false);
     }
@@ -303,6 +513,7 @@ export default function UsersRoute() {
 
           {items.map((item) => {
             const isActive = item.id === selectedItem?.id;
+            const banStatus = item.ban?.status ?? (item.ban ? "banned" : "active");
             return (
               <button
                 key={item.id}
@@ -331,10 +542,10 @@ export default function UsersRoute() {
                   <span>Joined {formatDate(item.created_at)}</span>
                   <span
                     className={`rounded-full px-2 py-1 text-xs font-semibold ${statusBadgeClass(
-                      item.ban?.status ?? "active"
+                      banStatus
                     )}`}
                   >
-                    {formatStatusLabel(item.ban?.status ?? "active")}
+                    {formatStatusLabel(banStatus)}
                   </span>
                 </div>
               </button>
@@ -393,33 +604,30 @@ export default function UsersRoute() {
                   <span className="text-text-secondary">Current status</span>
                   <span
                     className={`rounded-full px-2 py-1 text-xs font-semibold ${statusBadgeClass(
-                      selectedDetail?.ban?.status ?? selectedItem.ban?.status ?? "active"
+                      currentBanStatus
                     )}`}
                   >
-                    {formatStatusLabel(
-                      selectedDetail?.ban?.status ?? selectedItem.ban?.status ?? "active"
-                    )}
+                    {formatStatusLabel(currentBanStatus)}
                   </span>
                 </div>
-                {(selectedDetail?.ban?.expires_at || selectedItem.ban?.expires_at) && (
+                {currentBanStatus === "banned" && currentBan?.expires_at && (
                   <p className="text-xs text-text-light">
-                    Expires{" "}
-                    {formatDate(selectedDetail?.ban?.expires_at ?? selectedItem.ban?.expires_at)}
+                    Expires {formatDate(currentBan.expires_at)}
                   </p>
                 )}
-                {selectedDetail?.ban?.created_at && (
+                {currentBanStatus === "banned" && currentBan?.created_at && (
                   <p className="text-xs text-text-light">
-                    Banned {formatDate(selectedDetail.ban.created_at)}
+                    Banned {formatDate(currentBan.created_at)}
                   </p>
                 )}
-                {selectedDetail?.ban?.reason && (
+                {currentBanStatus === "banned" && currentBan?.reason && (
                   <p className="mt-2 text-xs text-text-secondary">
-                    Reason: {selectedDetail.ban.reason}
+                    Reason: {currentBan.reason}
                   </p>
                 )}
-                {selectedDetail?.ban?.created_by && (
+                {currentBanStatus === "banned" && currentBan?.created_by && (
                   <p className="text-xs text-text-light">
-                    Banned by admin #{selectedDetail.ban.created_by}
+                    Banned by admin #{currentBan.created_by}
                   </p>
                 )}
               </div>
@@ -549,15 +757,67 @@ export default function UsersRoute() {
                 <input
                   value={banReason}
                   onChange={(event) => setBanReason(event.target.value)}
-                  placeholder="Reason for ban (optional)"
+                  placeholder="Reason for ban"
                   className="w-full rounded-full border border-border bg-bg px-3 py-2 text-sm text-text-primary  outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
                 />
-                <input
-                  value={banDuration}
-                  onChange={(event) => setBanDuration(event.target.value)}
-                  placeholder="Duration in hours (optional)"
-                  className="w-full rounded-full border border-border bg-bg px-3 py-2 text-sm text-text-primary  outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
-                />
+                <div className="space-y-2 rounded-2xl border border-border bg-bg-muted/30 p-3">
+                  <p className="text-xs font-semibold uppercase text-text-light">Ban duration</p>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      { label: "Permanent", value: "permanent" },
+                      { label: "Duration", value: "duration" },
+                      { label: "Expires at", value: "expires_at" },
+                    ].map((option) => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() =>
+                          setBanExpiryMode(
+                            option.value as "permanent" | "duration" | "expires_at"
+                          )
+                        }
+                        className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
+                          banExpiryMode === option.value
+                            ? "border-brand/40 bg-brand/10 text-brand"
+                            : "border-border bg-bg text-text-secondary hover:bg-bg-muted"
+                        }`}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {banExpiryMode === "duration" && (
+                    <div className="flex flex-col gap-2 sm:flex-row">
+                      <input
+                        value={banDurationValue}
+                        onChange={(event) => setBanDurationValue(event.target.value)}
+                        placeholder="7"
+                        inputMode="numeric"
+                        className="w-full rounded-full border border-border bg-bg px-3 py-2 text-sm text-text-primary outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+                      />
+                      <select
+                        value={banDurationUnit}
+                        onChange={(event) =>
+                          setBanDurationUnit(event.target.value as "hours" | "days")
+                        }
+                        className="w-full rounded-full border border-border bg-bg px-3 py-2 text-sm text-text-primary outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20 sm:w-36"
+                      >
+                        <option value="hours">Hours</option>
+                        <option value="days">Days</option>
+                      </select>
+                    </div>
+                  )}
+
+                  {banExpiryMode === "expires_at" && (
+                    <input
+                      type="datetime-local"
+                      value={banExpiresAt}
+                      onChange={(event) => setBanExpiresAt(event.target.value)}
+                      className="w-full rounded-full border border-border bg-bg px-3 py-2 text-sm text-text-primary outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+                    />
+                  )}
+                </div>
                 <div className="grid gap-2 sm:grid-cols-2">
                   <button
                     type="button"
@@ -582,15 +842,264 @@ export default function UsersRoute() {
                     Unban
                   </button>
                 </div>
-                {confirmBan && (
+                  {confirmBan && (
+                    <button
+                      type="button"
+                      onClick={() => setConfirmBan(false)}
+                      className="w-full rounded-full border border-border px-4 py-2 text-xs font-semibold text-text-secondary transition hover:bg-bg-muted"
+                    >
+                      Cancel
+                    </button>
+                  )}
+                </div>
+
+              <div className="rounded-2xl border border-border bg-bg px-4 py-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold uppercase text-text-light">Community bans</p>
+                    <p className="mt-1 text-xs text-text-secondary">
+                      Blocks actions in scoped communities and filters those communities from feeds.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 rounded-full border border-border bg-bg px-2 py-1 text-xs text-text-secondary">
+                    {[
+                      { label: "Active", value: "active" },
+                      { label: "All", value: "all" },
+                    ].map((option) => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => setCommunityBansView(option.value as "active" | "all")}
+                        className={`rounded-full px-3 py-1 transition ${
+                          communityBansView === option.value
+                            ? "bg-brand text-white"
+                            : "hover:text-text-primary"
+                        }`}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {communityBansError && (
+                  <p className="mt-3 whitespace-pre-wrap rounded-lg border border-border bg-bg px-3 py-2 text-xs text-brand">
+                    {communityBansError}
+                  </p>
+                )}
+
+                {isCommunityBansLoading ? (
+                  <p className="mt-3 text-xs text-text-secondary">Loading community bans...</p>
+                ) : communityBans.length === 0 ? (
+                  <p className="mt-3 text-xs text-text-secondary">No community bans.</p>
+                ) : (
+                  <div className="mt-3 space-y-2">
+                    {communityBans.map((ban) => {
+                      const label =
+                        ban.scope === "all_communities"
+                          ? "All communities"
+                          : ban.community_name
+                            ? `${ban.community_name} (#${ban.community_id ?? "?"})`
+                            : ban.community_id
+                              ? `Community #${ban.community_id}`
+                              : "Community (unknown)";
+                      return (
+                        <div
+                          key={ban.id}
+                          className="rounded-xl border border-border bg-bg-muted/30 px-3 py-3 text-xs text-text-secondary"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <p className="text-xs font-semibold text-text-primary">{label}</p>
+                              <p className="mt-1 text-[11px] text-text-light">
+                                Scope: {formatCommunityBanScope(ban.scope)} · Ban #{ban.id}
+                              </p>
+                            </div>
+                            {!ban.revoked_at && (
+                              <button
+                                type="button"
+                                onClick={() => handleRevokeCommunityBan(ban.id)}
+                                disabled={isSaving}
+                                className="rounded-full border border-border px-3 py-1 text-xs font-semibold text-text-primary transition hover:bg-bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                Revoke
+                              </button>
+                            )}
+                          </div>
+                          <div className="mt-2 space-y-1 text-[11px] text-text-light">
+                            <p>
+                              <span className="font-semibold text-text-primary">Reason:</span>{" "}
+                              {ban.reason ?? "N/A"}
+                            </p>
+                            <p>
+                              <span className="font-semibold text-text-primary">Expires:</span>{" "}
+                              {ban.expires_at ? formatDate(ban.expires_at) : "Never"}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                <div className="mt-4 space-y-3 border-t border-border pt-4">
+                  <p className="text-xs font-semibold uppercase text-text-light">Create</p>
+
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      { label: "Selected communities", value: "selected" },
+                      { label: "All communities", value: "all_communities" },
+                    ].map((option) => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() =>
+                          setCommunityBanScope(option.value as "selected" | "all_communities")
+                        }
+                        className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
+                          communityBanScope === option.value
+                            ? "border-brand/40 bg-brand/10 text-brand"
+                            : "border-border bg-bg text-text-secondary hover:bg-bg-muted"
+                        }`}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {communityBanScope === "selected" && (
+                    <div className="space-y-2">
+                      <div className="space-y-2">
+                        <label className="text-xs font-semibold uppercase text-text-light">
+                          Search communities (optional)
+                        </label>
+                        <input
+                          value={communitySearchQuery}
+                          onChange={(event) => setCommunitySearchQuery(event.target.value)}
+                          placeholder="UNC Chapel Hill"
+                          className="w-full rounded-full border border-border bg-bg px-3 py-2 text-sm text-text-primary outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+                        />
+                        {communitySearchError && (
+                          <p className="text-xs text-brand">{communitySearchError}</p>
+                        )}
+                        {isCommunitySearchLoading && (
+                          <p className="text-xs text-text-secondary">Searching...</p>
+                        )}
+                        {!isCommunitySearchLoading && communitySearchResults.length > 0 && (
+                          <div className="space-y-2">
+                            {communitySearchResults.map((community) => (
+                              <button
+                                key={community.id}
+                                type="button"
+                                onClick={() =>
+                                  setCommunityBanSelected((prev) => {
+                                    if (prev.some((item) => item.id === community.id)) return prev;
+                                    return [
+                                      ...prev,
+                                      {
+                                        id: community.id,
+                                        label: `${community.name} (#${community.id})`,
+                                      },
+                                    ];
+                                  })
+                                }
+                                className="flex w-full items-center justify-between rounded-xl border border-border bg-bg px-3 py-2 text-left text-xs text-text-secondary transition hover:bg-bg-muted"
+                              >
+                                <span className="font-semibold text-text-primary">
+                                  {community.name}
+                                </span>
+                                <span className="text-xs text-text-light">#{community.id}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      <label className="text-xs font-semibold uppercase text-text-light">
+                        Community IDs
+                      </label>
+                      <div className="flex gap-2">
+                        <input
+                          value={communityBanCommunityIdInput}
+                          onChange={(event) => setCommunityBanCommunityIdInput(event.target.value)}
+                          placeholder="42"
+                          inputMode="numeric"
+                          className="w-full rounded-full border border-border bg-bg px-3 py-2 text-sm text-text-primary outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const parsed = Number(communityBanCommunityIdInput.trim());
+                            if (!Number.isFinite(parsed) || !Number.isInteger(parsed) || parsed <= 0) {
+                              setActionError("Enter a valid community id.");
+                              return;
+                            }
+                            setCommunityBanSelected((prev) => {
+                              if (prev.some((item) => item.id === parsed)) return prev;
+                              return [...prev, { id: parsed, label: `#${parsed}` }];
+                            });
+                            setCommunityBanCommunityIdInput("");
+                          }}
+                          className="rounded-full border border-border px-4 py-2 text-sm font-semibold text-text-primary transition hover:bg-bg-muted"
+                        >
+                          Add
+                        </button>
+                      </div>
+                      {communityBanSelected.length > 0 && (
+                        <div className="flex flex-wrap gap-2">
+                          {communityBanSelected.map((community) => (
+                            <button
+                              key={community.id}
+                              type="button"
+                              onClick={() =>
+                                setCommunityBanSelected((prev) =>
+                                  prev.filter((item) => item.id !== community.id)
+                                )
+                              }
+                              className="rounded-full border border-border bg-bg px-3 py-1 text-xs font-semibold text-text-primary transition hover:bg-bg-muted"
+                            >
+                              {community.label} · Remove
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="space-y-2">
+                    <label className="text-xs font-semibold uppercase text-text-light">
+                      Reason
+                    </label>
+                    <input
+                      value={communityBanReason}
+                      onChange={(event) => setCommunityBanReason(event.target.value)}
+                      placeholder="harassment"
+                      className="w-full rounded-full border border-border bg-bg px-3 py-2 text-sm text-text-primary outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-xs font-semibold uppercase text-text-light">
+                      Duration (days, optional)
+                    </label>
+                    <input
+                      value={communityBanDurationDays}
+                      onChange={(event) => setCommunityBanDurationDays(event.target.value)}
+                      placeholder="7"
+                      inputMode="numeric"
+                      className="w-full rounded-full border border-border bg-bg px-3 py-2 text-sm text-text-primary outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+                    />
+                  </div>
+
                   <button
                     type="button"
-                    onClick={() => setConfirmBan(false)}
-                    className="w-full rounded-full border border-border px-4 py-2 text-xs font-semibold text-text-secondary transition hover:bg-bg-muted"
+                    onClick={handleCreateCommunityBan}
+                    disabled={isSaving}
+                    className="w-full rounded-full bg-brand px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand/90 disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    Cancel
+                    {isSaving ? "Saving..." : "Create community ban"}
                   </button>
-                )}
+                </div>
               </div>
             </div>
           )}
