@@ -136,12 +136,14 @@ export default function CommunitiesRoute() {
   const [createImageUrl, setCreateImageUrl] = useState("");
   const [createTtlDays, setCreateTtlDays] = useState("");
   const [createShortName, setCreateShortName] = useState("");
+  const [createCooldownMonths, setCreateCooldownMonths] = useState("");
   const [createSuccess, setCreateSuccess] = useState<string | null>(null);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
 
   const [ttlInput, setTtlInput] = useState("");
   const [descriptionInput, setDescriptionInput] = useState("");
   const [shortNameInput, setShortNameInput] = useState("");
+  const [cooldownInput, setCooldownInput] = useState("");
 
   const paramId = useMemo(() => {
     const raw =
@@ -168,6 +170,11 @@ export default function CommunitiesRoute() {
     selectedDetail?.kind === "major" ||
     selectedDetail?.kind === "department" ||
     Boolean(selectedDetail?.specialization_type);
+  const isCooldownEligible =
+    selectedDetail?.kind === "major" ||
+    selectedDetail?.kind === "department" ||
+    selectedDetail?.specialization_type === "major" ||
+    selectedDetail?.specialization_type === "department";
   const isCreateSpecialization = createKind === "major" || createKind === "department";
   const kindFilters = [
     { label: "All", value: "all" },
@@ -244,6 +251,7 @@ export default function CommunitiesRoute() {
       setTtlInput(detail.verification_ttl_days?.toString() ?? "");
       setDescriptionInput(detail.description ?? "");
       setShortNameInput(detail.short_name ?? "");
+      setCooldownInput(detail.specialization_join_cooldown_months?.toString() ?? "");
       const domainRes = await fetchAdminCommunityDomains(id);
       setDomains(domainRes.items ?? []);
     } catch (err) {
@@ -292,6 +300,7 @@ export default function CommunitiesRoute() {
       setCustomLogoUrl("");
       setDescriptionInput("");
       setShortNameInput("");
+      setCooldownInput("");
       return;
     }
     void fetchDetail(selectedId);
@@ -328,6 +337,17 @@ export default function CommunitiesRoute() {
 
     setIsSaving(true);
     try {
+      const cooldownValue = createCooldownMonths.trim();
+      let specializationJoinCooldownMonths: number | undefined;
+      if (cooldownValue && isCreateSpecialization) {
+        const parsed = Number(cooldownValue);
+        if (!Number.isFinite(parsed) || !Number.isInteger(parsed) || parsed < 0 || parsed > 120) {
+          setActionError("Join cooldown override must be a whole number between 0 and 120.");
+          return;
+        }
+        specializationJoinCooldownMonths = parsed;
+      }
+
       const response = await createAdminCommunity({
         kind: isCreateSpecialization ? "specialization" : createKind,
         name: createName.trim(),
@@ -335,6 +355,9 @@ export default function CommunitiesRoute() {
         imageUrl: createImageUrl.trim() || undefined,
         verificationTtlDays: isCreateSpecialization ? undefined : ttlNumber,
         specializationType: isCreateSpecialization ? createKind : undefined,
+        specializationJoinCooldownMonths: isCreateSpecialization
+          ? specializationJoinCooldownMonths
+          : undefined,
         shortName: createShortName.trim() || undefined,
       });
       setCreateSuccess(`Created community #${response.id}.`);
@@ -343,6 +366,7 @@ export default function CommunitiesRoute() {
       setCreateImageUrl("");
       setCreateTtlDays("");
       setCreateShortName("");
+      setCreateCooldownMonths("");
       await runSearch();
       if (response.id) {
         setSelectedId(response.id);
@@ -434,6 +458,39 @@ export default function CommunitiesRoute() {
       await fetchDetail(selectedId);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Unable to update short name.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleUpdateSpecializationCooldown = async () => {
+    if (!selectedId || !selectedDetail) return;
+    if (!isCooldownEligible) return;
+
+    const raw = cooldownInput.trim();
+    const nextValue = raw ? Number(raw) : 0;
+    if (!Number.isFinite(nextValue) || !Number.isInteger(nextValue)) {
+      setActionError("Cooldown must be a whole number of months.");
+      return;
+    }
+    if (nextValue < 0 || nextValue > 120) {
+      setActionError("Cooldown must be between 0 and 120 months.");
+      return;
+    }
+
+    const confirmation =
+      nextValue === 0
+        ? "Clear the join cooldown override (use global default)?"
+        : `Update join cooldown override to ${nextValue} months?`;
+    if (!window.confirm(confirmation)) return;
+
+    setIsSaving(true);
+    setActionError(null);
+    try {
+      await updateAdminCommunity(selectedId, { specializationJoinCooldownMonths: nextValue });
+      await fetchDetail(selectedId);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Unable to update join cooldown.");
     } finally {
       setIsSaving(false);
     }
@@ -821,6 +878,41 @@ export default function CommunitiesRoute() {
                   </div>
                 </div>
 
+                {isCooldownEligible && (
+                  <div className="space-y-2">
+                    <label
+                      className="text-xs font-semibold uppercase text-text-light"
+                      htmlFor="cooldown-update"
+                    >
+                      Join cooldown override (months)
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        id="cooldown-update"
+                        type="number"
+                        value={cooldownInput}
+                        onChange={(event) => setCooldownInput(event.target.value)}
+                        className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-text-primary outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+                        min={0}
+                        max={120}
+                        placeholder="Default"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleUpdateSpecializationCooldown}
+                        disabled={isSaving}
+                        className="rounded-lg border border-border px-4 py-2 text-sm font-semibold text-text-primary transition hover:bg-bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        Update
+                      </button>
+                    </div>
+                    <p className="text-xs text-text-light">
+                      Leave blank and update (or set to 0) to clear override and use the global
+                      default.
+                    </p>
+                  </div>
+                )}
+
                 {!isSpecialization && (
                   <div className="space-y-2">
                     <label className="text-xs font-semibold uppercase text-text-light" htmlFor="ttl-update">
@@ -1201,6 +1293,30 @@ export default function CommunitiesRoute() {
                     placeholder="90"
                     min={1}
                   />
+                </div>
+              )}
+
+              {isCreateSpecialization && (
+                <div className="space-y-2">
+                  <label
+                    className="text-xs font-semibold uppercase text-text-light"
+                    htmlFor="create-cooldown"
+                  >
+                    Join cooldown override (months, optional)
+                  </label>
+                  <input
+                    id="create-cooldown"
+                    type="number"
+                    value={createCooldownMonths}
+                    onChange={(event) => setCreateCooldownMonths(event.target.value)}
+                    className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-text-primary outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+                    placeholder="Default"
+                    min={0}
+                    max={120}
+                  />
+                  <p className="text-xs text-text-light">
+                    Leave blank to use the global default. Use 0 to explicitly clear any override.
+                  </p>
                 </div>
               )}
 

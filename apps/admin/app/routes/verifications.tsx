@@ -4,6 +4,7 @@ import { useOutletContext } from "react-router";
 import { VerificationDocumentGallery } from "../components/VerificationDocumentGallery/VerificationDocumentGallery";
 import {
   approveVerification,
+  deleteVerificationMedia,
   fetchAdminVerification,
   fetchAdminVerifications,
   rejectVerification,
@@ -40,6 +41,40 @@ function statusBadgeClass(status: string) {
 
 function formatStatusLabel(value: string) {
   return value.replace(/_/g, " ");
+}
+
+function getVerificationCommunityLabel(item: VerificationItem) {
+  const communityName = item.community_name?.trim();
+  if (communityName) return communityName;
+
+  const typedMeta = item.metadata as
+    | {
+        community_name?: string | null;
+        communityName?: string | null;
+        community_label?: string | null;
+        communityLabel?: string | null;
+      }
+    | null;
+
+  const metaName =
+    typedMeta?.community_name?.trim() ||
+    typedMeta?.communityName?.trim() ||
+    typedMeta?.community_label?.trim() ||
+    typedMeta?.communityLabel?.trim();
+  if (metaName) return metaName;
+
+  const domain = item.company_domain?.trim();
+  if (domain) return domain;
+
+  return "Unknown";
+}
+
+function getVerificationCommunityId(item: VerificationItem) {
+  if (typeof item.community_id === "number") return item.community_id;
+  const typedMeta = item.metadata as { community_id?: number | null; communityId?: number | null } | null;
+  if (typeof typedMeta?.community_id === "number") return typedMeta.community_id;
+  if (typeof typedMeta?.communityId === "number") return typedMeta.communityId;
+  return null;
 }
 
 function getApplicantLabel(item: VerificationItem) {
@@ -91,6 +126,17 @@ export default function VerificationsRoute() {
       rejectReasonRef.current.style.height = "auto";
     });
   }, [selectedItem?.id]);
+
+  useEffect(() => {
+    if (items.length === 0) {
+      setSelectedId(null);
+      return;
+    }
+    setSelectedId((prev) => {
+      if (prev && items.some((item) => item.id === prev)) return prev;
+      return items[0]?.id ?? null;
+    });
+  }, [items]);
 
   useEffect(() => {
     if (!canVerify) return;
@@ -171,14 +217,10 @@ export default function VerificationsRoute() {
     }
   };
 
-  const updateItemStatus = (id: number, nextStatus: string, reason?: string) => {
+  const updateItem = (id: number, patch: Partial<VerificationItem>) => {
     setItems((prev) => {
-      const updated = prev.map((item) =>
-        item.id === id
-          ? { ...item, status: nextStatus, reject_reason: reason ?? item.reject_reason }
-          : item
-      );
-      return status === "pending" ? updated.filter((item) => item.status === "pending") : updated;
+      const updated = prev.map((item) => (item.id === id ? { ...item, ...patch } : item));
+      return updated.filter((item) => item.status === status);
     });
   };
 
@@ -189,7 +231,7 @@ export default function VerificationsRoute() {
     setActionError(null);
     try {
       await approveVerification(selectedItem.id);
-      updateItemStatus(selectedItem.id, "approved");
+      updateItem(selectedItem.id, { status: "approved" });
       setRejectReason("");
       setConfirmReject(false);
     } catch (err) {
@@ -208,12 +250,47 @@ export default function VerificationsRoute() {
     setIsSaving(true);
     setActionError(null);
     try {
-      await rejectVerification(selectedItem.id, rejectReason.trim());
-      updateItemStatus(selectedItem.id, "rejected", rejectReason.trim());
+      const res = await rejectVerification(selectedItem.id, rejectReason.trim());
+      updateItem(selectedItem.id, {
+        status: "rejected",
+        reject_reason: rejectReason.trim(),
+        delete_after_at: res.delete_after_at,
+      });
       setRejectReason("");
       setConfirmReject(false);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Unable to reject verification.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDeleteMedia = async () => {
+    if (!selectedItem) return;
+    if (selectedItem.method !== verificationMethod) return;
+    if (!window.confirm("Delete verification photos now? This cannot be undone.")) return;
+    setIsSaving(true);
+    setActionError(null);
+    try {
+      const res = await deleteVerificationMedia(selectedItem.id);
+      if (res.media_deleted_at) {
+        updateItem(selectedItem.id, { media_deleted_at: res.media_deleted_at });
+      } else if (res.media_deleted) {
+        updateItem(selectedItem.id, { media_deleted_at: new Date().toISOString() });
+      }
+      setSelectedDetail(null);
+      setDetailError(null);
+      setDetailLoading(true);
+      fetchAdminVerification(selectedItem.id)
+        .then((detail) => setSelectedDetail(detail))
+        .catch((err) =>
+          setDetailError(
+            err instanceof Error ? err.message : "Unable to refresh verification documents."
+          )
+        )
+        .finally(() => setDetailLoading(false));
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Unable to delete verification media.");
     } finally {
       setIsSaving(false);
     }
@@ -289,6 +366,8 @@ export default function VerificationsRoute() {
           {items.map((item) => {
             const isActive = item.id === selectedItem?.id;
             const secondary = getApplicantSecondary(item);
+            const communityLabel = getVerificationCommunityLabel(item);
+            const communityId = getVerificationCommunityId(item);
             return (
               <button
                 key={item.id}
@@ -308,6 +387,10 @@ export default function VerificationsRoute() {
                     {secondary && (
                       <p className="mt-1 text-xs text-text-secondary">{secondary}</p>
                     )}
+                    <p className="mt-1 text-xs text-text-light">
+                      Community: {communityLabel}
+                      {communityId ? ` (#${communityId})` : ""}
+                    </p>
                   </div>
                   <span className="rounded-full bg-bg-muted px-2.5 py-1 text-xs font-semibold text-text-primary">
                     {item.method}
@@ -381,6 +464,20 @@ export default function VerificationsRoute() {
 
                   <div className="rounded-xl border border-border bg-bg-muted/30 p-3">
                     <p className="text-xs font-semibold uppercase text-text-light">
+                      Community
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-text-primary">
+                      {getVerificationCommunityLabel(selectedItem)}
+                    </p>
+                    {getVerificationCommunityId(selectedItem) && (
+                      <p className="mt-1 text-xs text-text-light">
+                        ID #{getVerificationCommunityId(selectedItem)}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="rounded-xl border border-border bg-bg-muted/30 p-3">
+                    <p className="text-xs font-semibold uppercase text-text-light">
                       Method
                     </p>
                     <p className="mt-1 text-sm font-semibold text-text-primary">
@@ -391,23 +488,25 @@ export default function VerificationsRoute() {
                     )}
                   </div>
 
-                  <div className="space-y-3">
-                    <label className="text-xs font-semibold uppercase text-text-light">
-                      Rejection reason
-                    </label>
-                    <textarea
-                      ref={rejectReasonRef}
-                      value={rejectReason}
-                      onChange={(event) => {
-                        setRejectReason(event.target.value);
-                        event.currentTarget.style.height = "auto";
-                        event.currentTarget.style.height = `${event.currentTarget.scrollHeight}px`;
-                      }}
-                      rows={2}
-                      placeholder="Provide a clear reason for rejection..."
-                      className="w-full resize-none overflow-hidden rounded-xl border border-border bg-bg px-3 py-2 text-sm text-text-primary outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
-                    />
-                  </div>
+                  {status !== "rejected" && (
+                    <div className="space-y-3">
+                      <label className="text-xs font-semibold uppercase text-text-light">
+                        Rejection reason
+                      </label>
+                      <textarea
+                        ref={rejectReasonRef}
+                        value={rejectReason}
+                        onChange={(event) => {
+                          setRejectReason(event.target.value);
+                          event.currentTarget.style.height = "auto";
+                          event.currentTarget.style.height = `${event.currentTarget.scrollHeight}px`;
+                        }}
+                        rows={2}
+                        placeholder="Provide a clear reason for rejection..."
+                        className="w-full resize-none overflow-hidden rounded-xl border border-border bg-bg px-3 py-2 text-sm text-text-primary outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+                      />
+                    </div>
+                  )}
 
                   {selectedItem.reject_reason && (
                     <div className="rounded-xl border border-border bg-bg-muted/30 p-3">
@@ -417,6 +516,20 @@ export default function VerificationsRoute() {
                       <p className="mt-2 text-xs text-text-secondary">{selectedItem.reject_reason}</p>
                     </div>
                   )}
+
+                  {status === "rejected" &&
+                    selectedItem.delete_after_at &&
+                    !selectedItem.media_deleted_at &&
+                    !(isPhotoIdDetail(selectedDetail, selectedItem.id) && selectedDetail.media_deleted_at) && (
+                      <div className="rounded-xl border border-border bg-bg-muted/30 p-3">
+                        <p className="text-xs font-semibold uppercase text-text-light">
+                          Auto-delete
+                        </p>
+                        <p className="mt-2 text-xs text-text-secondary">
+                          Scheduled {formatDate(selectedItem.delete_after_at)}.
+                        </p>
+                      </div>
+                    )}
                 </div>
 
                 {selectedItem.method === verificationMethod && (
@@ -461,6 +574,18 @@ export default function VerificationsRoute() {
                         {isPhotoIdDetail(selectedDetail, selectedItem.id) &&
                         (selectedDetail.documents?.length ?? 0) > 0 ? (
                           <VerificationDocumentGallery documents={selectedDetail.documents ?? []} />
+                        ) : selectedItem.media_deleted_at ||
+                          (isPhotoIdDetail(selectedDetail, selectedItem.id) &&
+                            selectedDetail.media_deleted_at) ? (
+                          <p className="text-xs text-text-light">
+                            Documents deleted{" "}
+                            {formatDate(
+                              (isPhotoIdDetail(selectedDetail, selectedItem.id)
+                                ? selectedDetail.media_deleted_at
+                                : null) ?? selectedItem.media_deleted_at
+                            )}
+                            .
+                          </p>
                         ) : (
                           <p className="text-xs text-text-light">No documents attached.</p>
                         )}
@@ -483,37 +608,64 @@ export default function VerificationsRoute() {
                   disabled={isSaving}
                   className="rounded-full bg-brand px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand/90 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {isSaving ? "Saving..." : "Approve"}
+                  {isSaving
+                    ? "Saving..."
+                    : status === "rejected"
+                      ? "Undo rejection (approve)"
+                      : "Approve"}
                 </button>
-                <div className="space-y-2">
+                {status === "rejected" ? (
                   <button
                     type="button"
-                    onClick={() => {
-                      if (!rejectReason.trim()) {
-                        setActionError("Add a rejection reason before confirming.");
-                        return;
-                      }
-                      if (!confirmReject) {
-                        setConfirmReject(true);
-                        return;
-                      }
-                      handleReject();
-                    }}
-                    disabled={isSaving}
+                    onClick={handleDeleteMedia}
+                    disabled={
+                      isSaving ||
+                      selectedItem.method !== verificationMethod ||
+                      Boolean(
+                        selectedItem.media_deleted_at ||
+                          (isPhotoIdDetail(selectedDetail, selectedItem.id) &&
+                            selectedDetail.media_deleted_at)
+                      )
+                    }
                     className="w-full rounded-full border border-border px-4 py-2 text-sm font-semibold text-text-primary transition hover:bg-bg-muted disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    {confirmReject ? "Confirm reject" : "Reject"}
+                    {selectedItem.media_deleted_at ||
+                    (isPhotoIdDetail(selectedDetail, selectedItem.id) &&
+                      selectedDetail.media_deleted_at)
+                      ? "Photos deleted"
+                      : "Delete photos now"}
                   </button>
-                  {confirmReject && (
+                ) : (
+                  <div className="space-y-2">
                     <button
                       type="button"
-                      onClick={() => setConfirmReject(false)}
-                      className="w-full rounded-full border border-border px-4 py-2 text-xs font-semibold text-text-secondary transition hover:bg-bg-muted"
+                      onClick={() => {
+                        if (!rejectReason.trim()) {
+                          setActionError("Add a rejection reason before confirming.");
+                          return;
+                        }
+                        if (!confirmReject) {
+                          setConfirmReject(true);
+                          return;
+                        }
+                        handleReject();
+                      }}
+                      disabled={isSaving}
+                      className="w-full rounded-full border border-border px-4 py-2 text-sm font-semibold text-text-primary transition hover:bg-bg-muted disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      Cancel
+                      {confirmReject ? "Confirm reject" : "Reject"}
                     </button>
-                  )}
-                </div>
+                    {confirmReject && (
+                      <button
+                        type="button"
+                        onClick={() => setConfirmReject(false)}
+                        className="w-full rounded-full border border-border px-4 py-2 text-xs font-semibold text-text-secondary transition hover:bg-bg-muted"
+                      >
+                        Cancel
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           )}
