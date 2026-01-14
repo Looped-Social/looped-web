@@ -57,7 +57,7 @@ export function useUserSession() {
     };
   }, []);
 
-  const startSignIn = async (action: () => Promise<void>) => {
+  const startSignIn = async <TResult,>(action: () => Promise<TResult>) => {
     setState((prev) => ({ ...prev, status: "checking", error: null }));
     try {
       await action();

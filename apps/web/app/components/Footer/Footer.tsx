@@ -17,11 +17,8 @@ export function Footer() {
               to="/"
               className="inline-flex w-fit shrink-0 items-center transition-opacity duration-200 hover:opacity-80"
             >
-              <img src={motoSrc} alt="Looped" className="h-20 w-auto" />
+              <img src={motoSrc} alt="Looped" className="h-24 w-auto md:h-28" />
             </Link>
-            <p className="max-w-sm text-sm text-text-secondary">
-              Your community, verified. Where real employees and students speak freely.
-            </p>
             <AppStoreButton size={5.5} />
           </div>
 
