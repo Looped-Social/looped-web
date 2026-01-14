@@ -322,6 +322,30 @@ export type UserDetail = UserListItem & {
   moderation_stats?: ModerationStats | null;
 };
 
+export type UserVerifiedCommunity = {
+  community_id: number;
+  community_name: string | null;
+  community_kind?: string | null;
+  verified_at: string | null;
+  method?: string | null;
+};
+
+export type UserVerifiedCommunityListResponse = {
+  items: UserVerifiedCommunity[];
+};
+
+export type UserVerifiedCommunityRevokeResponse = {
+  status: "revoked" | string;
+  user_id: number;
+  community_id: number;
+};
+
+export type UserSpecializationCooldownResetResponse = {
+  status: "reset" | string;
+  user_id: number;
+  specialization_type: "major" | "department" | string;
+};
+
 export type ModerationStats = {
   posts_total: number;
   posts_removed_total: number;
