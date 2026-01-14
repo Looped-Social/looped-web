@@ -14,7 +14,13 @@ type AdminShellProps = {
   onSignOut?: () => void;
 };
 
-const navItems = [
+type NavItem = {
+  label: string;
+  to: string;
+  permission?: string | string[];
+};
+
+const navItems: NavItem[] = [
   { label: "Overview", to: "/" },
   { label: "Analytics", to: "/analytics" },
   { label: "Verifications", to: "/verifications", permission: "verify_users" },
@@ -29,7 +35,7 @@ const navItems = [
   { label: "Reports", to: "/reports", permission: "view_reports" },
   { label: "Announcements", to: "/announcements", permission: "send_announcements" },
   { label: "Appeals", to: "/appeals", permission: "view_reports" },
-  { label: "Users", to: "/users", permission: "ban_user" },
+  { label: "Users", to: "/users", permission: ["ban_user", "verify_users"] },
   { label: "Posts", to: "/posts", permission: "remove_post" },
   { label: "Admins", to: "/admins", permission: "manage_admins" },
   { label: "Audit Log", to: "/audit", permission: "manage_admins" },
@@ -52,7 +58,13 @@ export function AdminShell({ children, admin, userEmail, onSignOut }: AdminShell
   );
 
   const visibleNavItems = navItems.filter(
-    (item) => !item.permission || admin.permissions.includes(item.permission)
+    (item) => {
+      if (!item.permission) return true;
+      if (Array.isArray(item.permission)) {
+        return item.permission.some((permission) => admin.permissions.includes(permission));
+      }
+      return admin.permissions.includes(item.permission);
+    }
   );
 
   return (

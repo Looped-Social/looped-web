@@ -40,8 +40,11 @@ import type {
   UserCommunityBanListResponse,
   UserCommunityBanRevokeResponse,
   UserStatsResponse,
+  UserSpecializationCooldownResetResponse,
   VerificationDetail,
   VerificationListResponse,
+  UserVerifiedCommunityListResponse,
+  UserVerifiedCommunityRevokeResponse,
 } from "../types/admin";
 
 export class AdminApiError extends Error {
@@ -558,6 +561,32 @@ export async function revokeAdminUserCommunityBan(
     {
       method: "POST",
     }
+  );
+}
+
+export async function fetchAdminUserVerifiedCommunities(
+  userId: number
+): Promise<UserVerifiedCommunityListResponse> {
+  return adminFetch<UserVerifiedCommunityListResponse>(`/v1/admin/users/${userId}/verified-communities`);
+}
+
+export async function revokeAdminUserVerifiedCommunity(
+  userId: number,
+  communityId: number
+): Promise<UserVerifiedCommunityRevokeResponse> {
+  return adminFetch<UserVerifiedCommunityRevokeResponse>(
+    `/v1/admin/users/${userId}/verified-communities/${communityId}/revoke`,
+    { method: "POST" }
+  );
+}
+
+export async function resetAdminUserSpecializationCooldown(
+  userId: number,
+  specializationType: "major" | "department"
+): Promise<UserSpecializationCooldownResetResponse> {
+  return adminFetch<UserSpecializationCooldownResetResponse>(
+    `/v1/admin/users/${userId}/specializations/${specializationType}/reset-cooldown`,
+    { method: "POST" }
   );
 }
 
