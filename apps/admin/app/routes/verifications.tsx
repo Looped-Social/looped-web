@@ -3,6 +3,7 @@ import { useOutletContext } from "react-router";
 
 import { VerificationDocumentGallery } from "../components/VerificationDocumentGallery/VerificationDocumentGallery";
 import {
+  AdminApiError,
   approveVerification,
   deleteVerificationMedia,
   fetchAdminVerification,
@@ -106,6 +107,9 @@ export default function VerificationsRoute() {
   const [detailError, setDetailError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [actionBanner, setActionBanner] = useState<{ tone: "info" | "error"; message: string } | null>(
+    null
+  );
   const [actionError, setActionError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [confirmReject, setConfirmReject] = useState(false);
@@ -228,6 +232,7 @@ export default function VerificationsRoute() {
     if (!selectedItem) return;
     if (!window.confirm("Approve this verification?")) return;
     setIsSaving(true);
+    setActionBanner(null);
     setActionError(null);
     try {
       await approveVerification(selectedItem.id);
@@ -235,6 +240,21 @@ export default function VerificationsRoute() {
       setRejectReason("");
       setConfirmReject(false);
     } catch (err) {
+      if (
+        err instanceof AdminApiError &&
+        err.status === 409 &&
+        (err.errorCode === "email_in_use" || err.details?.includes("email_in_use"))
+      ) {
+        updateItem(selectedItem.id, { status: "rejected", reject_reason: "email_in_use" });
+        setRejectReason("");
+        setConfirmReject(false);
+        setActionBanner({
+          tone: "info",
+          message:
+            "This email is already in use for an active verified account in this community. The request was automatically marked rejected (email_in_use).",
+        });
+        return;
+      }
       setActionError(err instanceof Error ? err.message : "Unable to approve verification.");
     } finally {
       setIsSaving(false);
@@ -248,6 +268,7 @@ export default function VerificationsRoute() {
       return;
     }
     setIsSaving(true);
+    setActionBanner(null);
     setActionError(null);
     try {
       const res = await rejectVerification(selectedItem.id, rejectReason.trim());
@@ -270,6 +291,7 @@ export default function VerificationsRoute() {
     if (selectedItem.method !== verificationMethod) return;
     if (!window.confirm("Delete verification photos now? This cannot be undone.")) return;
     setIsSaving(true);
+    setActionBanner(null);
     setActionError(null);
     try {
       const res = await deleteVerificationMedia(selectedItem.id);
@@ -309,6 +331,24 @@ export default function VerificationsRoute() {
 
   return (
     <div className="space-y-6">
+      {actionBanner && (
+        <div
+          className={`flex flex-wrap items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-sm ${
+            actionBanner.tone === "error"
+              ? "border-brand/30 bg-brand/5 text-brand"
+              : "border-border bg-bg text-text-secondary"
+          }`}
+        >
+          <p className="min-w-[220px] flex-1">{actionBanner.message}</p>
+          <button
+            type="button"
+            onClick={() => setActionBanner(null)}
+            className="rounded-full border border-border bg-bg px-3 py-1 text-xs font-semibold text-text-primary transition hover:bg-bg-muted"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="text-xs font-semibold uppercase text-text-light">

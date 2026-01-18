@@ -50,11 +50,13 @@ import type {
 export class AdminApiError extends Error {
   status: number;
   details?: string;
+  errorCode?: string;
 
-  constructor(status: number, message: string, details?: string) {
+  constructor(status: number, message: string, details?: string, errorCode?: string) {
     super(message);
     this.status = status;
     this.details = details;
+    this.errorCode = errorCode;
   }
 }
 
@@ -77,7 +79,16 @@ async function adminFetch<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (!response.ok) {
     const details = await response.text();
-    throw new AdminApiError(response.status, details || "Admin request failed.", details);
+    let errorCode: string | undefined;
+    try {
+      const parsed = JSON.parse(details) as { error?: unknown } | null;
+      if (parsed && typeof parsed === "object" && typeof parsed.error === "string") {
+        errorCode = parsed.error;
+      }
+    } catch {
+      // noop
+    }
+    throw new AdminApiError(response.status, details || "Admin request failed.", details, errorCode);
   }
 
   if (response.status === 204) {
