@@ -27,6 +27,7 @@ const navItems: NavItem[] = [
   { label: "Communities", to: "/communities", permission: "create_community" },
   { label: "Sectors", to: "/sectors", permission: "create_community" },
   { label: "Specializations", to: "/settings/specializations", permission: "create_community" },
+  { label: "Profile", to: "/settings/profile", permission: "create_community" },
   {
     label: "Community Requests",
     to: "/community-requests",

@@ -8,6 +8,7 @@ export default [
     route("communities", "routes/communities.tsx"),
     route("sectors", "routes/sectors.tsx"),
     route("settings/specializations", "routes/settings-specializations.tsx"),
+    route("settings/profile", "routes/settings-profile.tsx"),
     route("community-requests", "routes/community-requests.tsx"),
     route("reports", "routes/reports.tsx"),
     route("announcements", "routes/announcements.tsx"),

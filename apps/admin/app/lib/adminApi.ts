@@ -65,15 +65,22 @@ function getAdminApiBase(): string {
   return raw.replace(/\/$/, "");
 }
 
-async function adminFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const token = await getFirebaseIdToken();
+async function baseFetch<T>(
+  pathOrUrl: string,
+  init?: RequestInit,
+  options?: { withAuth?: boolean }
+): Promise<T> {
   const base = getAdminApiBase();
-  const response = await fetch(`${base}${path}`, {
+  const url = pathOrUrl.startsWith("http") ? pathOrUrl : `${base}${pathOrUrl}`;
+  const withAuth = options?.withAuth ?? false;
+  const token = withAuth ? await getFirebaseIdToken() : null;
+
+  const response = await fetch(url, {
     ...init,
     headers: {
       "Content-Type": "application/json",
       ...(init?.headers ?? {}),
-      Authorization: `Bearer ${token}`,
+      ...(withAuth && token ? { Authorization: `Bearer ${token}` } : null),
     },
   });
 
@@ -88,14 +95,26 @@ async function adminFetch<T>(path: string, init?: RequestInit): Promise<T> {
     } catch {
       // noop
     }
-    throw new AdminApiError(response.status, details || "Admin request failed.", details, errorCode);
+    throw new AdminApiError(response.status, details || "Request failed.", details, errorCode);
   }
 
   if (response.status === 204) {
     return {} as T;
   }
 
-  return response.json() as Promise<T>;
+  const text = await response.text();
+  if (!text) {
+    return {} as T;
+  }
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    return {} as T;
+  }
+}
+
+async function adminFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  return baseFetch<T>(path, init, { withAuth: true });
 }
 
 async function adminUpload<T>(path: string, formData: FormData): Promise<T> {
@@ -157,6 +176,76 @@ export async function fetchAdminVerifications(
 
 export async function fetchAdminVerification(id: number): Promise<VerificationDetail> {
   return adminFetch<VerificationDetail>(`/v1/admin/verifications/${id}`);
+}
+
+export type AdminProfileSettingsResponse = {
+  default_profile_image_url: string | null;
+};
+
+export type AdminProfileSettingsUpdatePayload =
+  | { defaultProfileImageUrl: string }
+  | { profileMediaAssetId: number }
+  | { clearDefaultProfileImage: true };
+
+export async function fetchAdminProfileSettings(): Promise<AdminProfileSettingsResponse> {
+  return adminFetch<AdminProfileSettingsResponse>(`/v1/admin/settings/profile`);
+}
+
+export async function updateAdminProfileSettings(
+  payload: AdminProfileSettingsUpdatePayload
+): Promise<AdminProfileSettingsResponse> {
+  return adminFetch<AdminProfileSettingsResponse>(`/v1/admin/settings/profile`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export type MediaPresignRequest = {
+  contentType: string;
+  sizeBytes: number;
+};
+
+export type MediaPresignResponse = {
+  key: string;
+  uploadUrl: string;
+  headers: Record<string, string>;
+  callbackSignature?: string;
+};
+
+export type MediaCallbackRequest = {
+  key: string;
+  mimeType: string;
+  width?: number;
+  height?: number;
+  durationSeconds?: number;
+};
+
+export type MediaCallbackResponse = {
+  id: number;
+  key: string;
+  mime_type: string;
+  cdn_url?: string;
+};
+
+export async function presignMediaUpload(payload: MediaPresignRequest): Promise<MediaPresignResponse> {
+  return baseFetch<MediaPresignResponse>(`/v1/media/presign`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function callbackMediaUpload(
+  payload: MediaCallbackRequest,
+  options?: { callbackSignature?: string }
+): Promise<MediaCallbackResponse> {
+  return baseFetch<MediaCallbackResponse>(`/v1/media/callback`, {
+    method: "POST",
+    headers: {
+      "X-Actor": "anon",
+      ...(options?.callbackSignature ? { "X-Media-Signature": options.callbackSignature } : null),
+    },
+    body: JSON.stringify(payload),
+  });
 }
 
 export async function approveVerification(
