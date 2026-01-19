@@ -60,6 +60,9 @@ async function getImageDimensions(file: File): Promise<{ width: number; height: 
 }
 
 function getProfileSettingsErrorMessage(err: unknown): string {
+  if (err instanceof TypeError && err.message === "Failed to fetch") {
+    return "Upload request was blocked (likely CORS). Backend must allow headers X-Actor and X-Media-Signature on /v1/media/callback.";
+  }
   if (err instanceof AdminApiError) {
     const code =
       err.errorCode ??
