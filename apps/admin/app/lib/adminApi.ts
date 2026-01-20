@@ -38,7 +38,10 @@ import type {
   GrowthUsersWeeklyKpiResponse,
   HashtagLeaderboardItem,
   HashtagLeaderboardResponse,
+  ModerationBlocklistCreateResponse,
+  ModerationBlocklistListResponse,
   ModerationRepeatOffendersKpiResponse,
+  ModerationQueueListResponse,
   NorthStarUniqueInteractionsKpiResponse,
   PostsUniqueParticipantsKpiResponse,
   PostDetail,
@@ -530,6 +533,69 @@ export async function fetchAdminReports(
   if (filters?.to) params.set("to", filters.to);
   if (filters?.sort) params.set("sort", filters.sort);
   return adminFetch<ReportListResponse>(`/v1/admin/reports?${params.toString()}`);
+}
+
+export async function fetchAdminModerationQueue(
+  status: "open" | "approved" | "removed" | string,
+  targetType?: "post" | "comment",
+  cursor?: string,
+  limit = 50
+): Promise<ModerationQueueListResponse> {
+  const params = new URLSearchParams({ status, limit: String(limit) });
+  if (targetType) params.set("targetType", targetType);
+  if (cursor) params.set("cursor", cursor);
+  return adminFetch<ModerationQueueListResponse>(
+    `/v1/admin/moderation/queue?${params.toString()}`
+  );
+}
+
+export async function approveModerationQueueItem(
+  id: number,
+  note?: string
+): Promise<{ status: string }> {
+  return adminFetch<{ status: string }>(`/v1/admin/moderation/queue/${id}/approve`, {
+    method: "POST",
+    body: JSON.stringify(note ? { note } : {}),
+  });
+}
+
+export async function removeModerationQueueItem(
+  id: number,
+  reason: string,
+  note?: string
+): Promise<{ status: string }> {
+  return adminFetch<{ status: string }>(`/v1/admin/moderation/queue/${id}/remove`, {
+    method: "POST",
+    body: JSON.stringify({ reason, ...(note ? { note } : {}) }),
+  });
+}
+
+export async function fetchAdminModerationBlocklist(
+  enabled?: boolean,
+  cursor?: string,
+  limit = 50
+): Promise<ModerationBlocklistListResponse> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (typeof enabled === "boolean") params.set("enabled", String(enabled));
+  if (cursor) params.set("cursor", cursor);
+  return adminFetch<ModerationBlocklistListResponse>(
+    `/v1/admin/moderation/blocklist?${params.toString()}`
+  );
+}
+
+export async function createAdminModerationBlocklist(
+  terms: string[]
+): Promise<ModerationBlocklistCreateResponse> {
+  return adminFetch<ModerationBlocklistCreateResponse>(`/v1/admin/moderation/blocklist`, {
+    method: "POST",
+    body: JSON.stringify({ terms }),
+  });
+}
+
+export async function disableAdminModerationBlocklistItem(id: number): Promise<{ status: string }> {
+  return adminFetch<{ status: string }>(`/v1/admin/moderation/blocklist/${id}`, {
+    method: "DELETE",
+  });
 }
 
 export async function resolveReport(id: number, reason?: string): Promise<{ status: string }> {

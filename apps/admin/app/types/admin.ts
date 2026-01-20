@@ -254,6 +254,62 @@ export type ReportListResponse = {
   next_cursor?: string | null;
 };
 
+export type ModerationQueueTargetPost = {
+  id: number;
+  content: string | null;
+  community_id?: number | null;
+  [key: string]: unknown;
+};
+
+export type ModerationQueueTargetComment = {
+  id: number;
+  content: string | null;
+  post_id?: number | null;
+  community_id?: number | null;
+  [key: string]: unknown;
+};
+
+export type ModerationQueueItem = {
+  id: number;
+  status: "open" | "approved" | "removed" | string;
+  target_type: "post" | "comment" | string;
+  source: string | null;
+  reason: string | null;
+  created_at: string;
+  updated_at: string;
+  reviewed_at?: string | null;
+  reviewed_by?: number | null;
+  post_id?: number | null;
+  comment_id?: number | null;
+  community_id?: number | null;
+  post?: ModerationQueueTargetPost | null;
+  comment?: ModerationQueueTargetComment | null;
+  [key: string]: unknown;
+};
+
+export type ModerationQueueListResponse = {
+  items: ModerationQueueItem[];
+  next_cursor?: string | null;
+};
+
+export type ModerationBlocklistItem = {
+  id: number;
+  term: string;
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
+  [key: string]: unknown;
+};
+
+export type ModerationBlocklistListResponse = {
+  items: ModerationBlocklistItem[];
+  next_cursor?: string | null;
+};
+
+export type ModerationBlocklistCreateResponse = {
+  ids: number[];
+};
+
 export type UserBan = {
   id: number;
   status: "banned" | "active" | string;

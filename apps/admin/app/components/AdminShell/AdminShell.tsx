@@ -34,6 +34,12 @@ const navItems: NavItem[] = [
     permission: "create_community",
   },
   { label: "Reports", to: "/reports", permission: "view_reports" },
+  { label: "Moderation Queue", to: "/moderation" },
+  {
+    label: "Moderation Blocklist",
+    to: "/moderation/blocklist",
+    permission: "manage_moderation_blocklist",
+  },
   { label: "Announcements", to: "/announcements", permission: "send_announcements" },
   { label: "Appeals", to: "/appeals", permission: "view_reports" },
   { label: "Users", to: "/users", permission: ["ban_user", "verify_users"] },
