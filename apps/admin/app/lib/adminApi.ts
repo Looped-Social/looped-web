@@ -12,6 +12,7 @@ import type {
   AdminSectorCompanyListResponse,
   AdminSectorCreateRequest,
   AdminSectorListResponse,
+  ActiveUsersKpiResponse,
   AdminInviteRequest,
   AdminInviteResponse,
   AdminListResponse,
@@ -29,10 +30,23 @@ import type {
   CommunityRequestListResponse,
   CommunityLeaderboardItem,
   CommunityLeaderboardResponse,
+  CommunityHealthDailyKpiResponse,
+  CommunityRetentionKpiResponse,
+  ContentCreationDailyKpiResponse,
+  CommunitiesPostsPerActiveDailyKpiResponse,
+  GrowthUsersDailyKpiResponse,
+  GrowthUsersWeeklyKpiResponse,
   HashtagLeaderboardItem,
   HashtagLeaderboardResponse,
+  ModerationRepeatOffendersKpiResponse,
+  NorthStarUniqueInteractionsKpiResponse,
+  PostsUniqueParticipantsKpiResponse,
   PostDetail,
   ReportListResponse,
+  RetentionByKindKpiResponse,
+  SupportTicketsKpiResponse,
+  TimeToFirstActionsKpiResponse,
+  TrustSafetyKpiResponse,
   UserDetail,
   UserListResponse,
   UserCommunityBanCreateRequest,
@@ -45,6 +59,7 @@ import type {
   VerificationListResponse,
   UserVerifiedCommunityListResponse,
   UserVerifiedCommunityRevokeResponse,
+  VerificationToFirstActionsKpiResponse,
 } from "../types/admin";
 
 export class AdminApiError extends Error {
@@ -606,6 +621,234 @@ export async function fetchUserStats(params: {
   const suffix = query.toString();
   const path = suffix ? `/v1/admin/analytics/users?${suffix}` : "/v1/admin/analytics/users";
   return adminFetch<UserStatsResponse>(path);
+}
+
+export async function fetchKpiActiveUsers(params: {
+  from?: string;
+  to?: string;
+}): Promise<ActiveUsersKpiResponse> {
+  const query = new URLSearchParams();
+  if (params.from) query.set("from", params.from);
+  if (params.to) query.set("to", params.to);
+  const suffix = query.toString();
+  const path = suffix
+    ? `/v1/admin/analytics/kpis/active-users?${suffix}`
+    : "/v1/admin/analytics/kpis/active-users";
+  const res = await adminFetch<ActiveUsersKpiResponse | ActiveUsersKpiResponse["items"]>(path);
+  if (Array.isArray(res)) return { items: res };
+  return res;
+}
+
+export async function fetchKpiCommunityHealthDaily(params: {
+  communityId: number;
+  from?: string;
+  to?: string;
+}): Promise<CommunityHealthDailyKpiResponse> {
+  const query = new URLSearchParams({ communityId: String(params.communityId) });
+  if (params.from) query.set("from", params.from);
+  if (params.to) query.set("to", params.to);
+  return adminFetch<CommunityHealthDailyKpiResponse>(
+    `/v1/admin/analytics/kpis/communities/daily?${query.toString()}`
+  );
+}
+
+export async function fetchKpiCommunityRetention(params: {
+  communityId: number;
+  from?: string;
+  to?: string;
+}): Promise<CommunityRetentionKpiResponse> {
+  const query = new URLSearchParams({ communityId: String(params.communityId) });
+  if (params.from) query.set("from", params.from);
+  if (params.to) query.set("to", params.to);
+  return adminFetch<CommunityRetentionKpiResponse>(
+    `/v1/admin/analytics/kpis/communities/retention?${query.toString()}`
+  );
+}
+
+export async function fetchKpiTrustSafety(params: {
+  from?: string;
+  to?: string;
+}): Promise<TrustSafetyKpiResponse> {
+  const query = new URLSearchParams();
+  if (params.from) query.set("from", params.from);
+  if (params.to) query.set("to", params.to);
+  const suffix = query.toString();
+  const path = suffix
+    ? `/v1/admin/analytics/kpis/trust-safety?${suffix}`
+    : "/v1/admin/analytics/kpis/trust-safety";
+  return adminFetch<TrustSafetyKpiResponse>(path);
+}
+
+export async function fetchKpiContentCreationDaily(params: {
+  from?: string;
+  to?: string;
+}): Promise<ContentCreationDailyKpiResponse> {
+  const query = new URLSearchParams();
+  if (params.from) query.set("from", params.from);
+  if (params.to) query.set("to", params.to);
+  const suffix = query.toString();
+  const path = suffix
+    ? `/v1/admin/analytics/kpis/content/creation/daily?${suffix}`
+    : "/v1/admin/analytics/kpis/content/creation/daily";
+  const res = await adminFetch<
+    ContentCreationDailyKpiResponse | ContentCreationDailyKpiResponse["items"]
+  >(path);
+  if (Array.isArray(res)) return { items: res };
+  return res;
+}
+
+export async function fetchKpiGrowthUsersDaily(params: {
+  from?: string;
+  to?: string;
+}): Promise<GrowthUsersDailyKpiResponse> {
+  const query = new URLSearchParams();
+  if (params.from) query.set("from", params.from);
+  if (params.to) query.set("to", params.to);
+  const suffix = query.toString();
+  const path = suffix
+    ? `/v1/admin/analytics/kpis/growth/users/daily?${suffix}`
+    : "/v1/admin/analytics/kpis/growth/users/daily";
+  const res = await adminFetch<GrowthUsersDailyKpiResponse | GrowthUsersDailyKpiResponse["items"]>(
+    path
+  );
+  if (Array.isArray(res)) return { items: res };
+  return res;
+}
+
+export async function fetchKpiGrowthUsersWeekly(params: {
+  from?: string;
+  to?: string;
+}): Promise<GrowthUsersWeeklyKpiResponse> {
+  const query = new URLSearchParams();
+  if (params.from) query.set("from", params.from);
+  if (params.to) query.set("to", params.to);
+  const suffix = query.toString();
+  const path = suffix
+    ? `/v1/admin/analytics/kpis/growth/users/weekly?${suffix}`
+    : "/v1/admin/analytics/kpis/growth/users/weekly";
+  const res = await adminFetch<
+    GrowthUsersWeeklyKpiResponse | GrowthUsersWeeklyKpiResponse["items"]
+  >(path);
+  if (Array.isArray(res)) return { items: res };
+  return res;
+}
+
+export async function fetchKpiCommunitiesPostsPerActiveDaily(params: {
+  kind: string;
+  from?: string;
+  to?: string;
+}): Promise<CommunitiesPostsPerActiveDailyKpiResponse> {
+  const query = new URLSearchParams({ kind: params.kind });
+  if (params.from) query.set("from", params.from);
+  if (params.to) query.set("to", params.to);
+  const res = await adminFetch<
+    CommunitiesPostsPerActiveDailyKpiResponse | CommunitiesPostsPerActiveDailyKpiResponse["items"]
+  >(
+    `/v1/admin/analytics/kpis/communities/posts-per-active/daily?${query.toString()}`
+  );
+  if (Array.isArray(res)) return { items: res };
+  return res;
+}
+
+export async function fetchKpiPostsUniqueParticipants(params: {
+  communityId: number;
+  from?: string;
+  to?: string;
+}): Promise<PostsUniqueParticipantsKpiResponse> {
+  const query = new URLSearchParams({ communityId: String(params.communityId) });
+  if (params.from) query.set("from", params.from);
+  if (params.to) query.set("to", params.to);
+  return adminFetch<PostsUniqueParticipantsKpiResponse>(
+    `/v1/admin/analytics/kpis/posts/unique-participants?${query.toString()}`
+  );
+}
+
+export async function fetchKpiRetentionByKind(params: {
+  kinds: string[];
+  from?: string;
+  to?: string;
+}): Promise<RetentionByKindKpiResponse> {
+  const query = new URLSearchParams();
+  if (params.kinds.length) query.set("kinds", params.kinds.join(","));
+  if (params.from) query.set("from", params.from);
+  if (params.to) query.set("to", params.to);
+  const res = await adminFetch<RetentionByKindKpiResponse | RetentionByKindKpiResponse["items"]>(
+    `/v1/admin/analytics/kpis/retention/by-kind?${query.toString()}`
+  );
+  if (Array.isArray(res)) return { items: res };
+  return res;
+}
+
+export async function fetchKpiModerationRepeatOffenders(params: {
+  from?: string;
+  to?: string;
+}): Promise<ModerationRepeatOffendersKpiResponse> {
+  const query = new URLSearchParams();
+  if (params.from) query.set("from", params.from);
+  if (params.to) query.set("to", params.to);
+  const suffix = query.toString();
+  const path = suffix
+    ? `/v1/admin/analytics/kpis/moderation/repeat-offenders?${suffix}`
+    : "/v1/admin/analytics/kpis/moderation/repeat-offenders";
+  return adminFetch<ModerationRepeatOffendersKpiResponse>(path);
+}
+
+export async function fetchKpiUsersTimeToFirstActions(params: {
+  from?: string;
+  to?: string;
+}): Promise<TimeToFirstActionsKpiResponse> {
+  const query = new URLSearchParams();
+  if (params.from) query.set("from", params.from);
+  if (params.to) query.set("to", params.to);
+  const suffix = query.toString();
+  const path = suffix
+    ? `/v1/admin/analytics/kpis/users/time-to-first-actions?${suffix}`
+    : "/v1/admin/analytics/kpis/users/time-to-first-actions";
+  return adminFetch<TimeToFirstActionsKpiResponse>(path);
+}
+
+export async function fetchKpiUsersVerificationToFirstActions(params: {
+  from?: string;
+  to?: string;
+}): Promise<VerificationToFirstActionsKpiResponse> {
+  const query = new URLSearchParams();
+  if (params.from) query.set("from", params.from);
+  if (params.to) query.set("to", params.to);
+  const suffix = query.toString();
+  const path = suffix
+    ? `/v1/admin/analytics/kpis/users/verification-to-first-actions?${suffix}`
+    : "/v1/admin/analytics/kpis/users/verification-to-first-actions";
+  return adminFetch<VerificationToFirstActionsKpiResponse>(path);
+}
+
+export async function fetchKpiNorthStarUniqueInteractions(params: {
+  communityId?: number;
+  from?: string;
+  to?: string;
+}): Promise<NorthStarUniqueInteractionsKpiResponse> {
+  const query = new URLSearchParams();
+  if (typeof params.communityId === "number") query.set("communityId", String(params.communityId));
+  if (params.from) query.set("from", params.from);
+  if (params.to) query.set("to", params.to);
+  const suffix = query.toString();
+  const path = suffix
+    ? `/v1/admin/analytics/kpis/north-star/unique-interactions?${suffix}`
+    : "/v1/admin/analytics/kpis/north-star/unique-interactions";
+  return adminFetch<NorthStarUniqueInteractionsKpiResponse>(path);
+}
+
+export async function fetchKpiSupportTickets(params: {
+  from?: string;
+  to?: string;
+}): Promise<SupportTicketsKpiResponse> {
+  const query = new URLSearchParams();
+  if (params.from) query.set("from", params.from);
+  if (params.to) query.set("to", params.to);
+  const suffix = query.toString();
+  const path = suffix
+    ? `/v1/admin/analytics/kpis/support/tickets?${suffix}`
+    : "/v1/admin/analytics/kpis/support/tickets";
+  return adminFetch<SupportTicketsKpiResponse>(path);
 }
 
 export async function fetchAdminUser(id: number): Promise<UserDetail> {

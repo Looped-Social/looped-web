@@ -1,6 +1,7 @@
 import type { Route } from "./+types/analytics";
 
 import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
+import { useSearchParams } from "react-router";
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 import {
@@ -8,6 +9,7 @@ import {
   fetchHashtagLeaderboard,
   fetchUserStats,
 } from "../lib/adminApi";
+import { AnalyticsSubnav } from "../components/AnalyticsSubnav/AnalyticsSubnav";
 import type {
   CommunityLeaderboardItem,
   HashtagLeaderboardItem,
@@ -17,6 +19,15 @@ import type {
 const COMMUNITY_LIMIT = 50;
 const COMMUNITY_PAGE_SIZE = 10;
 const HASHTAG_LIMIT = 50;
+
+const analyticsViewOptions = [
+  { value: "all", label: "All dashboards" },
+  { value: "communities", label: "Community leaderboard" },
+  { value: "hashtags", label: "Hashtag leaderboard" },
+  { value: "users", label: "User stats" },
+] as const;
+
+type AnalyticsView = (typeof analyticsViewOptions)[number]["value"];
 
 const rangePresets = [
   { value: "all", label: "All time" },
@@ -66,6 +77,13 @@ function parseDateInput(value: string) {
   const parsed = new Date(`${value}T00:00:00Z`);
   if (Number.isNaN(parsed.getTime())) return null;
   return parsed;
+}
+
+function parseAnalyticsView(value: string | null): AnalyticsView {
+  const candidate = value?.trim() ?? "";
+  if (!candidate) return "all";
+  const allowed = new Set<string>(analyticsViewOptions.map((option) => option.value));
+  return allowed.has(candidate) ? (candidate as AnalyticsView) : "all";
 }
 
 function createRange(preset: BaseRangePreset): DateRange {
@@ -160,7 +178,7 @@ function getHashtagLabel(item: HashtagLeaderboardItem) {
 function RangeFilter({ label = "Time range", range, setRange }: RangeFilterProps) {
   const isAllTime = range.preset === "all";
   return (
-    <div className="rounded-2xl border border-border bg-bg-muted/30 p-4">
+    <div className="rounded-2xl border border-border bg-bg-muted/30 p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-xs font-semibold uppercase text-text-light">{label}</p>
         <span className="text-xs text-text-light">{rangeSummary(range)}</span>
@@ -171,7 +189,7 @@ function RangeFilter({ label = "Time range", range, setRange }: RangeFilterProps
             key={preset.value}
             type="button"
             onClick={() => setRange(createRange(preset.value))}
-            className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+            className={`rounded-full border px-2.5 py-1 text-xs font-semibold transition ${
               range.preset === preset.value
                 ? "border-brand bg-brand text-white"
                 : "border-border bg-bg text-text-secondary hover:text-text-primary"
@@ -183,7 +201,7 @@ function RangeFilter({ label = "Time range", range, setRange }: RangeFilterProps
         <button
           type="button"
           onClick={() => setRange((prev) => ({ ...prev, preset: "custom" }))}
-          className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+          className={`rounded-full border px-2.5 py-1 text-xs font-semibold transition ${
             range.preset === "custom"
               ? "border-brand bg-brand text-white"
               : "border-border bg-bg text-text-secondary hover:text-text-primary"
@@ -202,7 +220,7 @@ function RangeFilter({ label = "Time range", range, setRange }: RangeFilterProps
               setRange((prev) => ({ ...prev, preset: "custom", from: event.target.value }))
             }
             disabled={isAllTime}
-            className="mt-1 w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm font-medium text-text-primary disabled:cursor-not-allowed disabled:opacity-60"
+            className="mt-1 w-full rounded-lg border border-border bg-bg px-3 py-1.5 text-sm font-medium text-text-primary disabled:cursor-not-allowed disabled:opacity-60"
           />
         </label>
         <label className="text-xs font-semibold uppercase text-text-light">
@@ -214,11 +232,11 @@ function RangeFilter({ label = "Time range", range, setRange }: RangeFilterProps
               setRange((prev) => ({ ...prev, preset: "custom", to: event.target.value }))
             }
             disabled={isAllTime}
-            className="mt-1 w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm font-medium text-text-primary disabled:cursor-not-allowed disabled:opacity-60"
+            className="mt-1 w-full rounded-lg border border-border bg-bg px-3 py-1.5 text-sm font-medium text-text-primary disabled:cursor-not-allowed disabled:opacity-60"
           />
         </label>
       </div>
-      <p className="mt-2 text-xs text-text-light">End date is inclusive (UTC).</p>
+      <p className="mt-1 text-xs text-text-light">End date is inclusive (UTC).</p>
     </div>
   );
 }
@@ -231,6 +249,25 @@ export function meta({}: Route.MetaArgs) {
 }
 
 export default function AnalyticsRoute() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const view = useMemo(() => parseAnalyticsView(searchParams.get("view")), [searchParams]);
+  const setView = (next: AnalyticsView) => {
+    const params = new URLSearchParams(searchParams);
+    if (next === "all") {
+      params.delete("view");
+    } else {
+      params.set("view", next);
+    }
+    setSearchParams(params);
+  };
+  const wantsCommunities = view === "all" || view === "communities";
+  const wantsHashtags = view === "all" || view === "hashtags";
+  const wantsUsers = view === "all" || view === "users";
+  const viewTitle =
+    view === "all"
+      ? "Analytics dashboards"
+      : analyticsViewOptions.find((option) => option.value === view)?.label ?? "Analytics dashboards";
+
   const communityMetric: CommunityMetric = "likes";
   const [communityRange, setCommunityRange] = useState<DateRange>(() => createRange("7d"));
   const [communityId, setCommunityId] = useState("");
@@ -300,6 +337,7 @@ export default function AnalyticsRoute() {
   }, [hashtagItems]);
 
   useEffect(() => {
+    if (!wantsCommunities) return;
     let active = true;
     const { from, to } = getRangeParams(communityRange);
     setCommunityLoading(true);
@@ -329,13 +367,14 @@ export default function AnalyticsRoute() {
     return () => {
       active = false;
     };
-  }, [communityRange, communityId, communityMetric]);
+  }, [communityRange, communityId, communityMetric, wantsCommunities]);
 
   useEffect(() => {
     setCommunityPage(1);
   }, [communityItems]);
 
   useEffect(() => {
+    if (!wantsHashtags) return;
     let active = true;
     const { from, to } = getRangeParams(hashtagRange);
     setHashtagLoading(true);
@@ -364,9 +403,10 @@ export default function AnalyticsRoute() {
     return () => {
       active = false;
     };
-  }, [hashtagRange, hashtagCommunityId]);
+  }, [hashtagRange, hashtagCommunityId, wantsHashtags]);
 
   useEffect(() => {
+    if (!wantsUsers) return;
     let active = true;
     const { from, to } = getRangeParams(userRange);
     setUserLoading(true);
@@ -388,10 +428,41 @@ export default function AnalyticsRoute() {
     return () => {
       active = false;
     };
-  }, [userRange]);
+  }, [userRange, wantsUsers]);
 
   return (
     <div className="space-y-6">
+      <AnalyticsSubnav active="leaderboards" />
+
+      <div className="rounded-2xl border border-border bg-bg px-4 py-4">
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <p className="text-xs font-semibold uppercase text-text-light">Analytics</p>
+            <h1 className="mt-1 text-3xl font-semibold text-strong">{viewTitle}</h1>
+            <p className="mt-1 text-sm text-text-secondary">
+              Pick one dashboard to keep the page focused.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-end gap-3">
+            <label className="text-xs font-semibold uppercase text-text-light">
+              Dashboard
+              <select
+                value={view}
+                onChange={(event) => setView(event.target.value as AnalyticsView)}
+                className="mt-1 h-9 min-w-[220px] rounded-lg border border-border bg-bg px-3 text-sm font-semibold text-text-primary"
+              >
+                {analyticsViewOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      {wantsCommunities && (
       <section className="rounded-3xl border border-border bg-bg p-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -561,7 +632,9 @@ export default function AnalyticsRoute() {
           </aside>
         </div>
       </section>
+      )}
 
+      {wantsHashtags && (
       <section className="rounded-3xl border border-border bg-bg p-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -689,7 +762,9 @@ export default function AnalyticsRoute() {
           </aside>
         </div>
       </section>
+      )}
 
+      {wantsUsers && (
       <section className="rounded-3xl border border-border bg-bg p-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -785,6 +860,7 @@ export default function AnalyticsRoute() {
           </aside>
         </div>
       </section>
+      )}
     </div>
   );
 }

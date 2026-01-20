@@ -433,6 +433,195 @@ export type UserStatsResponse = {
   [key: string]: unknown;
 };
 
+export type ActiveUsersKpiItem = {
+  day: string;
+  dau?: number | null;
+  mau_30d?: number | null;
+  dau_mau_ratio?: number | null;
+  [key: string]: unknown;
+};
+
+export type ActiveUsersKpiResponse = {
+  items: ActiveUsersKpiItem[];
+  [key: string]: unknown;
+};
+
+export type CommunityHealthDailyKpiItem = {
+  day: string;
+  posts_count?: number | null;
+  comments_count?: number | null;
+  post_likes_count?: number | null;
+  post_shares_count?: number | null;
+  unique_posters?: number | null;
+  unique_commenters?: number | null;
+  unique_post_likers?: number | null;
+  unique_post_sharers?: number | null;
+  comment_to_post_ratio?: number | null;
+  [key: string]: unknown;
+};
+
+export type CommunityHealthDailyKpiResponse = {
+  community_id: number;
+  items: CommunityHealthDailyKpiItem[];
+  [key: string]: unknown;
+};
+
+export type CommunityRetentionKpiItem = {
+  cohort_day: string;
+  cohort_size?: number | null;
+  retained_d1?: number | null;
+  retained_d7?: number | null;
+  retained_d30?: number | null;
+  retention_d1?: number | null;
+  retention_d7?: number | null;
+  retention_d30?: number | null;
+  [key: string]: unknown;
+};
+
+export type CommunityRetentionKpiResponse = {
+  community_id: number;
+  items: CommunityRetentionKpiItem[];
+  [key: string]: unknown;
+};
+
+export type TrustSafetyKpiResponse = {
+  total_users?: number | null;
+  verified_users_global?: number | null;
+  verified_users_any_community?: number | null;
+  verified_percent_global?: number | null;
+  verified_percent_any_community?: number | null;
+  posts_total?: number | null;
+  posts_anon?: number | null;
+  posts_anon_rate?: number | null;
+  comments_total?: number | null;
+  comments_anon?: number | null;
+  comments_anon_rate?: number | null;
+  likes_total?: number | null;
+  likes_anon?: number | null;
+  likes_anon_rate?: number | null;
+  appeals_reviewed?: number | null;
+  appeals_approved?: number | null;
+  appeal_success_rate?: number | null;
+  [key: string]: unknown;
+};
+
+export type ContentCreationDailyKpiItem = {
+  day: string;
+  active_users?: number | null;
+  creators?: number | null;
+  creator_rate?: number | null;
+  [key: string]: unknown;
+};
+
+export type ContentCreationDailyKpiResponse = {
+  items: ContentCreationDailyKpiItem[];
+  [key: string]: unknown;
+};
+
+export type CommunitiesPostsPerActiveDailyKpiItem = {
+  day: string;
+  posts_count?: number | null;
+  active_communities?: number | null;
+  posts_per_active_community?: number | null;
+  [key: string]: unknown;
+};
+
+export type CommunitiesPostsPerActiveDailyKpiResponse = {
+  items: CommunitiesPostsPerActiveDailyKpiItem[];
+  [key: string]: unknown;
+};
+
+export type PostsUniqueParticipantsKpiResponse = {
+  posts_count?: number | null;
+  avg_unique_participants_per_post?: number | null;
+  p50_unique_participants_per_post?: number | null;
+  p90_unique_participants_per_post?: number | null;
+  [key: string]: unknown;
+};
+
+export type RetentionByKindKpiItem = {
+  kind: string;
+  cohort_day: string;
+  cohort_size?: number | null;
+  retained_d1?: number | null;
+  retained_d7?: number | null;
+  retained_d30?: number | null;
+  retention_d1?: number | null;
+  retention_d7?: number | null;
+  retention_d30?: number | null;
+  [key: string]: unknown;
+};
+
+export type RetentionByKindKpiResponse = {
+  items: RetentionByKindKpiItem[];
+  [key: string]: unknown;
+};
+
+export type GrowthUsersDailyKpiItem = {
+  day: string;
+  new_users?: number | null;
+  deleted_users?: number | null;
+  [key: string]: unknown;
+};
+
+export type GrowthUsersDailyKpiResponse = {
+  items: GrowthUsersDailyKpiItem[];
+  [key: string]: unknown;
+};
+
+export type GrowthUsersWeeklyKpiItem = {
+  week_start: string;
+  new_users?: number | null;
+  deleted_users?: number | null;
+  [key: string]: unknown;
+};
+
+export type GrowthUsersWeeklyKpiResponse = {
+  items: GrowthUsersWeeklyKpiItem[];
+  [key: string]: unknown;
+};
+
+export type ModerationRepeatOffendersKpiResponse = {
+  repeat_offenders?: number | null;
+  total_offenders?: number | null;
+  repeat_offender_rate?: number | null;
+  bans_total?: number | null;
+  post_removals_total?: number | null;
+  [key: string]: unknown;
+};
+
+export type TimeToFirstActionsKpiResponse = {
+  p50_seconds_to_first_action?: number | null;
+  p90_seconds_to_first_action?: number | null;
+  p50_seconds_to_first_verification?: number | null;
+  p90_seconds_to_first_verification?: number | null;
+  [key: string]: unknown;
+};
+
+export type VerificationToFirstActionsKpiResponse = {
+  p50_seconds_to_first_like?: number | null;
+  p90_seconds_to_first_like?: number | null;
+  p50_seconds_to_first_comment?: number | null;
+  p90_seconds_to_first_comment?: number | null;
+  p50_seconds_to_first_post?: number | null;
+  p90_seconds_to_first_post?: number | null;
+  [key: string]: unknown;
+};
+
+export type NorthStarUniqueInteractionsKpiResponse = {
+  unique_interactions?: number | null;
+  unique_users?: number | null;
+  interaction_edges?: number | null;
+  [key: string]: unknown;
+};
+
+export type SupportTicketsKpiResponse = {
+  tickets_total?: number | null;
+  tickets_per_1000_users?: number | null;
+  users_total?: number | null;
+  [key: string]: unknown;
+};
+
 export type AuditItem = {
   id: number;
   actor_admin_id: number;

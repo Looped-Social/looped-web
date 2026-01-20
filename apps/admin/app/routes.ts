@@ -4,6 +4,7 @@ export default [
   route("/", "routes/admin.tsx", [
     index("routes/home.tsx"),
     route("analytics", "routes/analytics.tsx"),
+    route("analytics/kpis", "routes/analytics-kpis.tsx"),
     route("verifications", "routes/verifications.tsx"),
     route("communities", "routes/communities.tsx"),
     route("sectors", "routes/sectors.tsx"),
