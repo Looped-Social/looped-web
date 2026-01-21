@@ -7,11 +7,9 @@
     "dev": "npm run -w apps/web dev",
     "build": "npm run -w apps/web build",
     "start": "npm run -w apps/web start",
-    "typecheck": "npm run -ws --if-present typecheck",
-    "lint": "npm run -ws --if-present lint",
+    "typecheck": "npm run --ws --if-present typecheck",
+    "lint": "npm run --ws --if-present lint",
     "format": "prettier --write \"apps/**/{app,src,public}/**/*.{ts,tsx,js,jsx,json,css,md}\" \"packages/**/src/**/*.{ts,tsx,css}\"",
-    "format:check": "prettier --check \"apps/**/{app,src,public}/**/*.{ts,tsx,js,jsx,json,css,md}\" \"packages/**/src/**/*.{ts,tsx,css}\"",
-    "dev:admin": "npm run -w apps/admin dev",
-    "build:admin": "npm run -w apps/admin build"
+    "format:check": "prettier --check \"apps/**/{app,src,public}/**/*.{ts,tsx,js,jsx,json,css,md}\" \"packages/**/src/**/*.{ts,tsx,css}\""
   }
 }

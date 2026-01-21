@@ -1,12 +1,11 @@
 Looped Web
 ==========
 
-Monorepo for Looped web properties. The marketing/landing experience and the authenticated web app live together in `apps/web` and are served from the same domain (`mylooped.app`). The admin dashboard lives in `apps/admin`. Shared components and design tokens live under `packages/`.
+Repo for the Looped web experience served from `mylooped.app` (marketing/landing + authenticated web app). Shared components and design tokens live under `packages/`.
 
 Repo Layout
 -----------
 - `apps/web` – marketing/landing + authenticated web app (React Router v7 + Vite + Tailwind v4)
-- `apps/admin` – admin dashboard (create via scaffolding)
 - `packages/ui` – shared UI components (Tailwind-only React components like Button, Input, Card)
 - `packages/config` – shared theme tokens (Tailwind v4 `@theme` CSS, brand colors, typography)
 
@@ -20,7 +19,6 @@ Scripts
 - `npm run dev` – web dev server (landing + app routes)
 - `npm run build` – web production build
 - `npm run start` – serve the web build
-- `npm run dev:admin` / `npm run build:admin` – admin app (after it exists)
 - `npm run lint` / `npm run typecheck` – all workspaces (where present)
 - `npm run format` / `npm run format:check` – Prettier across apps/packages
 
