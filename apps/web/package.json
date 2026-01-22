@@ -14,17 +14,17 @@
   "dependencies": {
     "@looped/config": "file:../../packages/config",
     "@looped/ui": "file:../../packages/ui",
-    "@react-router/node": "^7.9.2",
-    "@react-router/serve": "^7.9.2",
+    "@react-router/node": "^7.12.0",
+    "@react-router/serve": "^7.12.0",
     "firebase": "^11.0.0",
     "isbot": "^5.1.31",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
-    "react-router": "^7.9.2"
+    "react-router": "^7.12.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",
-    "@react-router/dev": "^7.9.2",
+    "@react-router/dev": "^7.12.0",
     "@tailwindcss/vite": "^4.1.13",
     "@types/node": "^22",
     "@types/react": "^19.1.13",

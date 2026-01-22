@@ -7,11 +7,6 @@ This repository currently contains the marketing/landing experience for Looped a
 
 All backend business logic and data persistence live in a separately deployed Spring Boot application. This frontend never owns backend business rules or server-side rendering logic; it should only consume APIs exposed by the Spring Boot service.
 
-## Monorepo Context
-- This app lives in `apps/web` within the Looped web monorepo.
-- Shared UI should go in `packages/ui` (Tailwind-only React components like Button, Input, Card); shared theme tokens live in `packages/config/src/theme.css`.
-- Before duplicating UI or hooks, look up one level (`../..`) to check `packages/ui` and `packages/config` for shared components and theme utilities.
-- Install dependencies from the repo root using npm workspaces; run dev from the root or with `npm run -w apps/web dev`.
 
 ## Brand & Design
 - **Primary Color**: #ea404a 
@@ -29,8 +24,6 @@ All backend business logic and data persistence live in a separately deployed Sp
 - **Public routes**: `/`, `/privacy`, `/terms`, `/about`, `/download`, etc. stay accessible without auth.
 - **App routes**: everything under `/app/*` is gated and requires auth.
 - **Root behavior**: signed-in users visiting `/` should be redirected to `/app`; unauthenticated users visiting `/app/*` should be redirected to `/` (or `/signin` if added later).
-
-
 
 ## Development Best Practices
 

@@ -1,7 +1,7 @@
 # Looped Web
 
 ## Repo Overview
-This repository contains the Looped web experience served from `mylooped.app` (marketing/landing + authenticated web app). Shared UI and design tokens live in `packages/` and are consumed by the app. The admin dashboard lives in a separate repository and deploy.
+This repository contains the Looped web experience served from `mylooped.app` (marketing/landing + authenticated web app). Shared UI and design tokens live in `packages/` and are consumed by the app.
 
 ## Structure
 - `apps/web` – marketing/landing + authenticated web app (React Router v7 + Vite + Tailwind v4)
