@@ -55,8 +55,9 @@ export function PrivacyPage() {
             Privacy that protects your identity
           </h1>
           <p className="text-lg leading-8 text-text-secondary md:text-xl">
-            Looped is a workplace- and college-verified social media app. You can view any post, but you must be
-            verified in a community (workplace, school, or sector) to post.
+            Looped is a company- and school-verified social media app. You can view any post, but you must verify to
+            join and post in a company or school community. Joining a company unlocks Fields, and joining a school
+            unlocks Majors.
           </p>
         </header>
 

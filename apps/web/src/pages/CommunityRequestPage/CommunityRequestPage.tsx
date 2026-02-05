@@ -14,8 +14,8 @@ import {
 const requestTypes: Array<{ value: CommunityRequestPayload["type"]; label: string; helper?: string }> = [
   { value: "company", label: "Company" },
   { value: "school", label: "School" },
-  { value: "sector", label: "Sector" },
-  { value: "profession", label: "Profession", helper: "Treated as sector" },
+  { value: "sector", label: "Field" },
+  { value: "profession", label: "Profession", helper: "Treated as a field" },
 ];
 
 export function CommunityRequestPage() {
@@ -106,7 +106,7 @@ export function CommunityRequestPage() {
             Request a new Looped community
           </h1>
           <p className="text-lg leading-8 text-text-secondary">
-            Tell us the workplace, school, or sector you want to see on Looped.
+            Tell us the company, school, or field you want to see on Looped.
           </p>
         </header>
 

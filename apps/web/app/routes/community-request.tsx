@@ -6,7 +6,7 @@ export function meta({}: Route.MetaArgs) {
     { title: "Looped — Community Request" },
     {
       name: "description",
-      content: "Request a new workplace, school, or sector community on Looped.",
+      content: "Request a new company, school, or field community on Looped.",
     },
   ];
 }
