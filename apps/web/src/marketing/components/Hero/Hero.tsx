@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
-import heroImage from "@/assets/images/home-page-sample.jpeg";
+import heroDarkImage from "~/assets/landing-page/hero/home-page-sample-dark.PNG";
+import heroLightImage from "~/assets/landing-page/hero/main-feed-light.PNG";
 import { AppStoreButton } from "../AppStoreButton/AppStoreButton";
 
 const rotatingWords = ["college", "community", "workspace", "colleagues", "team", "office"];
@@ -59,11 +60,16 @@ export function Hero() {
         </div>
 
         <div className="relative flex justify-center md:justify-end md:pr-0">
-          <div className="absolute inset-0 -z-10 rounded-[28px] bg-gradient-to-br from-bg via-bg to-brand/5 blur-2xl" />
+          <div className="absolute inset-0 -z-10 rounded-[28px] bg-gradient-to-br from-bg via-bg to-brand/5 blur-2xl dark:to-white/10" />
           <img
-            src={heroImage}
+            src={heroLightImage}
             alt="Looped app interface"
-            className="w-[80%] min-w-[260px] max-w-[440px] rounded-[24px] border border-white/60 shadow-[0_20px_60px_rgba(0,0,0,0.1)] sm:w-[65%] md:w-[75%] lg:w-[80%]"
+            className="w-[80%] min-w-[260px] max-w-[440px] rounded-[24px] ring-1 ring-black/5 shadow-[0_20px_60px_rgba(0,0,0,0.18)] dark:hidden sm:w-[65%] md:w-[75%] lg:w-[80%]"
+          />
+          <img
+            src={heroDarkImage}
+            alt="Looped app interface"
+            className="hidden w-[80%] min-w-[260px] max-w-[440px] rounded-[24px] ring-1 ring-white/15 shadow-[0_20px_80px_rgba(0,0,0,0.75)] dark:block sm:w-[65%] md:w-[75%] lg:w-[80%]"
           />
         </div>
       </div>

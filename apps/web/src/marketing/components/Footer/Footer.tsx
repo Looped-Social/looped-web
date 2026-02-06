@@ -17,11 +17,8 @@ export function Footer() {
               to="/"
               className="inline-flex w-fit shrink-0 items-center transition-opacity duration-200 hover:opacity-80"
             >
-              <img src={motoSrc} alt="Looped" className="h-20 w-auto" />
+              <img src={motoSrc} alt="Looped" className="h-24 w-auto md:h-28" />
             </Link>
-            <p className="max-w-sm text-sm text-text-secondary">
-              Your community, verified. Where real employees and students speak freely.
-            </p>
             <AppStoreButton size={5.5} />
           </div>
 
@@ -155,7 +152,7 @@ export function Footer() {
         </div>
 
         <div className="mt-10 flex flex-col gap-3 border-t border-border pt-6 text-sm text-text-light sm:flex-row sm:items-center sm:justify-between sm:gap-4 md:gap-6">
-          <p className="text-left sm:text-left">© {currentYear} Looped, Inc. All rights reserved.</p>
+          <p className="text-left sm:text-left">© {currentYear} Looped Social All rights reserved.</p>
           <p className="text-left sm:text-right">iOS app only</p>
         </div>
       </div>

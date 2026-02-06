@@ -31,8 +31,6 @@ All backend business logic and data persistence live in a separately deployed Sp
 - **App routes**: everything under `/app/*` is gated and requires auth.
 - **Root behavior**: signed-in users visiting `/` should be redirected to `/app`; unauthenticated users visiting `/app/*` should be redirected to `/` (or `/signin` if added later).
 
-
-
 ## Development Best Practices
 
 ### Code Quality
