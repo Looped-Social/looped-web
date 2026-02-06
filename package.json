@@ -5,7 +5,9 @@
   "workspaces": ["apps/*", "packages/*"],
   "scripts": {
     "dev": "npm run -w apps/web dev",
+    "dev:staging": "npm run -w apps/web dev:staging",
     "build": "npm run -w apps/web build",
+    "build:staging": "npm run -w apps/web build:staging",
     "start": "npm run -w apps/web start",
     "typecheck": "npm run --ws --if-present typecheck",
     "lint": "npm run --ws --if-present lint",

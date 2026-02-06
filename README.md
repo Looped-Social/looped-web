@@ -13,11 +13,15 @@ Getting Started
 ---------------
 1) Install deps: `npm install`
 2) Start web dev server (landing + app routes): `npm run dev`
+   - Local env: copy `apps/web/.env.example` → `apps/web/.env.local`
+   - Staging env: copy `apps/web/.env.staging.example` → `apps/web/.env.staging.local` and run `npm run dev:staging`
 
 Scripts
 -------
 - `npm run dev` – web dev server (landing + app routes)
+- `npm run dev:staging` – web dev server using Vite `staging` mode (`apps/web/.env.staging*`)
 - `npm run build` – web production build
+- `npm run build:staging` – web build using Vite `staging` mode
 - `npm run start` – serve the web build
 - `npm run lint` / `npm run typecheck` – all workspaces (where present)
 - `npm run format` / `npm run format:check` – Prettier across apps/packages

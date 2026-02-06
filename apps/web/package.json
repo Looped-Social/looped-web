@@ -4,7 +4,9 @@
   "type": "module",
   "scripts": {
     "build": "react-router build",
+    "build:staging": "react-router build --mode staging",
     "dev": "react-router dev",
+    "dev:staging": "react-router dev --mode staging",
     "lint": "eslint \"{app,src}/**/*.{ts,tsx}\"",
     "format": "prettier --write \"{app,src,public}/**/*.{ts,tsx,js,jsx,json,css,md}\"",
     "format:check": "prettier --check \"{app,src,public}/**/*.{ts,tsx,js,jsx,json,css,md}\"",
