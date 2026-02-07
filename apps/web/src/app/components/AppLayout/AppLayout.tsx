@@ -139,7 +139,7 @@ export function AppLayout({ activeNavId = 'home', children, rightRail }: AppLayo
             </aside>
 
             <main className="min-w-0 lg:col-start-2">
-              <div className="w-full overflow-hidden bg-bg">
+              <div className="w-full overflow-hidden bg-bg lg:min-h-screen lg:border-x lg:border-border/70">
                 {children}
               </div>
             </main>
