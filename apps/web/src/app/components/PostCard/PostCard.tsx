@@ -181,7 +181,7 @@ export function PostCard({ post }: PostCardProps) {
 
   const [isSaved, setIsSaved] = useState(post.viewerSaved ?? false);
   const [isSaveLoading, setIsSaveLoading] = useState(false);
-  const canOpenProfile = !post.isAnonymous && Boolean(post.authorProfileHref);
+  const canOpenProfile = Boolean(post.authorProfileHref);
 
   useEffect(() => {
     setIsLiked(post.viewerLiked ?? false);

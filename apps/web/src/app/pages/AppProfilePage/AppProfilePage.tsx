@@ -182,6 +182,17 @@ function normalizePostItemToPostData(item: unknown): PostData | null {
   const reposts = pickNumber(item, ["reposts_count", "repost_count", "reposts", "repostCount"]) ?? 0;
   const shares = pickNumber(item, ["share_count", "shareCount", "shares_count", "sharesCount"]) ?? 0;
   const saves = pickNumber(item, ["save_count", "saveCount", "saves_count", "savesCount"]) ?? 0;
+  const anonProfileId =
+    pickString(item, ["anon_profile_id", "anonProfileId", "author_anon_profile_id", "authorAnonProfileId"]) ??
+    (() => {
+      const anonProfile =
+        (isRecord(item.anon_profile) ? item.anon_profile : null) ??
+        (isRecord(item.anonProfile) ? item.anonProfile : null) ??
+        (isRecord(item.author_anon_profile) ? item.author_anon_profile : null) ??
+        (isRecord(item.authorAnonProfile) ? item.authorAnonProfile : null);
+      if (!anonProfile) return undefined;
+      return pickString(anonProfile, ["id", "anon_profile_id", "anonProfileId"]);
+    })();
 
   return {
     id,
@@ -192,7 +203,13 @@ function normalizePostItemToPostData(item: unknown): PostData | null {
     content: normalizeOptional(item.content) ?? "",
     time,
     authorProfileImageUrl: pickString(item, ["author_profile_image_url", "authorProfileImageUrl"]),
-    authorProfileHref: !isAnonymous && authorId ? `/app/profile/${authorId}` : undefined,
+    authorProfileHref: isAnonymous
+      ? anonProfileId
+        ? `/app/profile/anon/${anonProfileId}`
+        : "/app/profile/anonymous"
+      : authorId
+        ? `/app/profile/${authorId}`
+        : undefined,
     viewerLiked: pickBoolean(item, ["user_liked", "userLiked"]) ?? false,
     viewerSaved: pickBoolean(item, ["is_saved", "isSaved"]) ?? false,
     viewerHasReposted: pickBoolean(item, ["viewer_has_reposted", "viewerHasReposted"]) ?? false,

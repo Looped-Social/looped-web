@@ -1,0 +1,187 @@
+:root {
+  --toast-bg: #f3f4f6;
+  --toast-title: #111827;
+  --toast-text: #6b7280;
+  --toast-success: #12b76a;
+  --toast-error: #d92d20;
+  --toast-secondary: #15bfb5;
+  --toast-border-base: #0f0f0f;
+}
+
+[data-theme="dark"] {
+  --toast-bg: #333333;
+  --toast-title: #e5e7eb;
+  --toast-text: #9ca3af;
+  --toast-success: #22c55e;
+  --toast-error: #ff5a5f;
+  --toast-secondary: #15bfb5;
+  --toast-border-base: #ffffff;
+}
+
+.looped-toast-viewport {
+  position: fixed;
+  z-index: 120;
+  left: 50%;
+  width: min(560px, calc(100% - 32px));
+  transform: translateX(-50%);
+  bottom: calc(env(safe-area-inset-bottom, 0px) + var(--toast-tab-bar-height, 0px) + 16px);
+  pointer-events: none;
+}
+
+.looped-toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  border-radius: 18px;
+  padding: 14px;
+  background: var(--toast-bg);
+  border: 1px solid color-mix(in srgb, var(--toast-border-base) 8%, transparent);
+  box-shadow: 0 8px 16px rgba(15, 15, 15, 0.16);
+  color: var(--toast-title);
+  transform: translateY(0) scale(1);
+  opacity: 1;
+  backdrop-filter: saturate(1.05);
+}
+
+.looped-toast--dismissible {
+  cursor: pointer;
+}
+
+.looped-toast--enter {
+  animation: looped-toast-enter 0.42s cubic-bezier(0.2, 1.3, 0.3, 1) both;
+}
+
+.looped-toast--exit {
+  animation: looped-toast-exit 0.2s ease-in both;
+}
+
+.looped-toast__icon {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--toast-secondary) 14%, transparent);
+  color: var(--toast-secondary);
+}
+
+.looped-toast--success .looped-toast__icon {
+  background: var(--toast-success);
+  color: var(--toast-success);
+}
+
+.looped-toast--error .looped-toast__icon {
+  background: var(--toast-error);
+  color: var(--toast-error);
+}
+
+.looped-toast--secondary .looped-toast__icon {
+  background: color-mix(in srgb, var(--toast-secondary) 18%, transparent);
+  color: var(--toast-secondary);
+}
+
+.looped-toast--loading .looped-toast__icon {
+  background: color-mix(in srgb, var(--toast-secondary) 16%, transparent);
+  color: var(--toast-secondary);
+}
+
+.looped-toast__icon-svg,
+.looped-toast__icon-spinner {
+  width: 24px;
+  height: 24px;
+  stroke: currentColor;
+}
+
+.looped-toast__icon-svg {
+  color: #ffffff;
+}
+
+.looped-toast--secondary .looped-toast__icon-svg {
+  color: var(--toast-secondary);
+}
+
+.looped-toast__icon-spinner {
+  animation: looped-toast-spin 0.9s linear infinite;
+}
+
+.looped-toast__copy {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.looped-toast__title {
+  margin: 0;
+  color: var(--toast-title);
+  font-size: 16px;
+  line-height: 1.25;
+  font-weight: 500;
+}
+
+.looped-toast__message {
+  margin: 2px 0 0;
+  color: var(--toast-text);
+  font-size: 14px;
+  line-height: 1.35;
+  font-weight: 400;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+.looped-toast__close {
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  color: color-mix(in srgb, var(--toast-text) 96%, #ffffff);
+  cursor: pointer;
+}
+
+.looped-toast__close:hover {
+  color: var(--toast-title);
+}
+
+.looped-toast__close-icon {
+  width: 18px;
+  height: 18px;
+  stroke: currentColor;
+}
+
+@keyframes looped-toast-enter {
+  0% {
+    opacity: 0;
+    transform: translateY(14px) scale(0.98);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes looped-toast-exit {
+  0% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateY(8px) scale(0.99);
+  }
+}
+
+@keyframes looped-toast-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

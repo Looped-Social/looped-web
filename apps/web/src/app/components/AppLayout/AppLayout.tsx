@@ -49,6 +49,13 @@ const navItems: NavItem[] = [
     iconSrc: '/ios-icons/nav-profile.svg',
     activeIconSrc: '/ios-icons/nav-profile-active.svg',
   },
+  {
+    id: 'settings',
+    label: 'Settings',
+    href: '/app/settings',
+    iconSrc: '/ios-icons/nav-settings.svg',
+    activeIconSrc: '/ios-icons/nav-settings-active.svg',
+  },
 ];
 
 type AppLayoutProps = {

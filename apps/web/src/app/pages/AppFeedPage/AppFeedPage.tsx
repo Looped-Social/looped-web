@@ -297,6 +297,17 @@ function normalizeFeedItemToPostData(item: unknown): PostData | null {
         return "User";
       })();
   const authorId = pickString(post, ["author_id", "authorId"]);
+  const anonProfileId =
+    pickString(post, ["anon_profile_id", "anonProfileId", "author_anon_profile_id", "authorAnonProfileId"]) ??
+    (() => {
+      const anonProfile =
+        (isRecord(post.anon_profile) ? post.anon_profile : null) ??
+        (isRecord(post.anonProfile) ? post.anonProfile : null) ??
+        (isRecord(post.author_anon_profile) ? post.author_anon_profile : null) ??
+        (isRecord(post.authorAnonProfile) ? post.authorAnonProfile : null);
+      if (!anonProfile) return undefined;
+      return pickString(anonProfile, ["id", "anon_profile_id", "anonProfileId"]);
+    })();
 
   const context = postedCommunityName
     ? `Posted in ${postedCommunityName}`
@@ -363,7 +374,13 @@ function normalizeFeedItemToPostData(item: unknown): PostData | null {
     content,
     time: timeLabel,
     authorProfileImageUrl,
-    authorProfileHref: !isAnonymous && authorId ? `/app/profile/${authorId}` : undefined,
+    authorProfileHref: isAnonymous
+      ? anonProfileId
+        ? `/app/profile/anon/${anonProfileId}`
+        : "/app/profile/anonymous"
+      : authorId
+        ? `/app/profile/${authorId}`
+        : undefined,
     viewerLiked,
     viewerSaved,
     viewerHasReposted,
