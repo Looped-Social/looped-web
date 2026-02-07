@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router";
 
 import { AppLayout, AppMobileHeader } from "@/app/components/AppLayout/AppLayout";
 import { MenuDots, ProfileIcon } from "@/app/components/AppIcons/AppIcons";
@@ -368,6 +369,7 @@ function BriefcaseIcon({ className }: { className?: string }) {
 }
 
 export function AppProfilePage({ profileUserId }: AppProfilePageProps) {
+  const navigate = useNavigate();
   const { showToast } = useToast();
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [targetUserId, setTargetUserId] = useState<string | null>(null);
@@ -379,6 +381,7 @@ export function AppProfilePage({ profileUserId }: AppProfilePageProps) {
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [postsStatus, setPostsStatus] = useState<"idle" | "loading" | "loading-more" | "error">("loading");
   const [postsError, setPostsError] = useState<string | null>(null);
+  const [activeTabId, setActiveTabId] = useState<"content" | "reposts">("content");
 
   const [isFollowing, setIsFollowing] = useState(false);
   const [isFollowLoading, setIsFollowLoading] = useState(false);
@@ -519,6 +522,14 @@ export function AppProfilePage({ profileUserId }: AppProfilePageProps) {
     }
   }, [isCurrentUser, isFollowLoading, isFollowing, showToast, targetUserId]);
 
+  const handleBackNavigation = useCallback(() => {
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      navigate(-1);
+      return;
+    }
+    navigate("/app", { replace: true });
+  }, [navigate]);
+
   const rightRail = profile ? (
     <>
       <div className="rounded-2xl border border-border/70 bg-bg p-4 shadow-sm">
@@ -577,7 +588,12 @@ export function AppProfilePage({ profileUserId }: AppProfilePageProps) {
 
   return (
     <AppLayout activeNavId={isCurrentUser ? "profile" : ""} rightRail={rightRail}>
-      <AppMobileHeader title="Profile" showAction={false} />
+      <AppMobileHeader
+        title="Profile"
+        showAction={false}
+        showBack={!isCurrentUser}
+        backHref="/app"
+      />
 
       {profileStatus === "loading" ? (
         <div className="space-y-3 bg-bg px-4 py-6">
@@ -604,6 +620,18 @@ export function AppProfilePage({ profileUserId }: AppProfilePageProps) {
       {profile ? (
         <section className="border-b border-border/70 bg-bg">
           <div className="px-4 py-4">
+            {!isCurrentUser ? (
+              <button
+                type="button"
+                onClick={handleBackNavigation}
+                className="mb-3 hidden items-center gap-1 text-sm font-semibold text-text-secondary transition hover:text-strong lg:inline-flex"
+              >
+                <span className="text-base leading-none" aria-hidden="true">
+                  {"<"}
+                </span>
+                <span>Back</span>
+              </button>
+            ) : null}
             <div className="flex items-start justify-between gap-4">
               <div className="flex items-center gap-3">
                 <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full bg-bg-muted text-text-secondary">
@@ -718,54 +746,77 @@ export function AppProfilePage({ profileUserId }: AppProfilePageProps) {
             </div>
           </div>
 
-          <div className="flex items-center gap-8 border-t border-border/70 px-4 py-3 text-sm font-semibold">
-            <button type="button" className="relative pb-1 text-brand">
-              Posts
-              <span className="absolute inset-x-0 -bottom-1 h-0.5 bg-brand" />
+          <div className="grid grid-cols-2 border-t border-border/70">
+            <button
+              type="button"
+              onClick={() => setActiveTabId("content")}
+              className={`relative px-2 py-4 text-center text-sm transition ${
+                activeTabId === "content" ? "font-bold text-brand" : "font-medium text-text-secondary hover:text-strong"
+              }`}
+              aria-current={activeTabId === "content" ? "page" : undefined}
+            >
+              Content
+              {activeTabId === "content" ? (
+                <span className="absolute bottom-0 left-1/2 h-0.5 w-16 -translate-x-1/2 bg-brand" />
+              ) : null}
             </button>
-            <button type="button" className="text-text-secondary" disabled>
+            <button
+              type="button"
+              onClick={() => setActiveTabId("reposts")}
+              className={`relative px-2 py-4 text-center text-sm transition ${
+                activeTabId === "reposts" ? "font-bold text-brand" : "font-medium text-text-secondary hover:text-strong"
+              }`}
+              aria-current={activeTabId === "reposts" ? "page" : undefined}
+            >
               Reposts
+              {activeTabId === "reposts" ? (
+                <span className="absolute bottom-0 left-1/2 h-0.5 w-16 -translate-x-1/2 bg-brand" />
+              ) : null}
             </button>
           </div>
         </section>
       ) : null}
 
-      <div className="divide-y divide-border/70 bg-bg">
-        {posts.map((post) => (
-          <PostCard key={post.id} post={post} />
-        ))}
+      {activeTabId === "content" ? (
+        <div className="divide-y divide-border/70 bg-bg">
+          {posts.map((post) => (
+            <PostCard key={post.id} post={post} />
+          ))}
 
-        {postsStatus === "loading" && profileStatus !== "loading" ? (
-          <div className="px-4 py-6 text-sm text-text-secondary">Loading posts...</div>
-        ) : null}
+          {postsStatus === "loading" && profileStatus !== "loading" ? (
+            <div className="px-4 py-6 text-sm text-text-secondary">Loading content...</div>
+          ) : null}
 
-        {posts.length === 0 && postsStatus === "idle" ? (
-          <div className="px-4 py-8 text-center text-sm text-text-secondary">No posts yet.</div>
-        ) : null}
+          {posts.length === 0 && postsStatus === "idle" ? (
+            <div className="px-4 py-8 text-center text-sm text-text-secondary">No content yet.</div>
+          ) : null}
 
-        {postsError ? (
-          <div className="space-y-2 px-4 py-4">
-            <p className="text-sm font-semibold text-strong">Unable to load posts.</p>
-            <p className="text-sm text-text-secondary">{postsError}</p>
-          </div>
-        ) : null}
+          {postsError ? (
+            <div className="space-y-2 px-4 py-4">
+              <p className="text-sm font-semibold text-strong">Unable to load content.</p>
+              <p className="text-sm text-text-secondary">{postsError}</p>
+            </div>
+          ) : null}
 
-        {nextCursor && postsStatus !== "loading-more" ? (
-          <div className="flex justify-center px-4 py-5">
-            <button
-              type="button"
-              onClick={() => void loadMorePosts()}
-              className="rounded-full border border-border/70 bg-bg px-4 py-2 text-sm font-semibold text-text-secondary transition hover:text-strong"
-            >
-              Load more
-            </button>
-          </div>
-        ) : null}
+          {nextCursor && postsStatus !== "loading-more" ? (
+            <div className="flex justify-center px-4 py-5">
+              <button
+                type="button"
+                onClick={() => void loadMorePosts()}
+                className="rounded-full border border-border/70 bg-bg px-4 py-2 text-sm font-semibold text-text-secondary transition hover:text-strong"
+              >
+                Load more
+              </button>
+            </div>
+          ) : null}
 
-        {postsStatus === "loading-more" ? (
-          <div className="px-4 py-5 text-center text-sm text-text-secondary">Loading more...</div>
-        ) : null}
-      </div>
+          {postsStatus === "loading-more" ? (
+            <div className="px-4 py-5 text-center text-sm text-text-secondary">Loading more...</div>
+          ) : null}
+        </div>
+      ) : (
+        <div className="bg-bg px-4 py-8 text-center text-sm text-text-secondary">No reposts yet.</div>
+      )}
     </AppLayout>
   );
 }

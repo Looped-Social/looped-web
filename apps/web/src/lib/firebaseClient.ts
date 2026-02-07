@@ -5,6 +5,7 @@ let cachedApp: FirebaseApp | null = null;
 let cachedAuth: Auth | null = null;
 let cachedAuthModule: typeof import("firebase/auth") | null = null;
 let initPromise: Promise<void> | null = null;
+let authReadyPromise: Promise<User | null> | null = null;
 
 function getFirebaseConfig(): FirebaseOptions {
   const config: FirebaseOptions = {
@@ -42,6 +43,50 @@ async function ensureFirebase(): Promise<void> {
   })();
 
   return initPromise;
+}
+
+async function waitForAuthState(timeoutMs = 5000): Promise<User | null> {
+  const auth = cachedAuth;
+  const authModule = cachedAuthModule;
+  if (!auth || !authModule) {
+    throw new Error("Firebase auth failed to initialize.");
+  }
+
+  if (!authReadyPromise) {
+    authReadyPromise = new Promise<User | null>((resolve, reject) => {
+      let completed = false;
+      let unsubscribe: (() => void) | null = null;
+      const timer = window.setTimeout(() => {
+        if (completed) return;
+        completed = true;
+        if (unsubscribe) unsubscribe();
+        authReadyPromise = null;
+        reject(new Error("Timed out waiting for Firebase auth state."));
+      }, timeoutMs);
+
+      unsubscribe = authModule.onAuthStateChanged(
+        auth,
+        (user) => {
+          if (completed) return;
+          completed = true;
+          window.clearTimeout(timer);
+          if (unsubscribe) unsubscribe();
+          authReadyPromise = null;
+          resolve(user);
+        },
+        (error) => {
+          if (completed) return;
+          completed = true;
+          window.clearTimeout(timer);
+          if (unsubscribe) unsubscribe();
+          authReadyPromise = null;
+          reject(error);
+        }
+      );
+    });
+  }
+
+  return authReadyPromise;
 }
 
 export async function observeAuthState(callback: (user: User | null) => void) {
@@ -105,7 +150,10 @@ export async function getFirebaseIdToken(): Promise<string> {
   if (!cachedAuth) {
     throw new Error("Firebase auth failed to initialize.");
   }
-  const user = cachedAuth.currentUser;
+  let user = cachedAuth.currentUser;
+  if (!user) {
+    user = await waitForAuthState();
+  }
   if (!user) {
     throw new Error("No authenticated user.");
   }
