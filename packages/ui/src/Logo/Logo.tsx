@@ -1,41 +1,44 @@
-import { Link } from "react-router";
+import { Link } from 'react-router';
 
-import loopedLogo from "../assets/looped-logo.svg";
-import loopedLogoDark from "../assets/looped-logo-dark.svg";
-import { useTheme } from "../hooks/useTheme";
+import loopedLogo from '../assets/looped-logo.svg';
+import loopedLogoDark from '../assets/looped-logo-dark.svg';
+import { useTheme } from '../hooks/useTheme';
 
 type LogoProps = {
   className?: string;
   imageClassName?: string;
-  size?: "xs" | "sm" | "md" | "lg" | "xl";
+  size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl';
   width?: number | string;
   height?: number | string;
+  variant?: 'auto' | 'light' | 'dark';
   to?: string;
 };
 
 //hello to you
 //hello to you as well
 const sizePresets: Record<
-  NonNullable<LogoProps["size"]>,
+  NonNullable<LogoProps['size']>,
   { className: string; style?: { width: number; height: number } }
 > = {
-  xs: { className: "h-4 w-auto" },
-  sm: { className: "h-5 w-auto" },
-  md: { className: "w-5", style: { width: 200, height: 57 } },
-  lg: { className: "w-auto", style: { width: 300, height: 75 } },
-  xl: { className: "w-auto", style: { width: 400, height: 90 } },
+  xs: { className: 'h-4 w-auto' },
+  sm: { className: 'h-5 w-auto' },
+  md: { className: 'w-5', style: { width: 200, height: 57 } },
+  lg: { className: 'w-auto', style: { width: 300, height: 75 } },
+  xl: { className: 'w-auto', style: { width: 400, height: 90 } },
 };
 
 export function Logo({
-  className = "",
+  className = '',
   imageClassName,
-  size = "md",
+  size = 'md',
   width,
   height,
-  to = "/",
+  variant = 'auto',
+  to = '/',
 }: LogoProps) {
   const { theme } = useTheme();
-  const logoSrc = theme === "dark" ? loopedLogoDark : loopedLogo;
+  const resolvedVariant = variant === 'auto' ? theme : variant;
+  const logoSrc = resolvedVariant === 'dark' ? loopedLogoDark : loopedLogo;
   const preset = sizePresets[size];
   const imageClasses = imageClassName ?? preset.className;
   const imageStyle =

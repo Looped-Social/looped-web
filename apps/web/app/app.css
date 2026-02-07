@@ -13,8 +13,22 @@
 }
 
 [data-theme="dark"] {
+  --color-contrast: var(--color-contrast-dark);
+  --color-text-primary: var(--color-text-primary-dark);
+  --color-text-secondary: var(--color-text-secondary-dark);
+  --color-text-light: var(--color-text-light-dark);
+  --color-strong: var(--color-strong-dark);
+  --color-bg: var(--color-bg-dark);
+  --color-bg-muted: var(--color-bg-muted-dark);
   --color-border: rgba(255, 255, 255, 0.18);
-  --color-text-secondary: #cbd5e1;
+  --color-message-muted: var(--color-message-muted-dark);
+  --color-message: var(--color-message-dark);
+  --color-shell-bg: var(--color-shell-bg-dark);
+  --color-shell-surface: var(--color-shell-surface-dark);
+  --color-shell-surface-muted: var(--color-shell-surface-muted-dark);
+  --color-shell-border: var(--color-shell-border-dark);
+  --color-shell-text: var(--color-shell-text-dark);
+  --color-shell-text-muted: var(--color-shell-text-muted-dark);
 }
 
 [data-theme="dark"] .app-store-img-light {

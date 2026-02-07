@@ -1,4 +1,5 @@
 import type { Route } from "./+types/profile";
+
 import { AppProfilePage } from "@/app/pages/AppProfilePage/AppProfilePage";
 
 export function meta({}: Route.MetaArgs) {

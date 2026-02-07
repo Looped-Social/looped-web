@@ -1,9 +1,9 @@
 @import url('https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&display=swap');
 
 @theme {
-  --font-sans: "Poppins", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
-    sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol",
-    "Noto Color Emoji";
+  --font-sans:
+    'Poppins', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif, 'Apple Color Emoji',
+    'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
   --color-brand: #ea404a;
   --color-brand-hover: #d63841;
   --color-secondary: #15bfb5;
@@ -20,6 +20,14 @@
   --color-message-muted: #fafafa;
   --color-message: #acf6f2;
 
+  /* App shell */
+  --color-shell-bg: #ffffff;
+  --color-shell-surface: #ffffff;
+  --color-shell-surface-muted: #f3f4f6;
+  --color-shell-border: rgba(17, 24, 39, 0.08);
+  --color-shell-text: #111827;
+  --color-shell-text-muted: #6b7280;
+
   /* Dark counterparts for easy overrides */
   --color-contrast-dark: #ffffff;
   --color-text-primary-dark: #e5e7eb;
@@ -31,4 +39,10 @@
   --color-border-dark: #9ca3af08;
   --color-message-muted-dark: #1a1a1a;
   --color-message-dark: #0d7c75;
+  --color-shell-bg-dark: #0b0b0b;
+  --color-shell-surface-dark: #141414;
+  --color-shell-surface-muted-dark: #1f1f1f;
+  --color-shell-border-dark: rgba(255, 255, 255, 0.14);
+  --color-shell-text-dark: #f9fafb;
+  --color-shell-text-muted-dark: #9ca3af;
 }

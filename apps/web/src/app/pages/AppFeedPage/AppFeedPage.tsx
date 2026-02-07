@@ -1,225 +1,483 @@
+import { useCallback, useEffect, useMemo, useState } from "react";
+
+import { AppSearchPanel, type FilterOption } from "@/app/components/AppSearchPanel/AppSearchPanel";
 import { AppLayout, AppMobileHeader } from "@/app/components/AppLayout/AppLayout";
-import { MenuDots, PlaceholderIcon, ProfileIcon } from "@/app/components/AppIcons/AppIcons";
 import { PostCard, type PostData } from "@/app/components/PostCard/PostCard";
+import { FeedApiError, fetchFeed, fetchFollowedCommunities, type FeedMode } from "@/lib/feedApi";
 
 const feedTabs = [
-  { id: "for-you", label: "For You", active: true },
-  { id: "latest", label: "Latest", active: false },
-];
+  { id: "for-you", label: "For You", mode: "for_you" },
+  { id: "latest", label: "Latest", mode: "new" },
+  { id: "following", label: "Following", mode: "following" },
+] as const;
 
-const filters = [
-  { id: "all", label: "All Loops", active: true },
-  { id: "unc", label: "University of North Carolina at Chapel Hill", active: false },
-  { id: "tech", label: "Tech", active: false },
-  { id: "new", label: "New Posts", active: false },
-];
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
 
-const composerActions = [
-  { id: "photo", label: "Photo" },
-  { id: "poll", label: "Poll" },
-  { id: "event", label: "Event" },
-  { id: "gif", label: "GIF" },
-];
+function getString(value: unknown): string | undefined {
+  if (typeof value === "string") return value;
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  return undefined;
+}
 
-const posts: PostData[] = [
-  {
-    id: "post-1",
-    author: "William Mullen",
-    subtitle: "University of North Carolina at Chapel Hill",
-    context: "in University of North Carolina at Chapel Hill",
-    content: "This is a new post that was endured",
-    time: "4 days ago",
-    stats: { likes: 1, comments: 3, shares: 0 },
-    isAnonymous: false,
-  },
-  {
-    id: "post-2",
-    author: "Anonymous",
-    subtitle: "University of North Carolina at Chapel Hill",
-    context: "in University of North Carolina at Chapel Hill",
-    content: "Hello this is anonymous",
-    time: "3 days ago",
-    stats: { likes: 1, comments: 0, shares: 0 },
-    isAnonymous: true,
-  },
-  {
-    id: "post-3",
-    author: "William Mullen",
-    subtitle: "University of North Carolina at Chapel Hill",
-    context: "in University of North Carolina at Chapel Hill",
-    content: "This is media upload",
-    time: "1 day ago",
-    stats: { likes: 0, comments: 0, shares: 0 },
-    isAnonymous: false,
-  },
-];
+function getNumber(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim().length > 0) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return undefined;
+}
 
-const trendingTopics = [
-  { id: "trend-1", label: "UNC Chapel Hill", meta: "2,431 posts" },
-  { id: "trend-2", label: "Hiring freezes", meta: "1,034 posts" },
-  { id: "trend-3", label: "Intern season", meta: "842 posts" },
-];
+function getBoolean(value: unknown): boolean | undefined {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number" && Number.isFinite(value)) return value !== 0;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "true") return true;
+    if (normalized === "false") return false;
+    if (normalized === "1") return true;
+    if (normalized === "0") return false;
+  }
+  return undefined;
+}
 
-const suggestedCommunities = [
-  { id: "community-1", label: "Carolina Alumni", meta: "12.4k members" },
-  { id: "community-2", label: "Product Designers", meta: "8.2k members" },
-  { id: "community-3", label: "Early Career", meta: "6.1k members" },
-];
+function pickString(obj: Record<string, unknown>, keys: string[]): string | undefined {
+  for (const key of keys) {
+    const value = getString(obj[key]);
+    if (value) return value;
+  }
+  return undefined;
+}
+
+function pickNumber(obj: Record<string, unknown>, keys: string[]): number | undefined {
+  for (const key of keys) {
+    const value = getNumber(obj[key]);
+    if (value !== undefined) return value;
+  }
+  return undefined;
+}
+
+function pickBoolean(obj: Record<string, unknown>, keys: string[]): boolean | undefined {
+  for (const key of keys) {
+    const value = getBoolean(obj[key]);
+    if (value !== undefined) return value;
+  }
+  return undefined;
+}
+
+function asDate(value: unknown): Date | null {
+  if (typeof value === "string") {
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.getTime())) return parsed;
+    return null;
+  }
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const ms = value < 10_000_000_000 ? value * 1000 : value;
+    const parsed = new Date(ms);
+    if (!Number.isNaN(parsed.getTime())) return parsed;
+  }
+  return null;
+}
+
+function formatTimeAgo(date: Date): string {
+  const deltaSeconds = Math.round((date.getTime() - Date.now()) / 1000);
+  const abs = Math.abs(deltaSeconds);
+
+  const rtf = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
+  if (abs < 60) return rtf.format(deltaSeconds, "second");
+  const minutes = Math.round(deltaSeconds / 60);
+  if (Math.abs(minutes) < 60) return rtf.format(minutes, "minute");
+  const hours = Math.round(minutes / 60);
+  if (Math.abs(hours) < 24) return rtf.format(hours, "hour");
+  const days = Math.round(hours / 24);
+  if (Math.abs(days) < 7) return rtf.format(days, "day");
+  const weeks = Math.round(days / 7);
+  if (Math.abs(weeks) < 4) return rtf.format(weeks, "week");
+  const months = Math.round(days / 30);
+  if (Math.abs(months) < 12) return rtf.format(months, "month");
+  const years = Math.round(days / 365);
+  return rtf.format(years, "year");
+}
+
+function normalizedOptional(value: unknown): string | undefined {
+  const raw = getString(value);
+  if (!raw) return undefined;
+  const trimmed = raw.trim();
+  return trimmed.length ? trimmed : undefined;
+}
+
+function capitalize(value: string): string {
+  if (!value) return "";
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function preferredName({
+  name,
+  shortName,
+  preferShortNames = true,
+}: {
+  name?: string;
+  shortName?: string;
+  preferShortNames?: boolean;
+}): string | undefined {
+  const normalizedName = normalizedOptional(name);
+  const normalizedShort = normalizedOptional(shortName);
+  if (preferShortNames && normalizedShort) return normalizedShort;
+  return normalizedName ?? normalizedShort;
+}
+
+function displayCommunityPreferredName(value: unknown, preferShortNames: boolean): string | undefined {
+  if (!isRecord(value)) return undefined;
+  const name = pickString(value, ["name"]);
+  const shortName = pickString(value, ["short_name", "shortName"]);
+  return preferredName({ name, shortName, preferShortNames });
+}
+
+function buildRepostBannerText({
+  usernames,
+  count,
+}: {
+  usernames: string[];
+  count: number;
+}): string | undefined {
+  if (count <= 0) return undefined;
+  if (count === 1 && usernames[0]) return `${usernames[0]} reposted this`;
+  if (count === 2 && usernames.length >= 2) return `${usernames[0]} and ${usernames[1]} reposted this`;
+  if (count > 2 && usernames.length >= 2) {
+    const remaining = Math.max(count - 2, 0);
+    return `${usernames[0]}, ${usernames[1]}, and ${remaining} more reposted this`;
+  }
+  if (count > 1 && usernames[0]) {
+    const remaining = Math.max(count - 1, 0);
+    return `${usernames[0]} and ${remaining} others reposted this`;
+  }
+  return `Reposted by ${count} people`;
+}
+
+function extractApiErrorMessage(details?: string): string | undefined {
+  const trimmed = (details ?? "").trim();
+  if (!trimmed) return undefined;
+  try {
+    const parsed: unknown = JSON.parse(trimmed);
+    if (isRecord(parsed)) {
+      const message = normalizedOptional(parsed.message);
+      if (message) return message;
+      const error = normalizedOptional(parsed.error);
+      if (error) return error;
+    }
+  } catch {
+    // ignore non-JSON bodies
+  }
+  return trimmed;
+}
+
+function normalizeCommunityToFilterOption(item: unknown): FilterOption | null {
+  if (!isRecord(item)) return null;
+  const id =
+    pickString(item, ["id", "community_id", "communityId", "loop_id", "loopId"]) ??
+    pickString(item, ["communityId", "community_id"]);
+  const label = preferredName({
+    name: pickString(item, ["name", "display_name", "displayName", "title"]),
+    shortName: pickString(item, ["short_name", "shortName"]),
+    preferShortNames: true,
+  }) ?? pickString(item, ["handle", "username"]);
+  if (!id || !label) return null;
+  return { id, label };
+}
+
+function normalizeFeedItemToPostData(item: unknown): PostData | null {
+  if (!isRecord(item)) return null;
+
+  const post =
+    (isRecord(item.post) ? item.post : null) ??
+    (isRecord(item.original_post) ? item.original_post : null) ??
+    (isRecord(item.post_item) ? item.post_item : null) ??
+    item;
+
+  const id = pickString(post, ["id", "post_id", "postId"]);
+  if (!id) return null;
+
+  const isAnonymous =
+    pickBoolean(post, ["author_is_anonymous", "authorIsAnonymous", "is_anonymous", "isAnonymous", "is_anon", "isAnon"]) ??
+    pickBoolean(post, ["anon", "anonymous"]) ??
+    false;
+
+  const communityId = pickString(post, ["community_id", "communityId"]);
+
+  const postedCommunityName = preferredName({
+    name: pickString(post, ["community_name", "communityName"]),
+    shortName: pickString(post, ["community_short_name", "communityShortName"]),
+    preferShortNames: true,
+  });
+
+  const communityKind = pickString(post, ["community_kind", "communityKind"]);
+
+  const displaySpecializationName = displayCommunityPreferredName(
+    post.author_display_specialization ?? post.authorDisplaySpecialization,
+    true
+  );
+  const displayCommunityName = displayCommunityPreferredName(
+    post.author_display_community ?? post.authorDisplayCommunity,
+    true
+  );
+
+  const subtitle = isAnonymous
+    ? ""
+    : displayCommunityName
+      ? `${displaySpecializationName ?? "Member"} @ ${displayCommunityName}`
+      : displaySpecializationName ?? "";
+
+  const repostedUsersRaw = (post.reposted_by_followed_users ??
+    post.repostedByFollowedUsers) as unknown;
+  const repostedUsers = Array.isArray(repostedUsersRaw) ? repostedUsersRaw : [];
+  const repostedByUsernames = repostedUsers
+    .map((entry) => (isRecord(entry) ? pickString(entry, ["username", "handle", "name"]) : undefined))
+    .filter((value): value is string => Boolean(value));
+  const repostedCount =
+    getNumber(post.reposted_by_followed_users_count ?? post.repostedByFollowedUsersCount) ??
+    repostedByUsernames.length;
+  const repostedBy = buildRepostBannerText({ usernames: repostedByUsernames, count: repostedCount });
+
+  const authorName = isAnonymous
+    ? "Anonymous"
+    : (() => {
+        const firstName = pickString(post, ["author_first_name", "authorFirstName"]);
+        const lastName = pickString(post, ["author_last_name", "authorLastName"]);
+        const fullName = [normalizedOptional(firstName), normalizedOptional(lastName)]
+          .filter((value): value is string => Boolean(value))
+          .join(" ")
+          .trim();
+        if (fullName) return fullName;
+
+        const displayName = pickString(post, ["author_display_name", "authorDisplayName"]);
+        if (normalizedOptional(displayName)) return displayName!;
+
+        const handle = pickString(post, ["author_handle", "authorHandle"]);
+        if (normalizedOptional(handle)) return handle!;
+
+        return "User";
+      })();
+  const authorId = pickString(post, ["author_id", "authorId"]);
+
+  const context = postedCommunityName
+    ? `Posted in ${postedCommunityName}`
+    : communityKind
+      ? `Posted in ${capitalize(communityKind)}`
+      : "";
+
+  const content = pickString(post, ["content", "text", "body", "message"]) ?? "";
+
+  const timeLabel =
+    pickString(post, ["time_ago", "timeAgo", "created_at_human", "createdAtHuman"]) ??
+    (() => {
+      const created = asDate(post.created_at ?? post.createdAt ?? post.timestamp ?? post.created);
+      return created ? formatTimeAgo(created) : "";
+    })();
+
+  const statsRecord =
+    (isRecord(post.stats) ? post.stats : null) ??
+    (isRecord(post.counts) ? post.counts : null) ??
+    (isRecord(post.engagement) ? post.engagement : null) ??
+    null;
+
+  const likes =
+    pickNumber(post, ["like_count", "likes_count", "likes", "likeCount", "likesCount"]) ??
+    (statsRecord
+      ? pickNumber(statsRecord, ["like_count", "likes_count", "likes", "likeCount", "likesCount"])
+      : undefined) ??
+    0;
+  const comments =
+    pickNumber(post, ["comment_count", "comments_count", "comments", "commentCount", "commentsCount"]) ??
+    (statsRecord
+      ? pickNumber(statsRecord, ["comment_count", "comments_count", "comments", "commentCount", "commentsCount"])
+      : undefined) ??
+    0;
+  const reposts =
+    pickNumber(post, ["repost_count", "reposts_count", "reposts", "repostCount", "repostsCount"]) ??
+    (statsRecord
+      ? pickNumber(statsRecord, ["repost_count", "reposts_count", "reposts", "repostCount", "repostsCount"])
+      : undefined) ??
+    0;
+  const shares =
+    pickNumber(post, ["share_count", "shareCount", "shares_count", "sharesCount"]) ??
+    (statsRecord ? pickNumber(statsRecord, ["share_count", "shareCount", "shares_count", "sharesCount"]) : undefined) ??
+    0;
+  const saves =
+    pickNumber(post, ["save_count", "saves_count", "saves", "saveCount", "savesCount"]) ??
+    (statsRecord
+      ? pickNumber(statsRecord, ["save_count", "saves_count", "saves", "saveCount", "savesCount"])
+      : undefined) ??
+    0;
+
+  const viewerLiked = pickBoolean(post, ["user_liked", "userLiked"]) ?? false;
+  const viewerSaved = pickBoolean(post, ["is_saved", "isSaved"]) ?? false;
+  const viewerHasReposted = pickBoolean(post, ["viewer_has_reposted", "viewerHasReposted"]) ?? false;
+  const authorProfileImageUrl = pickString(post, ["author_profile_image_url", "authorProfileImageUrl"]);
+
+  return {
+    id,
+    communityId,
+    repostedBy,
+    author: authorName,
+    subtitle,
+    context,
+    content,
+    time: timeLabel,
+    authorProfileImageUrl,
+    authorProfileHref: !isAnonymous && authorId ? `/app/profile/${authorId}` : undefined,
+    viewerLiked,
+    viewerSaved,
+    viewerHasReposted,
+    stats: { likes, comments, reposts, shares, saves },
+    isAnonymous,
+  };
+}
 
 export function AppFeedPage() {
+  const [activeTabId, setActiveTabId] = useState<(typeof feedTabs)[number]["id"]>("for-you");
+  const activeMode = useMemo(() => {
+    const found = feedTabs.find((tab) => tab.id === activeTabId);
+    return (found?.mode ?? "for_you") as FeedMode;
+  }, [activeTabId]);
+
+  const [activeCommunityId, setActiveCommunityId] = useState<string>("all");
+  const [communityFilters, setCommunityFilters] = useState<FilterOption[]>([{ id: "all", label: "All Loops" }]);
+
+  const [posts, setPosts] = useState<PostData[]>([]);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [feedStatus, setFeedStatus] = useState<"idle" | "loading" | "loading-more" | "error">("idle");
+  const [feedError, setFeedError] = useState<string | null>(null);
+
   const rightRail = (
-    <>
-      <div className="rounded-2xl border border-border/70 bg-bg p-4 shadow-sm">
-        <p className="text-xs font-semibold uppercase tracking-wide text-text-light">Search</p>
-        <div className="mt-3 flex items-center gap-2 rounded-xl border border-border/70 bg-bg px-3 py-2 text-text-secondary">
-          <PlaceholderIcon className="h-4 w-4" />
-          <input
-            type="text"
-            placeholder="Search Looped"
-            className="w-full bg-transparent text-sm text-text-primary outline-none placeholder:text-text-light"
-          />
-        </div>
-      </div>
-
-      <div className="rounded-2xl border border-border/70 bg-bg p-4 shadow-sm">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-strong">Trending</h3>
-          <button className="text-xs font-semibold text-brand" type="button">
-            See all
-          </button>
-        </div>
-        <div className="mt-4 space-y-3">
-          {trendingTopics.map((topic) => (
-            <button
-              key={topic.id}
-              type="button"
-              className="flex w-full items-start justify-between rounded-xl border border-border/60 bg-bg px-3 py-2 text-left"
-            >
-              <div>
-                <p className="text-sm font-semibold text-strong">{topic.label}</p>
-                <p className="text-xs text-text-secondary">{topic.meta}</p>
-              </div>
-              <MenuDots className="h-4 w-4 text-text-light" />
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="rounded-2xl border border-border/70 bg-bg p-4 shadow-sm">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-strong">Suggested communities</h3>
-          <button className="text-xs font-semibold text-brand" type="button">
-            Browse
-          </button>
-        </div>
-        <div className="mt-4 space-y-3">
-          {suggestedCommunities.map((community) => (
-            <div key={community.id} className="flex items-center justify-between rounded-xl bg-bg px-3 py-2">
-              <div>
-                <p className="text-sm font-semibold text-strong">{community.label}</p>
-                <p className="text-xs text-text-secondary">{community.meta}</p>
-              </div>
-              <button
-                type="button"
-                className="rounded-full border border-border/70 bg-bg px-3 py-1 text-xs font-semibold text-text-secondary transition hover:text-strong"
-              >
-                Join
-              </button>
-            </div>
-          ))}
-        </div>
-      </div>
-    </>
+    <AppSearchPanel
+      defaultActiveFilterId="all"
+      activeFilterId={activeCommunityId}
+      onActiveFilterIdChange={(id) => setActiveCommunityId(id)}
+      filters={communityFilters}
+    />
   );
+
+  useEffect(() => {
+    let active = true;
+
+    (async () => {
+      try {
+        const response = await fetchFollowedCommunities({ limit: 60, order: "relevant" });
+        if (!active) return;
+        const options = (response.items ?? [])
+          .map(normalizeCommunityToFilterOption)
+          .filter((option): option is FilterOption => Boolean(option));
+
+        setCommunityFilters([{ id: "all", label: "All Loops" }, ...options]);
+      } catch (_error) {
+        if (!active) return;
+        setCommunityFilters([{ id: "all", label: "All Loops" }]);
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const loadFeed = useCallback(async ({ cursor, replace }: { cursor?: string; replace: boolean }) => {
+    setFeedError(null);
+    setFeedStatus(cursor ? "loading-more" : "loading");
+    try {
+      const response = await fetchFeed({
+        limit: 20,
+        cursor,
+        mode: activeMode,
+        communityId: activeCommunityId === "all" ? undefined : activeCommunityId,
+      });
+
+      const normalized = (response.items ?? [])
+        .map(normalizeFeedItemToPostData)
+        .filter((post): post is PostData => Boolean(post));
+
+      setPosts((prev) => (replace ? normalized : [...prev, ...normalized]));
+      setNextCursor(response.next_cursor ?? response.nextCursor ?? null);
+      setFeedStatus("idle");
+    } catch (error) {
+      const message = error instanceof FeedApiError ? extractApiErrorMessage(error.details) : undefined;
+      setFeedError(message ?? "Unable to load feed.");
+      setFeedStatus("error");
+    }
+  }, [activeCommunityId, activeMode]);
+
+  useEffect(() => {
+    setPosts([]);
+    setNextCursor(null);
+    void loadFeed({ replace: true });
+  }, [activeMode, activeCommunityId, loadFeed]);
 
   return (
     <AppLayout activeNavId="home" rightRail={rightRail}>
       <AppMobileHeader />
 
-      <section className="rounded-2xl border border-border/70 bg-bg shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/70 px-4 py-3">
-          <h1 className="text-lg font-semibold text-strong">Home</h1>
-          <div className="flex items-center gap-6 text-sm font-semibold text-text-secondary">
-            {feedTabs.map((tab) => (
+      <header className="border-b border-border/70 bg-bg">
+        <div className="grid grid-cols-3">
+          {feedTabs.map((tab) => {
+            const isActive = tab.id === activeTabId;
+            return (
               <button
                 key={tab.id}
-                className={`relative pb-1 transition ${
-                  tab.active ? "text-brand" : "text-text-secondary hover:text-strong"
-                }`}
                 type="button"
+                onClick={() => setActiveTabId(tab.id)}
+                className={`relative px-2 py-4 text-center text-sm transition ${
+                  isActive ? "font-bold text-brand" : "font-medium text-text-secondary hover:text-strong"
+                }`}
+                aria-current={isActive ? "page" : undefined}
               >
                 {tab.label}
-                {tab.active ? <span className="absolute inset-x-0 -bottom-1 h-0.5 bg-brand" /> : null}
+                {isActive ? <span className="absolute bottom-0 left-1/2 h-0.5 w-16 -translate-x-1/2 bg-brand" /> : null}
               </button>
-            ))}
-          </div>
+            );
+          })}
         </div>
+      </header>
 
-        <div className="px-4 py-4">
-          <div className="flex gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-full border border-border/70 bg-bg text-text-secondary">
-              <ProfileIcon className="h-5 w-5" />
-            </div>
-            <div className="flex-1 space-y-3">
-              <div className="rounded-xl border border-border/70 bg-bg px-3 py-2 text-sm text-text-light">
-                What's happening in your community?
-              </div>
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-text-secondary">
-                  {composerActions.map((action) => (
-                    <button
-                      key={action.id}
-                      type="button"
-                      className="inline-flex items-center gap-2 rounded-full border border-border/70 bg-bg px-3 py-1.5 transition hover:text-strong"
-                    >
-                      <PlaceholderIcon className="h-4 w-4" />
-                      {action.label}
-                    </button>
-                  ))}
-                </div>
-                <button
-                  type="button"
-                  className="inline-flex items-center justify-center rounded-full bg-brand px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:-translate-y-px hover:bg-brand/90"
-                >
-                  Post
-                </button>
-              </div>
-            </div>
+      <div className="divide-y divide-border/70 bg-bg">
+        {feedError ? (
+          <div className="space-y-3 px-4 py-4">
+            <p className="text-sm font-semibold text-strong">Unable to load your feed.</p>
+            <p className="text-sm text-text-secondary">{feedError}</p>
+            <button
+              type="button"
+              onClick={() => void loadFeed({ replace: true })}
+              className="rounded-full bg-brand px-4 py-2 text-sm font-semibold text-white"
+            >
+              Retry
+            </button>
           </div>
-        </div>
+        ) : null}
 
-        <div className="border-t border-border/70 px-4 py-3">
-          <div className="flex gap-2 overflow-x-auto">
-            {filters.map((filter) => (
-              <button
-                key={filter.id}
-                className={`whitespace-nowrap rounded-full border px-3 py-1 text-xs font-semibold transition ${
-                  filter.active
-                    ? "border-brand bg-brand text-white"
-                    : "border-border bg-bg text-text-secondary hover:text-strong"
-                }`}
-                type="button"
-              >
-                {filter.label}
-              </button>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <div className="space-y-4">
         {posts.map((post) => (
           <PostCard key={post.id} post={post} />
         ))}
-      </div>
 
-      <button
-        className="fixed bottom-6 right-6 flex h-12 w-12 items-center justify-center rounded-full bg-brand text-white shadow-[0_12px_24px_rgba(234,64,74,0.3)] transition hover:scale-105 lg:hidden"
-        type="button"
-        aria-label="Create post"
-      >
-        <span className="text-2xl leading-none">+</span>
-      </button>
+        {feedStatus === "loading" && posts.length === 0 ? (
+          <div className="px-4 py-6 text-sm text-text-secondary">Loading…</div>
+        ) : null}
+
+        {nextCursor && feedStatus !== "loading-more" ? (
+          <div className="flex justify-center px-4 py-5">
+            <button
+              type="button"
+              onClick={() => void loadFeed({ cursor: nextCursor, replace: false })}
+              className="rounded-full border border-border/70 bg-bg px-4 py-2 text-sm font-semibold text-text-secondary transition hover:text-strong"
+            >
+              Load more
+            </button>
+          </div>
+        ) : null}
+
+        {feedStatus === "loading-more" ? (
+          <div className="px-4 py-5 text-center text-sm text-text-secondary">Loading more…</div>
+        ) : null}
+      </div>
     </AppLayout>
   );
 }

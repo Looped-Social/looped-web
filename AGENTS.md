@@ -7,6 +7,12 @@ This repository contains the Looped web experience served from `mylooped.app` (m
 - `apps/web` – marketing/landing + authenticated web app (React Router v7 + Vite + Tailwind v4)
 - `packages/ui` – shared UI components (Tailwind-only React components like Button, Input, Card)
 - `packages/config` – shared theme tokens (Tailwind v4 `@theme` CSS, brand colors, typography)
+- `docs/` – agent-facing system + API documentation (start at `docs/README.md`)
+
+## Documentation
+- Start with `docs/README.md` for the canonical system + API reference.
+- Prefer `docs/API_CONTRACT.md` as the source of truth for endpoints/payloads/errors/pagination.
+- Use `docs/DESIGN_SYSTEM.md` + `docs/POST_CARD_SPEC.md` to keep web UI consistent with iOS.
 
 ## Brand & Design
 - **Primary Color**: #ea404a

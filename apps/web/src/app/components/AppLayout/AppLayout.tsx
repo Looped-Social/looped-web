@@ -1,25 +1,55 @@
-import type { ReactNode } from "react";
-import { Link } from "react-router";
+import type { ReactNode } from 'react';
+import { Link } from 'react-router';
 
-import { Logo } from "@looped/ui";
+import { Logo, ThemeToggle } from '@looped/ui';
 
-import { PlaceholderIcon, ProfileIcon } from "@/app/components/AppIcons/AppIcons";
+import { MenuDots, ProfileIcon } from '@/app/components/AppIcons/AppIcons';
+import { ToastProvider, ToastViewport } from "@/app/components/AppToast/AppToast";
 
 type NavItem = {
   id: string;
   label: string;
   href?: string;
-  icon?: "profile";
+  iconSrc: string;
+  activeIconSrc?: string;
 };
 
 const navItems: NavItem[] = [
-  { id: "home", label: "Home", href: "/app" },
-  { id: "communities", label: "Communities" },
-  { id: "explore", label: "Explore" },
-  { id: "messages", label: "Messages" },
-  { id: "notifications", label: "Notifications" },
-  { id: "saved", label: "Saved" },
-  { id: "profile", label: "Profile", href: "/app/profile", icon: "profile" },
+  {
+    id: 'home',
+    label: 'Home',
+    href: '/app',
+    iconSrc: '/ios-icons/nav-home.svg',
+    activeIconSrc: '/ios-icons/nav-home-active.svg',
+  },
+  {
+    id: 'search',
+    label: 'Search',
+    href: '/app/search',
+    iconSrc: '/ios-icons/nav-search.svg',
+    activeIconSrc: '/ios-icons/nav-search-active.svg',
+  },
+  {
+    id: 'messages',
+    label: 'Messages',
+    href: '/app/messages',
+    iconSrc: '/ios-icons/nav-messages.svg',
+    activeIconSrc: '/ios-icons/nav-messages-active.svg',
+  },
+  {
+    id: 'notifications',
+    label: 'Notifications',
+    href: '/app/notifications',
+    iconSrc: '/ios-icons/nav-notifications.svg',
+    activeIconSrc: '/ios-icons/nav-notifications-active.svg',
+  },
+  {
+    id: 'profile',
+    label: 'Profile',
+    href: '/app/profile',
+    iconSrc: '/ios-icons/nav-profile.svg',
+    activeIconSrc: '/ios-icons/nav-profile-active.svg',
+  },
 ];
 
 type AppLayoutProps = {
@@ -28,75 +58,102 @@ type AppLayoutProps = {
   rightRail?: ReactNode;
 };
 
-export function AppLayout({ activeNavId = "home", children, rightRail }: AppLayoutProps) {
+function SearchRailIcon({ className }: { className?: string }) {
   return (
-    <div className="min-h-screen bg-bg">
-      <div className="w-full px-4 py-6 lg:pl-6 lg:pr-8">
-        <div className="grid gap-6 lg:grid-cols-[260px_minmax(0,1fr)] xl:grid-cols-[260px_minmax(0,1fr)_320px]">
-          <aside className="hidden lg:flex lg:flex-col">
-            <div className="sticky top-6 space-y-6">
-              <Logo imageClassName="h-9 w-auto" to="/app" />
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+    >
+      <circle cx="11" cy="11" r="7" />
+      <path d="M20 20l-3.2-3.2" />
+    </svg>
+  );
+}
 
-              <nav className="space-y-1">
-                {navItems.map((item) => {
-                  const Icon = item.icon === "profile" ? ProfileIcon : PlaceholderIcon;
-                  const isActive = item.id === activeNavId;
-                  const className = `flex w-full items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition ${
-                    isActive ? "text-brand font-semibold" : "text-text-secondary hover:text-strong"
-                  }`;
-
-                  if (item.href) {
-                    return (
-                      <Link key={item.id} to={item.href} className={className} aria-current={isActive ? "page" : undefined}>
-                        <Icon className="h-5 w-5" />
-                        <span>{item.label}</span>
-                      </Link>
-                    );
-                  }
-
-                  return (
-                    <button key={item.id} type="button" className={className}>
-                      <Icon className="h-5 w-5" />
-                      <span>{item.label}</span>
-                    </button>
-                  );
-                })}
-              </nav>
-
-              <button
-                type="button"
-                className="inline-flex items-center justify-center rounded-full bg-brand px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:-translate-y-px hover:bg-brand/90"
-              >
-                Post
-              </button>
-
-              <div className="rounded-2xl border border-border/70 bg-bg p-4 shadow-sm">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-11 w-11 items-center justify-center rounded-full border border-border/70 bg-bg text-text-secondary">
-                    <ProfileIcon className="h-5 w-5" />
+export function AppLayout({ activeNavId = 'home', children, rightRail }: AppLayoutProps) {
+  return (
+    <ToastProvider>
+      <div className="min-h-screen bg-shell-bg">
+        <div className="mx-auto w-full">
+          <div className="grid w-full gap-x-6 lg:grid-cols-[minmax(220px,1fr)_560px_minmax(220px,1fr)] xl:grid-cols-[minmax(260px,1fr)_560px_minmax(320px,1fr)]">
+            <aside className="hidden lg:block lg:w-[220px] lg:justify-self-end xl:w-[260px]">
+              <div className="sticky top-3 py-3">
+                <div className="flex flex-col gap-5">
+                  <div className="flex items-center justify-between">
+                    <Logo imageClassName="h-12 w-auto" to="/app" />
+                    <ThemeToggle className="h-10 w-10 rounded-full border border-shell-border bg-bg text-shell-text-muted transition hover:text-shell-text" />
                   </div>
-                  <div>
-                    <p className="text-sm font-semibold text-strong">William Mullen</p>
-                    <p className="text-xs text-text-secondary">@willm</p>
-                  </div>
-                </div>
-                <div className="mt-4 rounded-xl bg-bg px-3 py-2 text-xs text-text-secondary">
-                  UNC Chapel Hill - Computer Science
+
+                  <Link
+                    to="/app/search"
+                    className="inline-flex h-10 items-center gap-2 rounded-full bg-bg-muted px-4 text-sm font-medium text-shell-text-muted transition hover:text-shell-text"
+                  >
+                    <SearchRailIcon className="h-4 w-4" />
+                    <span>Search</span>
+                  </Link>
+
+                  <nav className="space-y-1.5">
+                    {navItems.map((item) => {
+                      const isActive = item.id === activeNavId;
+                      const className = `flex w-full items-center gap-4 rounded-xl px-3 py-2.5 text-base font-semibold transition ${
+                        isActive ? 'text-brand' : 'text-shell-text hover:text-shell-text'
+                      }`;
+
+                      const iconSrc = isActive ? (item.activeIconSrc ?? item.iconSrc) : item.iconSrc;
+                      const icon = iconSrc ? (
+                        <img src={iconSrc} alt="" className="h-6 w-6 shrink-0" aria-hidden="true" />
+                      ) : (
+                        <MenuDots className="h-6 w-6 shrink-0 text-shell-text-muted" />
+                      );
+
+                      if (item.href) {
+                        return (
+                          <Link
+                            key={item.id}
+                            to={item.href}
+                            className={className}
+                            aria-current={isActive ? 'page' : undefined}
+                          >
+                            {icon}
+                            <span>{item.label}</span>
+                          </Link>
+                        );
+                      }
+
+                      return (
+                        <button key={item.id} type="button" className={className}>
+                          {icon}
+                          <span>{item.label}</span>
+                        </button>
+                      );
+                    })}
+                  </nav>
                 </div>
               </div>
-            </div>
-          </aside>
-
-          <main className="space-y-4 lg:justify-self-center lg:w-full lg:max-w-[680px]">{children}</main>
-
-          {rightRail ? (
-            <aside className="hidden xl:flex xl:flex-col">
-              <div className="sticky top-6 space-y-4">{rightRail}</div>
             </aside>
-          ) : null}
+
+            <main className="min-w-0 lg:col-start-2">
+              <div className="w-full overflow-hidden bg-bg">
+                {children}
+              </div>
+            </main>
+
+            {rightRail ? (
+              <aside className="hidden xl:block xl:w-[320px] xl:justify-self-start">
+                <div className="sticky top-3 py-3">{rightRail}</div>
+              </aside>
+            ) : null}
+          </div>
         </div>
       </div>
-    </div>
+      <ToastViewport />
+    </ToastProvider>
   );
 }
 
@@ -107,26 +164,29 @@ type AppMobileHeaderProps = {
 };
 
 export function AppMobileHeader({
-  title = "Looped",
-  actionHref = "/app/profile",
+  title = 'Looped',
+  actionHref = '/app/profile',
   showAction = true,
 }: AppMobileHeaderProps) {
   return (
-    <div className="flex items-center justify-between rounded-2xl border border-border/70 bg-bg px-4 py-3 shadow-sm lg:hidden">
-      {title === "Looped" ? (
-        <Logo imageClassName="h-8 w-auto" to="/app" />
+    <div className="flex items-center justify-between border-b border-border/70 bg-bg px-4 py-3 lg:hidden">
+      {title === 'Looped' ? (
+        <Logo imageClassName="h-7 w-auto" to="/app" />
       ) : (
-        <span className="text-lg font-semibold text-strong">{title}</span>
+        <span className="text-lg font-semibold">{title}</span>
       )}
-      {showAction ? (
-        <Link
-          className="flex h-9 w-9 items-center justify-center rounded-full bg-brand text-white shadow-sm"
-          to={actionHref}
-          aria-label="Profile"
-        >
-          <ProfileIcon className="h-4 w-4" />
-        </Link>
-      ) : null}
+      <div className="flex items-center gap-2">
+        <ThemeToggle className="flex h-9 w-9 items-center justify-center rounded-full border border-border/70 text-text-secondary transition hover:text-strong" />
+        {showAction ? (
+          <Link
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-brand text-white"
+            to={actionHref}
+            aria-label="Profile"
+          >
+            <ProfileIcon className="h-4 w-4" />
+          </Link>
+        ) : null}
+      </div>
     </div>
   );
 }
