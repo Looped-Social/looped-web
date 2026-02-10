@@ -6,6 +6,7 @@ import { MenuDots } from "@/app/components/AppIcons/AppIcons";
 import { useToast } from "@/app/components/AppToast/AppToast";
 import { PostCard, type PostData } from "@/app/components/PostCard/PostCard";
 import { extractMediaAssetIds } from "@/lib/postMediaIds";
+import { normalizePostPoll } from "@/lib/postPoll";
 import {
   UserApiError,
   fetchUserMe,
@@ -223,6 +224,7 @@ function normalizePostItemToPostData(item: unknown): PostData | null {
     viewerLiked: pickBoolean(item, ["user_liked", "userLiked"]) ?? false,
     viewerSaved: pickBoolean(item, ["is_saved", "isSaved"]) ?? false,
     viewerHasReposted: pickBoolean(item, ["viewer_has_reposted", "viewerHasReposted"]) ?? false,
+    poll: normalizePostPoll(item),
     mediaAssetIds: extractMediaAssetIds(item),
     stats: { likes, comments, reposts, shares, saves },
     isAnonymous,

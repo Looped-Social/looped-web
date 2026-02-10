@@ -5,6 +5,7 @@ import { AppLayout, AppMobileHeader } from "@/app/components/AppLayout/AppLayout
 import { PostCard, type PostData } from "@/app/components/PostCard/PostCard";
 import { FeedApiError, fetchFeed, fetchFollowedCommunities, type FeedMode } from "@/lib/feedApi";
 import { extractMediaAssetIds } from "@/lib/postMediaIds";
+import { normalizePostPoll } from "@/lib/postPoll";
 
 const feedTabs = [
   { id: "for-you", label: "For You", mode: "for_you" },
@@ -385,6 +386,7 @@ function normalizeFeedItemToPostData(item: unknown): PostData | null {
     viewerLiked,
     viewerSaved,
     viewerHasReposted,
+    poll: normalizePostPoll(post),
     mediaAssetIds: extractMediaAssetIds(post),
     stats: { likes, comments, reposts, shares, saves },
     isAnonymous,

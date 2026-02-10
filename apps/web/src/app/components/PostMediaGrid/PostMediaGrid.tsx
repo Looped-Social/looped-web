@@ -237,9 +237,12 @@ export function PostMediaGrid({ attachments, className, viewerHeader, viewerFoot
       </div>
 
       {viewerAsset ? (
-        <div className="fixed inset-0 z-50 bg-black/65 px-2 py-3 text-white backdrop-blur-[1px]" onClick={closeViewer}>
+        <div
+          className="fixed inset-0 z-50 bg-white/72 px-2 py-3 text-text-primary backdrop-blur-[1px] dark:bg-black/72 dark:text-white"
+          onClick={closeViewer}
+        >
           <div
-            className="mx-auto flex h-full max-h-[94vh] w-full max-w-[760px] flex-col overflow-hidden rounded-2xl bg-black shadow-[0_24px_64px_rgba(0,0,0,0.55)]"
+            className="mx-auto flex h-full max-h-[94vh] w-full max-w-[760px] flex-col overflow-hidden rounded-2xl bg-white shadow-[0_24px_64px_rgba(0,0,0,0.28)] dark:bg-black dark:shadow-[0_24px_64px_rgba(0,0,0,0.55)]"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="flex items-start justify-between px-4 pb-2 pt-4">
@@ -254,7 +257,7 @@ export function PostMediaGrid({ attachments, className, viewerHeader, viewerFoot
               </button>
             </div>
 
-            <div className="flex flex-1 items-center justify-center px-2 pb-2 pt-1">
+            <div className="flex min-h-0 flex-1 items-center justify-center px-2 pb-2 pt-1">
               {viewerIsVideo ? (
                 <video
                   ref={viewerVideoRef}
@@ -263,7 +266,7 @@ export function PostMediaGrid({ attachments, className, viewerHeader, viewerFoot
                   playsInline
                   autoPlay
                   muted={viewerMuted}
-                  className="h-full max-h-[74vh] w-full max-w-[640px] object-contain"
+                  className="h-full max-h-full w-full max-w-[640px] object-contain"
                   onLoadedMetadata={(event) => {
                     setViewerDuration(event.currentTarget.duration || 0);
                     setViewerCurrentTime(event.currentTarget.currentTime || 0);
@@ -281,7 +284,7 @@ export function PostMediaGrid({ attachments, className, viewerHeader, viewerFoot
                 <img
                   src={viewerAsset.cdnUrl}
                   alt=""
-                  className="h-full max-h-[82vh] w-full max-w-[680px] object-contain"
+                  className="h-full max-h-full w-full max-w-[680px] object-contain"
                 />
               )}
             </div>

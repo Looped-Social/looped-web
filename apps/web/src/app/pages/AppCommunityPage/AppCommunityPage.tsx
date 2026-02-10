@@ -6,6 +6,7 @@ import { useToast } from "@/app/components/AppToast/AppToast";
 import { PostCard, type PostData } from "@/app/components/PostCard/PostCard";
 import { getCommunityPermissions, type CommunityPermissions } from "@/lib/communityPermissionsApi";
 import { extractMediaAssetIds } from "@/lib/postMediaIds";
+import { normalizePostPoll } from "@/lib/postPoll";
 import {
   CommunityDetailApiError,
   fetchCommunityDetail,
@@ -285,6 +286,7 @@ function normalizePostItemToPostData(item: unknown): PostData | null {
     viewerLiked: pickBoolean(node, ["user_liked", "userLiked"]) ?? false,
     viewerSaved: pickBoolean(node, ["is_saved", "isSaved"]) ?? false,
     viewerHasReposted: pickBoolean(node, ["viewer_has_reposted", "viewerHasReposted"]) ?? false,
+    poll: normalizePostPoll(node),
     mediaAssetIds: extractMediaAssetIds(node),
     stats: { likes, comments, reposts, shares, saves },
     isAnonymous,

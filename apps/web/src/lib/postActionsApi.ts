@@ -107,3 +107,18 @@ export async function sharePost(postId: string | number): Promise<{ shareCount?:
   }
   return {};
 }
+
+export async function votePoll(
+  pollId: string | number,
+  selectedOptionIds: Array<string | number>
+): Promise<unknown> {
+  return authFetch<unknown>(`/v1/polls/${pollId}/vote`, {
+    method: "PUT",
+    body: JSON.stringify({
+      selectedOptionIds: selectedOptionIds.map((value) => {
+        const parsed = Number(value);
+        return Number.isFinite(parsed) ? parsed : value;
+      }),
+    }),
+  });
+}

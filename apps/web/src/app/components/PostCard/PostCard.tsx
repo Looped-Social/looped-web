@@ -1,4 +1,4 @@
-import { type SyntheticEvent, useEffect, useMemo, useState } from "react";
+import { type SyntheticEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
 
 import { MenuDots } from "@/app/components/AppIcons/AppIcons";
@@ -7,7 +7,8 @@ import { useToast } from "@/app/components/AppToast/AppToast";
 import type { CommunityPermissions } from "@/lib/communityPermissionsApi";
 import { getCommunityPermissions } from "@/lib/communityPermissionsApi";
 import { type ResolvedMediaAsset, resolveMediaAssets } from "@/lib/mediaApi";
-import { PostActionsApiError, setPostLike, setPostReposted, setPostSaved, sharePost } from "@/lib/postActionsApi";
+import { type PostPoll, normalizePoll } from "@/lib/postPoll";
+import { PostActionsApiError, setPostLike, setPostReposted, setPostSaved, sharePost, votePoll } from "@/lib/postActionsApi";
 
 const DEFAULT_PROFILE_IMAGE_SRC = "/ios-icons/pfp2.svg";
 
@@ -32,6 +33,7 @@ export type PostData = {
   viewerLiked?: boolean;
   viewerSaved?: boolean;
   viewerHasReposted?: boolean;
+  poll?: PostPoll;
   mediaAssetIds?: string[];
   stats: {
     likes: number;
@@ -210,6 +212,44 @@ function actionLockMessage(permissions: CommunityPermissions | null, verb: strin
   return `You can’t ${verb} right now.`;
 }
 
+function normalizeForComparison(value: string): string {
+  return value.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+function isPollOpen(poll: PostPoll): boolean {
+  if (poll.status.toUpperCase() !== "OPEN") return false;
+  if (!poll.closesAt) return true;
+  const closesAtMs = new Date(poll.closesAt).getTime();
+  if (Number.isNaN(closesAtMs)) return true;
+  return Date.now() < closesAtMs;
+}
+
+function formatEndsInLabel(closesAt: string): string {
+  const closesAtMs = new Date(closesAt).getTime();
+  if (Number.isNaN(closesAtMs)) return "No end";
+  const diffMs = closesAtMs - Date.now();
+  if (diffMs <= 0) return "Final results";
+
+  const diffMinutes = Math.max(1, Math.floor(diffMs / 60_000));
+  if (diffMinutes < 60) return `Ends in ${diffMinutes}m`;
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) return `Ends in ${diffHours}h`;
+  const diffDays = Math.floor(diffHours / 24);
+  return `Ends in ${Math.max(1, diffDays)}d`;
+}
+
+function pollStatusLabel(poll: PostPoll): string {
+  const open = isPollOpen(poll);
+  if (!open) return "Final results";
+  if (!poll.closesAt) return "No end";
+  return formatEndsInLabel(poll.closesAt);
+}
+
+function clampPercent(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(100, value));
+}
+
 export function PostCard({ post }: PostCardProps) {
   const { showToast } = useToast();
   const [permissions, setPermissions] = useState<CommunityPermissions | null>(null);
@@ -225,6 +265,8 @@ export function PostCard({ post }: PostCardProps) {
   const [isSaveLoading, setIsSaveLoading] = useState(false);
   const [shareCount, setShareCount] = useState(post.stats.shares ?? 0);
   const [isShareLoading, setIsShareLoading] = useState(false);
+  const [pollState, setPollState] = useState<PostPoll | undefined>(post.poll);
+  const [isPollVoting, setIsPollVoting] = useState(false);
   const [resolvedMedia, setResolvedMedia] = useState<ResolvedMediaAsset[]>([]);
 
   const canOpenProfile = Boolean(post.authorProfileHref);
@@ -240,6 +282,8 @@ export function PostCard({ post }: PostCardProps) {
     setIsReposted(post.viewerHasReposted ?? false);
     setIsSaved(post.viewerSaved ?? false);
     setShareCount(post.stats.shares ?? 0);
+    setPollState(post.poll);
+    setIsPollVoting(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [post.id]);
 
@@ -296,6 +340,73 @@ export function PostCard({ post }: PostCardProps) {
     const requiresGate = permissions.requires_verification || permissions.requires_join || Boolean(permissions.requiresJoin);
     return requiresGate && !permissions.can_post;
   }, [permissions]);
+
+  const pollIsOpen = pollState ? isPollOpen(pollState) : false;
+  const isPollVotingGated = Boolean(pollState) && isReactionLocked;
+  const shouldShowPollResults = Boolean(pollState?.viewer.hasVoted || !pollIsOpen || isPollVotingGated);
+
+  const handlePollVote = useCallback(async (optionId: string) => {
+    if (!pollState || isPollVoting) return;
+    if (!pollIsOpen) return;
+
+    if (isPollVotingGated) {
+      showToast({
+        title: actionLockTitle(permissions),
+        message: actionLockMessage(permissions, "vote in this poll"),
+        tone: "error",
+      });
+      return;
+    }
+
+    if (pollState.viewer.selectedOptionIds.includes(optionId)) return;
+    if (pollState.viewer.hasVoted && !pollState.viewer.canChangeVote) return;
+
+    setIsPollVoting(true);
+
+    try {
+      const response = await votePoll(pollState.id, [optionId]);
+      const normalized = normalizePoll(
+        isRecord(response) && isRecord(response.poll)
+          ? response.poll
+          : response
+      );
+
+      if (normalized) {
+        setPollState(normalized);
+      } else {
+        setPollState((previous) =>
+          previous
+            ? {
+                ...previous,
+                viewer: {
+                  ...previous.viewer,
+                  hasVoted: true,
+                  selectedOptionIds: [optionId],
+                },
+              }
+            : previous
+        );
+      }
+    } catch (error) {
+      if (error instanceof PostActionsApiError) {
+        const parsed = parseApiError(error.details);
+        showToast({
+          title: titleForWriteError(parsed.error, "Couldn't submit vote"),
+          message: parsed.message ?? messageForWriteError(parsed.error),
+          tone: "error",
+        });
+        return;
+      }
+
+      showToast({
+        title: "Couldn't submit vote",
+        message: error instanceof Error ? error.message : "Try again.",
+        tone: "error",
+      });
+    } finally {
+      setIsPollVoting(false);
+    }
+  }, [isPollVoting, isPollVotingGated, permissions, pollIsOpen, pollState, showToast]);
 
   const handleLikeToggle = async () => {
     if (isLikeLoading) return;
@@ -478,7 +589,7 @@ export function PostCard({ post }: PostCardProps) {
 
   const mediaViewerHeader = (
     <div className="flex min-w-0 items-center gap-2.5">
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white/10 text-white">
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-bg-muted text-text-secondary dark:bg-white/10 dark:text-white">
         <img
           src={post.authorProfileImageUrl ?? DEFAULT_PROFILE_IMAGE_SRC}
           alt=""
@@ -488,8 +599,8 @@ export function PostCard({ post }: PostCardProps) {
         />
       </div>
       <div className="min-w-0">
-        <p className="truncate text-[30px] font-semibold leading-[1.05] text-white">{post.author}</p>
-        {post.context ? <p className="truncate text-[25px] leading-[1.1] text-white/80">{post.context}</p> : null}
+        <p className="truncate text-[1.2rem] font-semibold leading-tight text-strong dark:text-white">{post.author}</p>
+        {post.context ? <p className="truncate text-[1rem] leading-tight text-text-secondary dark:text-white/80">{post.context}</p> : null}
       </div>
     </div>
   );
@@ -498,19 +609,22 @@ export function PostCard({ post }: PostCardProps) {
     <div className="flex items-center justify-between gap-3">
       <div className="flex items-center gap-2.5">
         <button
-          className="inline-flex items-center gap-1 rounded-full px-1 py-1 text-[15px] font-medium text-white/85 transition hover:text-white disabled:opacity-60"
+          className="inline-flex items-center gap-1 rounded-full px-1 py-1 text-[15px] font-medium text-text-secondary transition hover:text-strong disabled:opacity-60 dark:text-white/85 dark:hover:text-white"
           aria-label="Like"
           type="button"
           onClick={() => void handleLikeToggle()}
           disabled={isLikeLoading}
         >
-          <HeartIcon filled={isLiked} className={`h-[22px] w-[22px] flex-none ${isLiked ? "text-brand" : "text-white/85"}`} />
+          <HeartIcon
+            filled={isLiked}
+            className={`h-[22px] w-[22px] flex-none ${isLiked ? "text-brand" : "text-text-secondary dark:text-white/85"}`}
+          />
           <span className="text-sm font-medium tabular-nums">{likesCount}</span>
         </button>
 
         <Link
           to={`/app/post/${post.id}/comments`}
-          className="inline-flex items-center gap-1 rounded-full px-1 py-1 text-[15px] font-medium text-white/85 transition hover:text-white"
+          className="inline-flex items-center gap-1 rounded-full px-1 py-1 text-[15px] font-medium text-text-secondary transition hover:text-strong dark:text-white/85 dark:hover:text-white"
           aria-label="Comment"
         >
           <CommentIcon className="h-[22px] w-[22px] flex-none" />
@@ -518,17 +632,19 @@ export function PostCard({ post }: PostCardProps) {
         </Link>
 
         <button
-          className="inline-flex items-center rounded-full px-1 py-1 text-[15px] font-medium text-white/85 transition hover:text-white disabled:opacity-60"
+          className="inline-flex items-center rounded-full px-1 py-1 text-[15px] font-medium text-text-secondary transition hover:text-strong disabled:opacity-60 dark:text-white/85 dark:hover:text-white"
           aria-label="Repost"
           type="button"
           onClick={() => void handleRepostToggle()}
           disabled={isRepostLoading}
         >
-          <RepostIcon className={`h-[24px] w-[24px] flex-none ${isReposted ? "text-brand" : "text-white/85"}`} />
+          <RepostIcon
+            className={`h-[24px] w-[24px] flex-none ${isReposted ? "text-brand" : "text-text-secondary dark:text-white/85"}`}
+          />
         </button>
 
         <button
-          className="inline-flex items-center gap-1 rounded-full px-1 py-1 text-[15px] font-medium text-white/85 transition hover:text-white disabled:opacity-60"
+          className="inline-flex items-center gap-1 rounded-full px-1 py-1 text-[15px] font-medium text-text-secondary transition hover:text-strong disabled:opacity-60 dark:text-white/85 dark:hover:text-white"
           aria-label="Share"
           type="button"
           onClick={() => void handleShare()}
@@ -539,17 +655,62 @@ export function PostCard({ post }: PostCardProps) {
         </button>
       </div>
       <button
-        className="inline-flex items-center justify-center rounded-full px-1 py-1 text-white/85 transition hover:text-white disabled:opacity-60"
+        className="inline-flex items-center justify-center rounded-full px-1 py-1 text-text-secondary transition hover:text-strong disabled:opacity-60 dark:text-white/85 dark:hover:text-white"
         type="button"
         aria-label="Save"
         onClick={() => void handleSaveToggle()}
         disabled={isSaveLoading}
       >
-        <BookmarkIcon filled={isSaved} className={`h-[22px] w-[22px] flex-none ${isSaved ? "text-brand" : "text-white/85"}`} />
+        <BookmarkIcon
+          filled={isSaved}
+          className={`h-[22px] w-[22px] flex-none ${isSaved ? "text-brand" : "text-text-secondary dark:text-white/85"}`}
+        />
       </button>
     </div>
   );
-  const contentOffsetClass = post.isAnonymous ? "" : "pl-[3.25rem]";
+  const trimmedContent = post.content.trim();
+  const shouldHidePostTextForPoll = Boolean(
+    pollState &&
+      trimmedContent.length > 0 &&
+      normalizeForComparison(trimmedContent) === normalizeForComparison(pollState.question)
+  );
+  const shouldRenderPostText = trimmedContent.length > 0 && !shouldHidePostTextForPoll;
+  const mediaTopSpacingClass = pollState || shouldRenderPostText ? "mt-3" : "mt-1";
+  const authorAvatar = !post.isAnonymous ? (
+    canOpenProfile ? (
+      <Link
+        to={post.authorProfileHref!}
+        className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-bg-muted text-text-secondary transition hover:opacity-90"
+        aria-label={`View ${post.author}'s profile`}
+      >
+        {post.authorProfileImageUrl ? (
+          <img
+            src={post.authorProfileImageUrl}
+            alt=""
+            className="h-full w-full object-cover"
+            loading="lazy"
+            onError={handleProfileImageError}
+          />
+        ) : (
+          <img src={DEFAULT_PROFILE_IMAGE_SRC} alt="" className="h-full w-full object-cover" loading="lazy" />
+        )}
+      </Link>
+    ) : (
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-bg-muted text-text-secondary">
+        {post.authorProfileImageUrl ? (
+          <img
+            src={post.authorProfileImageUrl}
+            alt=""
+            className="h-full w-full object-cover"
+            loading="lazy"
+            onError={handleProfileImageError}
+          />
+        ) : (
+          <img src={DEFAULT_PROFILE_IMAGE_SRC} alt="" className="h-full w-full object-cover" loading="lazy" />
+        )}
+      </div>
+    )
+  ) : null;
 
   return (
     <article className="bg-bg px-4 py-5">
@@ -559,45 +720,10 @@ export function PostCard({ post }: PostCardProps) {
           <span>{post.repostedBy}</span>
         </div>
       ) : null}
-      <div className="flex gap-3">
-        {!post.isAnonymous ? (
-          canOpenProfile ? (
-            <Link
-              to={post.authorProfileHref!}
-              className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-bg-muted text-text-secondary transition hover:opacity-90"
-              aria-label={`View ${post.author}'s profile`}
-            >
-              {post.authorProfileImageUrl ? (
-                <img
-                  src={post.authorProfileImageUrl}
-                  alt=""
-                  className="h-full w-full object-cover"
-                  loading="lazy"
-                  onError={handleProfileImageError}
-                />
-              ) : (
-                <img src={DEFAULT_PROFILE_IMAGE_SRC} alt="" className="h-full w-full object-cover" loading="lazy" />
-              )}
-            </Link>
-          ) : (
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-bg-muted text-text-secondary">
-              {post.authorProfileImageUrl ? (
-                <img
-                  src={post.authorProfileImageUrl}
-                  alt=""
-                  className="h-full w-full object-cover"
-                  loading="lazy"
-                  onError={handleProfileImageError}
-                />
-              ) : (
-                <img src={DEFAULT_PROFILE_IMAGE_SRC} alt="" className="h-full w-full object-cover" loading="lazy" />
-              )}
-            </div>
-          )
-        ) : null}
-
-        <div className="min-w-0 flex-1">
-          <div className="flex items-start justify-between gap-3">
+      <div className="min-w-0">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex flex-1 items-start gap-3">
+            {authorAvatar}
             <div className="min-w-0">
               <div className="flex flex-wrap items-baseline gap-x-1 gap-y-0.5 leading-tight">
                 {canOpenProfile ? (
@@ -632,28 +758,86 @@ export function PostCard({ post }: PostCardProps) {
                 )
               ) : null}
             </div>
-            <button
-              className="text-text-light transition hover:text-strong"
-              type="button"
-              aria-label="Post options"
-            >
-              <MenuDots className="h-5 w-5" />
-            </button>
           </div>
-
-          {post.content ? <p className="mt-3 text-[1.08rem] leading-[1.45] text-text-primary">{post.content}</p> : null}
-          {resolvedMedia.length > 0 ? (
-            <PostMediaGrid
-              attachments={resolvedMedia}
-              className={post.content ? "mt-3" : "mt-1"}
-              viewerHeader={mediaViewerHeader}
-              viewerFooter={mediaViewerFooter}
-            />
-          ) : null}
+          <button
+            className="text-text-light transition hover:text-strong"
+            type="button"
+            aria-label="Post options"
+          >
+            <MenuDots className="h-5 w-5" />
+          </button>
         </div>
+
+        {shouldRenderPostText ? (
+          <p className="mt-3 text-[1.08rem] leading-[1.45] text-text-primary">{post.content}</p>
+        ) : null}
+        {pollState ? (
+          <section className="mt-1 pt-1">
+            <div className="space-y-2.5">
+              <p className="text-[1.02rem] font-medium leading-snug text-text-primary">{pollState.question}</p>
+              <div className="space-y-2">
+                {pollState.options.map((option) => {
+                  const selected = pollState.viewer.selectedOptionIds.includes(option.id);
+                  const percent = clampPercent(option.votePercent);
+                  const votingLocked =
+                    !pollIsOpen ||
+                    isPollVoting ||
+                    isPollVotingGated ||
+                    (pollState.viewer.hasVoted && !pollState.viewer.canChangeVote);
+
+                  return (
+                    <button
+                      key={option.id}
+                      type="button"
+                      onClick={() => void handlePollVote(option.id)}
+                      disabled={votingLocked}
+                      className={`relative w-full overflow-hidden rounded-xl border border-border/70 px-3 py-2.5 text-left transition disabled:cursor-default disabled:opacity-80 ${
+                        selected ? "bg-brand/10" : "bg-bg-muted/45"
+                      }`}
+                    >
+                      {shouldShowPollResults ? (
+                        <span
+                          className={`absolute inset-y-0 left-0 ${selected ? "bg-brand/25" : "bg-bg-muted/70"}`}
+                          style={{ width: `${percent}%` }}
+                          aria-hidden="true"
+                        />
+                      ) : null}
+                      <span className="relative z-10 flex items-center justify-between gap-2">
+                        <span className={`text-sm ${selected ? "font-semibold text-strong" : "font-medium text-text-primary"}`}>
+                          {option.text}
+                        </span>
+                        {shouldShowPollResults ? (
+                          <span className="text-xs font-semibold text-text-secondary tabular-nums">
+                            {Math.round(percent)}%
+                          </span>
+                        ) : selected ? (
+                          <span className="text-xs font-semibold text-brand">Selected</span>
+                        ) : null}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="flex items-center justify-between text-[0.85rem] text-text-light">
+                <span>{pollStatusLabel(pollState)}</span>
+                <span>
+                  {pollState.totalVotes} {pollState.totalVotes === 1 ? "vote" : "votes"}
+                </span>
+              </div>
+            </div>
+          </section>
+        ) : null}
+        {resolvedMedia.length > 0 ? (
+          <PostMediaGrid
+            attachments={resolvedMedia}
+            className={mediaTopSpacingClass}
+            viewerHeader={mediaViewerHeader}
+            viewerFooter={mediaViewerFooter}
+          />
+        ) : null}
       </div>
 
-      <div className={`mt-4 ${contentOffsetClass}`}>
+      <div className="mt-4">
         <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-3.5">
           <button

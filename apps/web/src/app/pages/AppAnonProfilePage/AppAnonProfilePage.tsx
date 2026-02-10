@@ -13,6 +13,7 @@ import {
   setAnonFollowing,
 } from "@/lib/anonProfileApi";
 import { extractMediaAssetIds } from "@/lib/postMediaIds";
+import { normalizePostPoll } from "@/lib/postPoll";
 
 const DEFAULT_PROFILE_IMAGE_SRC = "/ios-icons/pfp2.svg";
 
@@ -240,6 +241,7 @@ function normalizePostItemToPostData(item: unknown): PostData | null {
     viewerLiked: pickBoolean(node, ["user_liked", "userLiked"]) ?? false,
     viewerSaved: pickBoolean(node, ["is_saved", "isSaved"]) ?? false,
     viewerHasReposted: pickBoolean(node, ["viewer_has_reposted", "viewerHasReposted"]) ?? false,
+    poll: normalizePostPoll(node),
     mediaAssetIds: extractMediaAssetIds(node),
     stats: { likes, comments, reposts, shares, saves },
     isAnonymous,
