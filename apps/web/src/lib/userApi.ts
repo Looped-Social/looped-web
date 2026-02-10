@@ -169,6 +169,24 @@ export async function fetchUserFollowing({
   return userFetch<CursorEnvelope<unknown>>(`/v1/users/${userId}/following?${params.toString()}`);
 }
 
+export async function fetchUserFollowers({
+  userId,
+  limit,
+  cursor,
+  query,
+}: {
+  userId: string | number;
+  limit?: number;
+  cursor?: string;
+  query?: string;
+}): Promise<CursorEnvelope<unknown>> {
+  const params = new URLSearchParams();
+  params.set("limit", String(clampLimit(limit, 50, 1, 100)));
+  if (cursor) params.set("cursor", cursor);
+  if (query && query.trim().length > 0) params.set("query", query.trim());
+  return userFetch<CursorEnvelope<unknown>>(`/v1/users/${userId}/followers?${params.toString()}`);
+}
+
 export async function deactivateUser(): Promise<void> {
   await userFetch("/v1/users/me/deactivate", { method: "POST" });
 }

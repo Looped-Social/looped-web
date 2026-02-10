@@ -21,6 +21,7 @@ export default [
   route('app/post/:postId/comments', 'routes/app/post-comments.tsx'),
   route('app/community/:communityId', 'routes/app/community.tsx'),
   route('app/profile', 'routes/app/profile.tsx'),
+  route('app/profile/edit', 'routes/app/profile-edit.tsx'),
   route('app/settings', 'routes/app/settings.tsx'),
   route('app/profile/anon/:anonProfileId', 'routes/app/profile-anon.tsx'),
   route('app/profile/anonymous', 'routes/app/profile-anonymous.tsx'),

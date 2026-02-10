@@ -1,29 +1,28 @@
 import { type SyntheticEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router";
+import { Link, useNavigate } from "react-router";
 
 import { AppLayout, AppMobileHeader } from "@/app/components/AppLayout/AppLayout";
 import { MenuDots } from "@/app/components/AppIcons/AppIcons";
 import { useToast } from "@/app/components/AppToast/AppToast";
 import { PostCard, type PostData } from "@/app/components/PostCard/PostCard";
+import { fetchMyReposts, fetchPostsReposted, fetchPostsSaved } from "@/lib/postReadApi";
 import { extractMediaAssetIds } from "@/lib/postMediaIds";
 import { normalizePostPoll } from "@/lib/postPoll";
+import { fetchDefaultProfileImageUrl } from "@/lib/profileEditApi";
 import {
   UserApiError,
-  fetchUserMe,
+  fetchMyContent,
+  fetchUserContent,
   fetchUserFollowing,
-  fetchUserPosts,
   fetchUserProfile,
+  fetchUserReposts,
+  fetchUserMe,
+  fetchUserSavedPosts,
   setUserFollowing,
 } from "@/lib/userApi";
 
 const DEFAULT_PROFILE_IMAGE_SRC = "/ios-icons/pfp2.svg";
-
-function handleProfileImageError(event: SyntheticEvent<HTMLImageElement>) {
-  const image = event.currentTarget;
-  if (image.dataset.fallbackApplied === "true") return;
-  image.dataset.fallbackApplied = "true";
-  image.src = DEFAULT_PROFILE_IMAGE_SRC;
-}
+const FOLLOW_STORE_KEY = "looped-following-user-ids";
 
 type AppProfilePageProps = {
   profileUserId?: string;
@@ -44,7 +43,27 @@ type ProfileViewData = {
   followersCount: number;
 };
 
-const FOLLOW_STORE_KEY = "looped-following-user-ids";
+type ProfileTabId = "content" | "saved" | "reposts";
+
+type ReplyFeedData = {
+  id: string;
+  postId?: string;
+  content: string;
+  parentSnippet?: string;
+  time: string;
+};
+
+type ProfileFeedItem =
+  | {
+      kind: "post";
+      key: string;
+      post: PostData;
+    }
+  | {
+      kind: "reply";
+      key: string;
+      reply: ReplyFeedData;
+    };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -141,6 +160,14 @@ function formatTimeAgo(date: Date): string {
   return rtf.format(years, "year");
 }
 
+function formatCalendarDate(date: Date): string {
+  return new Intl.DateTimeFormat("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  }).format(date);
+}
+
 function preferredDisplayName(value: unknown): string | undefined {
   if (!isRecord(value)) return undefined;
   const shortName = normalizeOptional(value.short_name ?? value.shortName);
@@ -231,6 +258,94 @@ function normalizePostItemToPostData(item: unknown): PostData | null {
   };
 }
 
+function normalizeReplyFeedItem(item: Record<string, unknown>, keySuffix: string): ProfileFeedItem | null {
+  const replyNode = (isRecord(item.reply) ? item.reply : null) ?? item;
+  const replyId = pickString(replyNode, ["id", "reply_id", "replyId"]) ?? keySuffix;
+  const isDeleted = pickBoolean(replyNode, ["is_deleted", "isDeleted"]) ?? false;
+  const content =
+    normalizeOptional(replyNode.content ?? replyNode.reply_text ?? replyNode.replyText) ??
+    (isDeleted ? "[Deleted reply]" : "Reply");
+
+  const postNode =
+    (isRecord(item.post) ? item.post : null) ??
+    (isRecord(item.post_preview) ? item.post_preview : null) ??
+    (isRecord(item.original_post) ? item.original_post : null);
+
+  const postId =
+    pickString(replyNode, ["post_id", "postId"]) ??
+    (postNode ? pickString(postNode, ["id", "post_id", "postId"]) : undefined);
+
+  const parentSnippet =
+    (postNode
+      ? normalizeOptional(postNode.content ?? postNode.body ?? postNode.text ?? postNode.message)
+      : undefined) ?? undefined;
+
+  const created = asDate(replyNode.created_at ?? replyNode.createdAt ?? item.created_at ?? item.createdAt ?? item.createdAt);
+  const time =
+    (created ? formatCalendarDate(created) : undefined) ??
+    normalizeOptional(replyNode.time_ago ?? replyNode.timeAgo ?? item.time_ago ?? item.timeAgo) ??
+    "";
+
+  return {
+    kind: "reply",
+    key: `reply-${replyId}-${keySuffix}`,
+    reply: {
+      id: replyId,
+      postId,
+      content,
+      parentSnippet,
+      time,
+    },
+  };
+}
+
+function normalizeContentFeedItem(item: unknown, keySuffix: string): ProfileFeedItem | null {
+  if (!isRecord(item)) return null;
+
+  const type = normalizeOptional(item.type)?.toLowerCase();
+  if (type === "reply" || (isRecord(item.reply) && type !== "post")) {
+    return normalizeReplyFeedItem(item, keySuffix);
+  }
+
+  const postNode =
+    (isRecord(item.post) ? item.post : null) ??
+    (isRecord(item.original_post) ? item.original_post : null) ??
+    (isRecord(item.post_item) ? item.post_item : null) ??
+    item;
+
+  const postData = normalizePostItemToPostData(postNode);
+  if (postData) {
+    return {
+      kind: "post",
+      key: `post-${postData.id}-${keySuffix}`,
+      post: postData,
+    };
+  }
+
+  if (isRecord(item.reply)) {
+    return normalizeReplyFeedItem(item, keySuffix);
+  }
+
+  return null;
+}
+
+function normalizePostFeedItem(item: unknown, keySuffix: string): ProfileFeedItem | null {
+  if (!isRecord(item)) return null;
+  const postNode =
+    (isRecord(item.post) ? item.post : null) ??
+    (isRecord(item.original_post) ? item.original_post : null) ??
+    (isRecord(item.post_item) ? item.post_item : null) ??
+    item;
+
+  const postData = normalizePostItemToPostData(postNode);
+  if (!postData) return null;
+  return {
+    kind: "post",
+    key: `post-${postData.id}-${keySuffix}`,
+    post: postData,
+  };
+}
+
 function parseApiErrorMessage(error: unknown): string {
   if (error instanceof UserApiError) {
     const raw = error.details?.trim();
@@ -288,8 +403,14 @@ function normalizeProfile(payload: unknown): ProfileViewData | null {
     : displaySpecialization ?? undefined;
 
   const stats = isRecord(payload.stats) ? payload.stats : null;
-  const followingCount = stats ? pickNumber(stats, ["following_count", "followingCount"]) ?? 0 : 0;
-  const followersCount = stats ? pickNumber(stats, ["follower_count", "followerCount"]) ?? 0 : 0;
+  const followingCount =
+    (stats ? pickNumber(stats, ["following_count", "followingCount"]) : undefined) ??
+    pickNumber(payload, ["following_count", "followingCount"]) ??
+    0;
+  const followersCount =
+    (stats ? pickNumber(stats, ["follower_count", "followers_count", "followerCount", "followersCount"]) : undefined) ??
+    pickNumber(payload, ["follower_count", "followers_count", "followerCount", "followersCount"]) ??
+    0;
   const showFollowerCount = pickBoolean(payload, ["show_follower_count", "showFollowerCount"]) ?? true;
 
   return {
@@ -305,6 +426,20 @@ function normalizeProfile(payload: unknown): ProfileViewData | null {
     showFollowerCount,
     followingCount,
     followersCount,
+  };
+}
+
+function mergeProfileData(primary: ProfileViewData, fallback: ProfileViewData): ProfileViewData {
+  return {
+    ...primary,
+    bio: primary.bio || fallback.bio,
+    avatarUrl: primary.avatarUrl ?? fallback.avatarUrl,
+    yearsInLoop: primary.yearsInLoop ?? fallback.yearsInLoop,
+    memberLine: primary.memberLine ?? fallback.memberLine,
+    createdYear: primary.createdYear ?? fallback.createdYear,
+    followingCount: Math.max(primary.followingCount, fallback.followingCount),
+    followersCount: Math.max(primary.followersCount, fallback.followersCount),
+    showFollowerCount: primary.showFollowerCount ?? fallback.showFollowerCount,
   };
 }
 
@@ -398,20 +533,50 @@ function BriefcaseIcon({ className }: { className?: string }) {
   );
 }
 
+function ReplyContentCard({ item }: { item: ReplyFeedData }) {
+  return (
+    <article className="bg-bg px-4 py-4">
+      <div className="rounded-xl bg-bg-muted/70 px-3 py-2.5">
+        <p className="text-[0.95rem] font-medium text-text-light">In reply to</p>
+        <p className="mt-1 text-[1.05rem] leading-snug text-text-secondary">
+          {item.parentSnippet ?? "Original post unavailable."}
+        </p>
+      </div>
+
+      <p className="mt-3 text-[1.35rem] leading-[1.28] font-semibold text-strong">{item.content}</p>
+
+      <div className="mt-2 flex items-center justify-between gap-3">
+        <p className="text-[0.95rem] text-text-light">{item.time}</p>
+        {item.postId ? (
+          <Link
+            to={`/app/post/${item.postId}/comments`}
+            className="text-[0.9rem] font-semibold text-text-secondary transition hover:text-strong"
+          >
+            View thread
+          </Link>
+        ) : null}
+      </div>
+    </article>
+  );
+}
+
 export function AppProfilePage({ profileUserId }: AppProfilePageProps) {
   const navigate = useNavigate();
   const { showToast } = useToast();
+
+  const [defaultProfileImageUrl, setDefaultProfileImageUrl] = useState<string | undefined>();
+
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [targetUserId, setTargetUserId] = useState<string | null>(null);
   const [profile, setProfile] = useState<ProfileViewData | null>(null);
   const [profileStatus, setProfileStatus] = useState<"loading" | "idle" | "error">("loading");
   const [profileError, setProfileError] = useState<string | null>(null);
 
-  const [posts, setPosts] = useState<PostData[]>([]);
+  const [activeTabId, setActiveTabId] = useState<ProfileTabId>("content");
+  const [feedItems, setFeedItems] = useState<ProfileFeedItem[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
-  const [postsStatus, setPostsStatus] = useState<"idle" | "loading" | "loading-more" | "error">("loading");
-  const [postsError, setPostsError] = useState<string | null>(null);
-  const [activeTabId, setActiveTabId] = useState<"content" | "reposts">("content");
+  const [feedStatus, setFeedStatus] = useState<"idle" | "loading" | "loading-more" | "error">("idle");
+  const [feedError, setFeedError] = useState<string | null>(null);
 
   const [isFollowing, setIsFollowing] = useState(false);
   const [isFollowLoading, setIsFollowLoading] = useState(false);
@@ -421,43 +586,83 @@ export function AppProfilePage({ profileUserId }: AppProfilePageProps) {
     [currentUserId, targetUserId]
   );
 
-  const loadInitial = useCallback(async () => {
+  useEffect(() => {
+    let active = true;
+    fetchDefaultProfileImageUrl()
+      .then((url) => {
+        if (!active) return;
+        setDefaultProfileImageUrl(url);
+      })
+      .catch(() => {
+        if (!active) return;
+        setDefaultProfileImageUrl(undefined);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const handleAvatarImageError = useCallback(
+    (event: SyntheticEvent<HTMLImageElement>) => {
+      const image = event.currentTarget;
+      if (defaultProfileImageUrl && image.dataset.defaultFallbackApplied !== "true") {
+        image.dataset.defaultFallbackApplied = "true";
+        image.src = defaultProfileImageUrl;
+        return;
+      }
+      if (image.dataset.fallbackApplied === "true") return;
+      image.dataset.fallbackApplied = "true";
+      image.src = DEFAULT_PROFILE_IMAGE_SRC;
+    },
+    [defaultProfileImageUrl]
+  );
+
+  const loadProfile = useCallback(async () => {
     setProfileStatus("loading");
     setProfileError(null);
-    setPostsStatus("loading");
-    setPostsError(null);
-    setPosts([]);
+    setFeedStatus("loading");
+    setFeedError(null);
+    setFeedItems([]);
     setNextCursor(null);
 
     try {
       const meResponse = await fetchUserMe();
+      const meRoot = meResponse as unknown;
+      const mePayload = isRecord(meRoot) && isRecord(meRoot.user) ? meRoot.user : meRoot;
       const resolvedCurrentUserId = resolveCurrentUserId(meResponse);
       if (!resolvedCurrentUserId) {
         throw new Error("Unable to resolve your profile.");
       }
       const resolvedTargetUserId = profileUserId?.trim() ? profileUserId.trim() : resolvedCurrentUserId;
 
-      const [profileResponse, postsResponse] = await Promise.all([
-        fetchUserProfile(resolvedTargetUserId),
-        fetchUserPosts({ userId: resolvedTargetUserId, limit: 20 }),
-      ]);
+      let profilePayload: unknown;
+      try {
+        profilePayload = await fetchUserProfile(resolvedTargetUserId);
+      } catch (error) {
+        if (resolvedTargetUserId === resolvedCurrentUserId && isRecord(mePayload)) {
+          profilePayload = mePayload;
+        } else {
+          throw error;
+        }
+      }
 
-      const normalizedProfile = normalizeProfile(profileResponse);
+      const normalizedPrimary = normalizeProfile(profilePayload);
+      const normalizedFallback = normalizeProfile(mePayload);
+      const normalizedProfile = normalizedPrimary
+        ? normalizedFallback
+          ? mergeProfileData(normalizedPrimary, normalizedFallback)
+          : normalizedPrimary
+        : normalizedFallback;
+
       if (!normalizedProfile) {
         throw new Error("Unable to load this profile.");
       }
-
-      const normalizedPosts = (postsResponse.items ?? [])
-        .map(normalizePostItemToPostData)
-        .filter((post): post is PostData => Boolean(post));
 
       setCurrentUserId(resolvedCurrentUserId);
       setTargetUserId(resolvedTargetUserId);
       setProfile(normalizedProfile);
       setProfileStatus("idle");
-      setPosts(normalizedPosts);
-      setPostsStatus("idle");
-      setNextCursor(postsResponse.next_cursor ?? postsResponse.nextCursor ?? null);
+      setFeedStatus("idle");
 
       if (resolvedCurrentUserId === resolvedTargetUserId) {
         setIsFollowing(false);
@@ -477,33 +682,96 @@ export function AppProfilePage({ profileUserId }: AppProfilePageProps) {
     } catch (error) {
       const message = parseApiErrorMessage(error);
       setProfileStatus("error");
-      setPostsStatus("error");
+      setFeedStatus("error");
       setProfileError(message);
-      setPostsError(message);
+      setFeedError(message);
     }
   }, [profileUserId]);
 
-  useEffect(() => {
-    void loadInitial();
-  }, [loadInitial]);
+  const loadFeedPage = useCallback(
+    async ({ cursor, replace }: { cursor?: string; replace: boolean }) => {
+      if (!targetUserId) return;
 
-  const loadMorePosts = useCallback(async () => {
-    if (!targetUserId || !nextCursor || postsStatus === "loading-more") return;
-    setPostsStatus("loading-more");
-    setPostsError(null);
-    try {
-      const response = await fetchUserPosts({ userId: targetUserId, limit: 20, cursor: nextCursor });
-      const normalized = (response.items ?? [])
-        .map(normalizePostItemToPostData)
-        .filter((post): post is PostData => Boolean(post));
-      setPosts((prev) => [...prev, ...normalized]);
-      setNextCursor(response.next_cursor ?? response.nextCursor ?? null);
-      setPostsStatus("idle");
-    } catch (error) {
-      setPostsStatus("error");
-      setPostsError(parseApiErrorMessage(error));
+      setFeedError(null);
+      setFeedStatus(cursor ? "loading-more" : "loading");
+
+      try {
+        let response: { items: unknown[]; next_cursor?: string | null; nextCursor?: string | null };
+
+        if (activeTabId === "content") {
+          if (isCurrentUser) {
+            try {
+              response = await fetchMyContent({ limit: 20, cursor, includePostPreview: true });
+            } catch {
+              response = await fetchUserContent({
+                userId: targetUserId,
+                limit: 20,
+                cursor,
+                includePostPreview: true,
+              });
+            }
+          } else {
+            response = await fetchUserContent({
+              userId: targetUserId,
+              limit: 20,
+              cursor,
+              includePostPreview: true,
+            });
+          }
+        } else if (activeTabId === "saved") {
+          response = isCurrentUser
+            ? await fetchPostsSaved({ limit: 20, cursor })
+            : await fetchUserSavedPosts({ userId: targetUserId, limit: 20, cursor });
+        } else if (isCurrentUser) {
+          try {
+            response = await fetchMyReposts({ limit: 20, cursor });
+          } catch {
+            response = await fetchPostsReposted({ limit: 20, cursor });
+          }
+        } else {
+          response = await fetchUserReposts({ userId: targetUserId, limit: 20, cursor });
+        }
+
+        const normalized = (response.items ?? [])
+          .map((entry, index) => {
+            const keySuffix = `${cursor ?? "initial"}-${index}`;
+            if (activeTabId === "content") return normalizeContentFeedItem(entry, keySuffix);
+            return normalizePostFeedItem(entry, keySuffix);
+          })
+          .filter((entry): entry is ProfileFeedItem => Boolean(entry));
+
+        setFeedItems((previous) => (replace ? normalized : [...previous, ...normalized]));
+        setNextCursor(response.next_cursor ?? response.nextCursor ?? null);
+        setFeedStatus("idle");
+      } catch (error) {
+        setFeedStatus("error");
+        setFeedError(parseApiErrorMessage(error));
+      }
+    },
+    [activeTabId, isCurrentUser, targetUserId]
+  );
+
+  useEffect(() => {
+    void loadProfile();
+  }, [loadProfile]);
+
+  useEffect(() => {
+    if (!isCurrentUser && activeTabId === "saved") {
+      setActiveTabId("content");
     }
-  }, [nextCursor, postsStatus, targetUserId]);
+  }, [activeTabId, isCurrentUser]);
+
+  useEffect(() => {
+    if (!targetUserId || profileStatus !== "idle") return;
+    setFeedItems([]);
+    setNextCursor(null);
+    void loadFeedPage({ replace: true });
+  }, [activeTabId, loadFeedPage, profileStatus, targetUserId]);
+
+  const loadMoreFeed = useCallback(async () => {
+    if (!nextCursor || feedStatus === "loading-more") return;
+    await loadFeedPage({ cursor: nextCursor, replace: false });
+  }, [feedStatus, loadFeedPage, nextCursor]);
 
   const handleFollowToggle = useCallback(async () => {
     if (!targetUserId || isCurrentUser || isFollowLoading) return;
@@ -560,6 +828,10 @@ export function AppProfilePage({ profileUserId }: AppProfilePageProps) {
     navigate("/app", { replace: true });
   }, [navigate]);
 
+  const handleEditProfileNavigation = useCallback(() => {
+    navigate("/app/profile/edit");
+  }, [navigate]);
+
   const rightRail = profile ? (
     <>
       <div className="rounded-2xl border border-border/70 bg-bg p-4 shadow-sm">
@@ -601,12 +873,7 @@ export function AppProfilePage({ profileUserId }: AppProfilePageProps) {
             <button
               type="button"
               className="w-full rounded-xl border border-border/70 bg-bg px-3 py-2 text-sm font-semibold text-text-secondary transition hover:text-strong"
-              onClick={() =>
-                showToast({
-                  title: "Edit profile",
-                  message: "Profile editing is coming soon on web.",
-                })
-              }
+              onClick={handleEditProfileNavigation}
             >
               Edit profile
             </button>
@@ -616,14 +883,34 @@ export function AppProfilePage({ profileUserId }: AppProfilePageProps) {
     </>
   ) : null;
 
+  const visibleTabs: Array<{ id: ProfileTabId; label: string }> = isCurrentUser
+    ? [
+        { id: "content", label: "Content" },
+        { id: "saved", label: "Saved" },
+        { id: "reposts", label: "Reposts" },
+      ]
+    : [
+        { id: "content", label: "Content" },
+        { id: "reposts", label: "Reposts" },
+      ];
+
+  const emptyLabel =
+    activeTabId === "content"
+      ? "No content yet."
+      : activeTabId === "saved"
+        ? "No saved posts yet."
+        : "No reposts yet.";
+
+  const loadingLabel =
+    activeTabId === "content"
+      ? "Loading content..."
+      : activeTabId === "saved"
+        ? "Loading saved posts..."
+        : "Loading reposts...";
+
   return (
     <AppLayout activeNavId={isCurrentUser ? "profile" : ""} rightRail={rightRail}>
-      <AppMobileHeader
-        title="Profile"
-        showAction={false}
-        showBack={!isCurrentUser}
-        backHref="/app"
-      />
+      <AppMobileHeader title="Profile" showAction={false} showBack={!isCurrentUser} backHref="/app" />
 
       {profileStatus === "loading" ? (
         <div className="space-y-3 bg-bg px-4 py-6">
@@ -639,7 +926,7 @@ export function AppProfilePage({ profileUserId }: AppProfilePageProps) {
           <p className="text-sm text-text-secondary">{profileError}</p>
           <button
             type="button"
-            onClick={() => void loadInitial()}
+            onClick={() => void loadProfile()}
             className="rounded-full bg-brand px-4 py-2 text-sm font-semibold text-white"
           >
             Retry
@@ -666,18 +953,18 @@ export function AppProfilePage({ profileUserId }: AppProfilePageProps) {
               <div className="flex items-center gap-3">
                 <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full bg-bg-muted text-text-secondary">
                   <img
-                    src={profile.avatarUrl ?? DEFAULT_PROFILE_IMAGE_SRC}
+                    src={profile.avatarUrl ?? defaultProfileImageUrl ?? DEFAULT_PROFILE_IMAGE_SRC}
                     alt=""
                     className="h-full w-full object-cover"
                     loading="lazy"
-                    onError={handleProfileImageError}
+                    onError={handleAvatarImageError}
                   />
                 </div>
                 <div>
                   <p className={`text-2xl font-semibold ${profile.isAnonymous ? "text-secondary" : "text-strong"}`}>
                     {profile.name}
                   </p>
-                  <p className="text-sm text-text-secondary">{profile.handle}</p>
+                  <p className="text-[1.1rem] text-text-secondary">{profile.handle}</p>
                 </div>
               </div>
               <button
@@ -689,9 +976,9 @@ export function AppProfilePage({ profileUserId }: AppProfilePageProps) {
               </button>
             </div>
 
-            {profile.bio ? <p className="mt-3 text-sm text-text-secondary">{profile.bio}</p> : null}
+            {profile.bio ? <p className="mt-3 text-[1.08rem] text-text-secondary">{profile.bio}</p> : null}
 
-            <div className="mt-4 space-y-2 text-sm text-text-secondary">
+            <div className="mt-3 space-y-1.5 text-[1.08rem] text-text-secondary">
               {profile.yearsInLoop ? (
                 <div className="flex items-center gap-2">
                   <CalendarIcon className="h-4 w-4" />
@@ -707,7 +994,7 @@ export function AppProfilePage({ profileUserId }: AppProfilePageProps) {
             </div>
 
             {profile.showFollowerCount ? (
-              <div className="mt-4 flex flex-wrap items-center gap-6 text-sm text-text-secondary">
+              <div className="mt-3 flex flex-wrap items-center gap-6 text-[1.08rem] text-text-secondary">
                 <div className="flex items-center gap-1.5">
                   <span className="font-semibold text-strong">{profile.followingCount}</span>
                   <span>Following</span>
@@ -721,32 +1008,13 @@ export function AppProfilePage({ profileUserId }: AppProfilePageProps) {
 
             <div className="mt-4 flex flex-wrap gap-3">
               {isCurrentUser ? (
-                <>
-                  <button
-                    type="button"
-                    className="rounded-full border border-border/70 bg-bg px-4 py-2 text-sm font-semibold text-text-secondary transition hover:text-strong"
-                    onClick={() =>
-                      showToast({
-                        title: "Edit profile",
-                        message: "Profile editing is coming soon on web.",
-                      })
-                    }
-                  >
-                    Edit profile
-                  </button>
-                  <button
-                    type="button"
-                    className="rounded-full border border-border/70 bg-bg px-4 py-2 text-sm font-semibold text-text-secondary transition hover:text-strong"
-                    onClick={() =>
-                      showToast({
-                        title: "Anonymous mode",
-                        message: "Anonymous mode controls are available in iOS today.",
-                      })
-                    }
-                  >
-                    Anonymous
-                  </button>
-                </>
+                <button
+                  type="button"
+                  className="rounded-full border border-border/70 bg-bg px-5 py-2.5 text-[1.02rem] font-semibold text-text-secondary transition hover:text-strong"
+                  onClick={handleEditProfileNavigation}
+                >
+                  Edit profile
+                </button>
               ) : (
                 <>
                   <button
@@ -778,77 +1046,65 @@ export function AppProfilePage({ profileUserId }: AppProfilePageProps) {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 border-t border-border/70">
-            <button
-              type="button"
-              onClick={() => setActiveTabId("content")}
-              className={`relative px-2 py-4 text-center text-sm transition ${
-                activeTabId === "content" ? "font-bold text-brand" : "font-medium text-text-secondary hover:text-strong"
-              }`}
-              aria-current={activeTabId === "content" ? "page" : undefined}
-            >
-              Content
-              {activeTabId === "content" ? (
-                <span className="absolute bottom-0 left-1/2 h-0.5 w-16 -translate-x-1/2 bg-brand" />
-              ) : null}
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTabId("reposts")}
-              className={`relative px-2 py-4 text-center text-sm transition ${
-                activeTabId === "reposts" ? "font-bold text-brand" : "font-medium text-text-secondary hover:text-strong"
-              }`}
-              aria-current={activeTabId === "reposts" ? "page" : undefined}
-            >
-              Reposts
-              {activeTabId === "reposts" ? (
-                <span className="absolute bottom-0 left-1/2 h-0.5 w-16 -translate-x-1/2 bg-brand" />
-              ) : null}
-            </button>
+          <div
+            className={`grid border-t border-border/70 ${
+              visibleTabs.length === 3 ? "grid-cols-3" : "grid-cols-2"
+            }`}
+          >
+            {visibleTabs.map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveTabId(tab.id)}
+                className={`relative px-2 py-4 text-center text-sm transition ${
+                  activeTabId === tab.id ? "font-bold text-brand" : "font-medium text-text-secondary hover:text-strong"
+                }`}
+                aria-current={activeTabId === tab.id ? "page" : undefined}
+              >
+                {tab.label}
+                {activeTabId === tab.id ? <span className="absolute bottom-0 left-1/2 h-0.5 w-16 -translate-x-1/2 bg-brand" /> : null}
+              </button>
+            ))}
           </div>
         </section>
       ) : null}
 
-      {activeTabId === "content" ? (
-        <div className="divide-y divide-border/70 bg-bg">
-          {posts.map((post) => (
-            <PostCard key={post.id} post={post} />
-          ))}
+      <div className="divide-y divide-border/70 bg-bg">
+        {feedItems.map((item) =>
+          item.kind === "post" ? <PostCard key={item.key} post={item.post} /> : <ReplyContentCard key={item.key} item={item.reply} />
+        )}
 
-          {postsStatus === "loading" && profileStatus !== "loading" ? (
-            <div className="px-4 py-6 text-sm text-text-secondary">Loading content...</div>
-          ) : null}
+        {feedStatus === "loading" && profileStatus !== "loading" ? (
+          <div className="px-4 py-6 text-sm text-text-secondary">{loadingLabel}</div>
+        ) : null}
 
-          {posts.length === 0 && postsStatus === "idle" ? (
-            <div className="px-4 py-8 text-center text-sm text-text-secondary">No content yet.</div>
-          ) : null}
+        {feedItems.length === 0 && feedStatus === "idle" ? (
+          <div className="px-4 py-8 text-center text-sm text-text-secondary">{emptyLabel}</div>
+        ) : null}
 
-          {postsError ? (
-            <div className="space-y-2 px-4 py-4">
-              <p className="text-sm font-semibold text-strong">Unable to load content.</p>
-              <p className="text-sm text-text-secondary">{postsError}</p>
-            </div>
-          ) : null}
+        {feedError ? (
+          <div className="space-y-2 px-4 py-4">
+            <p className="text-sm font-semibold text-strong">Unable to load items.</p>
+            <p className="text-sm text-text-secondary">{feedError}</p>
+          </div>
+        ) : null}
 
-          {nextCursor && postsStatus !== "loading-more" ? (
-            <div className="flex justify-center px-4 py-5">
-              <button
-                type="button"
-                onClick={() => void loadMorePosts()}
-                className="rounded-full border border-border/70 bg-bg px-4 py-2 text-sm font-semibold text-text-secondary transition hover:text-strong"
-              >
-                Load more
-              </button>
-            </div>
-          ) : null}
+        {nextCursor && feedStatus !== "loading-more" ? (
+          <div className="flex justify-center px-4 py-5">
+            <button
+              type="button"
+              onClick={() => void loadMoreFeed()}
+              className="rounded-full border border-border/70 bg-bg px-4 py-2 text-sm font-semibold text-text-secondary transition hover:text-strong"
+            >
+              Load more
+            </button>
+          </div>
+        ) : null}
 
-          {postsStatus === "loading-more" ? (
-            <div className="px-4 py-5 text-center text-sm text-text-secondary">Loading more...</div>
-          ) : null}
-        </div>
-      ) : (
-        <div className="bg-bg px-4 py-8 text-center text-sm text-text-secondary">No reposts yet.</div>
-      )}
+        {feedStatus === "loading-more" ? (
+          <div className="px-4 py-5 text-center text-sm text-text-secondary">Loading more...</div>
+        ) : null}
+      </div>
     </AppLayout>
   );
 }
