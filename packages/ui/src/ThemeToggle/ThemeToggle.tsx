@@ -18,8 +18,8 @@ export function ThemeToggle({ className = "" }: ThemeToggleProps) {
     >
       {isLight ? (
         <svg
-          width="18"
-          height="18"
+          width="20"
+          height="20"
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
@@ -31,8 +31,8 @@ export function ThemeToggle({ className = "" }: ThemeToggleProps) {
         </svg>
       ) : (
         <svg
-          width="18"
-          height="18"
+          width="20"
+          height="20"
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"

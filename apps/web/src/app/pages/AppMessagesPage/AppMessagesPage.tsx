@@ -42,6 +42,9 @@ type MessageRequestRow = {
   initials: string;
   timestampLabel?: string;
   senderUserId?: string;
+  conversationId?: string;
+  channelId?: string;
+  isGroup: boolean;
   status: string;
 };
 
@@ -221,6 +224,33 @@ function extractItemsArray(payload: unknown): unknown[] {
   return [];
 }
 
+function readNextCursor(payload: unknown): string | undefined {
+  if (!isRecord(payload)) return undefined;
+  return (
+    normalizeOptional(payload.next_cursor) ??
+    normalizeOptional(payload.nextCursor) ??
+    normalizeOptional(payload.cursor)
+  );
+}
+
+async function collectPagedItems(
+  loadPage: (cursor?: string) => Promise<unknown>,
+  maxPages = 8
+): Promise<unknown[]> {
+  const items: unknown[] = [];
+  let cursor: string | undefined;
+
+  for (let page = 0; page < maxPages; page += 1) {
+    const response = await loadPage(cursor);
+    items.push(...extractItemsArray(response));
+    const nextCursor = readNextCursor(response);
+    if (!nextCursor || nextCursor === cursor) break;
+    cursor = nextCursor;
+  }
+
+  return items;
+}
+
 function parseApiErrorMessage(error: unknown): string {
   if (error instanceof MessagingApiError) {
     const details = (error.details ?? "").trim();
@@ -228,9 +258,15 @@ function parseApiErrorMessage(error: unknown): string {
       try {
         const parsed: unknown = JSON.parse(details);
         if (isRecord(parsed)) {
+          const code = normalizeOptional(parsed.error);
+          if (code) {
+            if (code === "message_request_pending") return "Message request is still pending.";
+            if (code === "message_request_rejected") return "Message request was rejected.";
+            if (code === "anonymous_not_allowed") return "Messaging is unavailable in anonymous mode.";
+            if (code === "user_not_provisioned") return "Messaging is not ready for this account yet.";
+          }
           const message = normalizeOptional(parsed.message);
           if (message) return message;
-          const code = normalizeOptional(parsed.error);
           if (code) return code.replaceAll("_", " ");
         }
       } catch {
@@ -241,6 +277,11 @@ function parseApiErrorMessage(error: unknown): string {
   }
   if (error instanceof Error) return error.message;
   return "Something went wrong.";
+}
+
+function extractConversationId(payload: unknown): string | undefined {
+  if (!isRecord(payload)) return undefined;
+  return pickString(payload, ["conversation_id", "conversationId", "id"]);
 }
 
 function isViewerAnonymous(payload: unknown): boolean {
@@ -421,16 +462,27 @@ function normalizeChannelRow(item: unknown): ThreadRow | null {
 function normalizeSearchRow(item: unknown): ThreadRow | null {
   if (!isRecord(item)) return null;
 
+  const resultType = normalizeOptional(pickString(item, ["type"]))?.toLowerCase();
   const conversationId = pickString(item, ["conversation_id", "conversationId"]);
   const channelId = pickString(item, ["channel_id", "channelId"]);
   const messageId = pickString(item, ["id", "message_id", "messageId"]);
-  const id = conversationId ?? channelId ?? messageId;
+  const id =
+    (resultType === "channel" ? channelId : resultType === "conversation" ? conversationId : undefined) ??
+    conversationId ??
+    channelId ??
+    messageId;
   if (!id) return null;
 
   const actor =
+    (isRecord(item.other_user_profile) ? item.other_user_profile : null) ??
+    (isRecord(item.otherUserProfile) ? item.otherUserProfile : null) ??
     (isRecord(item.actor) ? item.actor : null) ??
     (isRecord(item.sender) ? item.sender : null) ??
     (isRecord(item.user) ? item.user : null);
+
+  const matchedMessage =
+    (isRecord(item.matched_message) ? item.matched_message : null) ??
+    (isRecord(item.matchedMessage) ? item.matchedMessage : null);
 
   const title =
     normalizeOptional(
@@ -440,10 +492,14 @@ function normalizeSearchRow(item: unknown): ThreadRow | null {
     "Conversation";
 
   const preview =
+    (matchedMessage
+      ? normalizeOptional(pickString(matchedMessage, ["content", "text", "body", "message", "snippet", "preview"]))
+      : undefined) ??
     normalizeOptional(
       pickString(item, ["content", "text", "body", "message", "snippet", "preview", "last_message", "lastMessage"])
     ) ?? undefined;
   const timestampValue =
+    (matchedMessage ? matchedMessage.created_at ?? matchedMessage.createdAt : undefined) ??
     item.created_at ??
     item.createdAt ??
     item.last_message_timestamp ??
@@ -484,7 +540,16 @@ function normalizeMessageRequestRow(item: unknown): MessageRequestRow | null {
     normalizeOptional(pickString(item, ["request_status", "requestStatus"]))?.toLowerCase() ??
     "pending";
 
+  const previewMessage =
+    (isRecord(item.message) ? item.message : null) ??
+    (isRecord(item.preview) ? item.preview : null) ??
+    (isRecord(item.matched_message) ? item.matched_message : null);
+
   const senderProfile =
+    (isRecord(item.requester_profile) ? item.requester_profile : null) ??
+    (isRecord(item.requesterProfile) ? item.requesterProfile : null) ??
+    (isRecord(item.sender_profile) ? item.sender_profile : null) ??
+    (isRecord(item.senderProfile) ? item.senderProfile : null) ??
     (isRecord(item.sender_user_profile) ? item.sender_user_profile : null) ??
     (isRecord(item.senderUserProfile) ? item.senderUserProfile : null) ??
     (isRecord(item.sender) ? item.sender : null) ??
@@ -496,15 +561,28 @@ function normalizeMessageRequestRow(item: unknown): MessageRequestRow | null {
     "Unknown";
 
   const preview =
+    (previewMessage
+      ? normalizeOptional(
+          pickString(previewMessage, ["content", "text", "body", "message", "snippet", "preview"])
+        )
+      : undefined) ??
     normalizeOptional(
       pickString(item, ["message_preview", "messagePreview", "content", "text", "body", "message", "last_message"])
     ) ?? undefined;
-  const timestampValue = item.created_at ?? item.createdAt ?? item.updated_at ?? item.updatedAt;
+  const timestampValue =
+    item.created_at ??
+    item.createdAt ??
+    item.updated_at ??
+    item.updatedAt ??
+    (previewMessage ? previewMessage.created_at ?? previewMessage.createdAt : undefined);
   const timestampLabel = formatTimeAgo(timestampValue);
 
   const senderUserId = senderProfile
     ? pickString(senderProfile, ["id", "user_id", "userId"])
-    : pickString(item, ["sender_user_id", "senderUserId"]);
+    : pickString(item, ["requester_id", "requesterId", "sender_user_id", "senderUserId", "sender_id", "senderId"]);
+  const conversationId = pickString(item, ["conversation_id", "conversationId"]);
+  const channelId = pickString(item, ["channel_id", "channelId"]);
+  const isGroup = getBoolean(item.is_group ?? item.isGroup) ?? Boolean(channelId);
   const avatarUrl = senderProfile
     ? normalizeOptional(pickString(senderProfile, ["profile_image_url", "profileImageUrl", "avatar_url", "avatarUrl"]))
     : undefined;
@@ -517,6 +595,9 @@ function normalizeMessageRequestRow(item: unknown): MessageRequestRow | null {
     initials: initialsFromName(senderName),
     timestampLabel: timestampLabel || undefined,
     senderUserId: senderUserId ?? undefined,
+    conversationId: conversationId ?? undefined,
+    channelId: channelId ?? undefined,
+    isGroup,
     status: statusRaw,
   };
 }
@@ -694,8 +775,8 @@ export function AppMessagesPage() {
       setConversationError(null);
     }
     try {
-      const response = await fetchConversations({ limit: 50 });
-      const normalized = extractItemsArray(response)
+      const items = await collectPagedItems((cursor) => fetchConversations({ limit: 100, cursor }), 8);
+      const normalized = items
         .map(normalizeConversationRow)
         .filter((entry): entry is ThreadRow => Boolean(entry))
         .sort((a, b) => b.sortEpochMs - a.sortEpochMs);
@@ -715,8 +796,8 @@ export function AppMessagesPage() {
       setRequestError(null);
     }
     try {
-      const response = await fetchMessageRequests({ limit: 50 });
-      const normalized = extractItemsArray(response)
+      const items = await collectPagedItems((cursor) => fetchMessageRequests({ limit: 100, cursor }), 8);
+      const normalized = items
         .map(normalizeMessageRequestRow)
         .filter((entry): entry is MessageRequestRow => Boolean(entry))
         .filter((entry) => entry.status === "pending");
@@ -736,8 +817,8 @@ export function AppMessagesPage() {
       setChannelError(null);
     }
     try {
-      const response = await fetchChannels({ limit: 50 });
-      const normalized = extractItemsArray(response)
+      const items = await collectPagedItems((cursor) => fetchChannels({ limit: 100, cursor }), 8);
+      const normalized = items
         .map(normalizeChannelRow)
         .filter((entry): entry is ThreadRow => Boolean(entry))
         .sort((a, b) => b.sortEpochMs - a.sortEpochMs);
@@ -753,9 +834,7 @@ export function AppMessagesPage() {
 
   const loadInbox = useCallback(
     async ({ silent = false }: { silent?: boolean } = {}) => {
-      await loadConversations({ silent });
-      await loadRequests({ silent });
-      await loadChannels({ silent });
+      await Promise.all([loadConversations({ silent }), loadRequests({ silent }), loadChannels({ silent })]);
     },
     [loadChannels, loadConversations, loadRequests]
   );
@@ -860,8 +939,17 @@ export function AppMessagesPage() {
       try {
         if (action === "approve") {
           await approveMessageRequest(row.id);
-          if (row.senderUserId) {
-            await createConversation(row.senderUserId);
+          if (row.isGroup) {
+            void loadChannels({ silent: true });
+          } else {
+            let conversationId = row.conversationId;
+            if (!conversationId && row.senderUserId) {
+              const response = await createConversation(row.senderUserId);
+              conversationId = extractConversationId(response);
+            }
+            if (conversationId) {
+              navigate(`/app/messages/conversation/${conversationId}`);
+            }
           }
           showToast({ kind: "success", text: "Message request approved." });
         } else {
@@ -886,7 +974,7 @@ export function AppMessagesPage() {
         });
       }
     },
-    [loadChannels, loadConversations, requestActionById, showToast]
+    [loadChannels, loadConversations, navigate, requestActionById, showToast]
   );
 
   const isLoadingMessages = (conversationStatus === "loading" || channelStatus === "loading") && !conversationRows.length && !channelRows.length;

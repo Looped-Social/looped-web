@@ -11,6 +11,7 @@ import { normalizePostPoll } from "@/lib/postPoll";
 import { fetchDefaultProfileImageUrl } from "@/lib/profileEditApi";
 import {
   UserApiError,
+  blockUser,
   fetchMyContent,
   fetchUserContent,
   fetchUserFollowing,
@@ -580,11 +581,19 @@ export function AppProfilePage({ profileUserId }: AppProfilePageProps) {
 
   const [isFollowing, setIsFollowing] = useState(false);
   const [isFollowLoading, setIsFollowLoading] = useState(false);
+  const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
+  const [showBlockPrompt, setShowBlockPrompt] = useState(false);
+  const [isBlockingUser, setIsBlockingUser] = useState(false);
 
   const isCurrentUser = useMemo(
     () => Boolean(currentUserId && targetUserId && currentUserId === targetUserId),
     [currentUserId, targetUserId]
   );
+  const canShowProfileMenu = Boolean(profile && targetUserId && !isCurrentUser && !profile.isAnonymous);
+  const profileHandleLabel = useMemo(() => {
+    if (!profile?.handle) return "@this account";
+    return profile.handle.startsWith("@") ? profile.handle : `@${profile.handle}`;
+  }, [profile?.handle]);
 
   useEffect(() => {
     let active = true;
@@ -601,6 +610,14 @@ export function AppProfilePage({ profileUserId }: AppProfilePageProps) {
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (!canShowProfileMenu) {
+      setIsProfileMenuOpen(false);
+      setShowBlockPrompt(false);
+      setIsBlockingUser(false);
+    }
+  }, [canShowProfileMenu]);
 
   const handleAvatarImageError = useCallback(
     (event: SyntheticEvent<HTMLImageElement>) => {
@@ -832,6 +849,29 @@ export function AppProfilePage({ profileUserId }: AppProfilePageProps) {
     navigate("/app/profile/edit");
   }, [navigate]);
 
+  const handleBlockUser = useCallback(async () => {
+    if (!targetUserId || isCurrentUser || !canShowProfileMenu || isBlockingUser) return;
+
+    setIsBlockingUser(true);
+    try {
+      await blockUser(targetUserId);
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("looped:content-refresh"));
+      }
+      setShowBlockPrompt(false);
+      setIsProfileMenuOpen(false);
+      handleBackNavigation();
+    } catch (error) {
+      showToast({
+        title: "Couldn't block user",
+        message: parseApiErrorMessage(error),
+        tone: "error",
+      });
+    } finally {
+      setIsBlockingUser(false);
+    }
+  }, [canShowProfileMenu, handleBackNavigation, isBlockingUser, isCurrentUser, showToast, targetUserId]);
+
   const rightRail = profile ? (
     <>
       <div className="rounded-2xl border border-border/70 bg-bg p-4 shadow-sm">
@@ -967,13 +1007,45 @@ export function AppProfilePage({ profileUserId }: AppProfilePageProps) {
                   <p className="text-[1.1rem] text-text-secondary">{profile.handle}</p>
                 </div>
               </div>
-              <button
-                type="button"
-                className="flex h-9 w-9 items-center justify-center rounded-full border border-border/70 bg-bg text-text-secondary transition hover:text-strong"
-                aria-label="Profile options"
-              >
-                <MenuDots className="h-5 w-5" />
-              </button>
+              {!isCurrentUser ? (
+                canShowProfileMenu ? (
+                  <div className="relative">
+                    <button
+                      type="button"
+                      className="inline-flex h-10 w-10 items-center justify-center text-text-secondary transition hover:text-strong"
+                      aria-label="Profile options"
+                      aria-expanded={isProfileMenuOpen}
+                      onClick={() => setIsProfileMenuOpen((value) => !value)}
+                    >
+                      <MenuDots className="h-6 w-6" />
+                    </button>
+
+                    {isProfileMenuOpen ? (
+                      <>
+                        <button
+                          type="button"
+                          className="fixed inset-0 z-20 cursor-default"
+                          aria-label="Close profile options"
+                          onClick={() => setIsProfileMenuOpen(false)}
+                        />
+                        <div className="absolute right-0 top-11 z-30 min-w-[170px] rounded-xl border border-border/70 bg-bg p-1 shadow-lg">
+                          <button
+                            type="button"
+                            className="w-full rounded-lg px-3 py-2 text-left text-sm font-semibold text-red-600 transition hover:bg-bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+                            onClick={() => {
+                              setShowBlockPrompt(true);
+                              setIsProfileMenuOpen(false);
+                            }}
+                            disabled={isBlockingUser}
+                          >
+                            Block User
+                          </button>
+                        </div>
+                      </>
+                    ) : null}
+                  </div>
+                ) : null
+              ) : null}
             </div>
 
             {profile.bio ? <p className="mt-3 text-[1.08rem] text-text-secondary">{profile.bio}</p> : null}
@@ -995,14 +1067,34 @@ export function AppProfilePage({ profileUserId }: AppProfilePageProps) {
 
             {profile.showFollowerCount ? (
               <div className="mt-3 flex flex-wrap items-center gap-6 text-[1.08rem] text-text-secondary">
-                <div className="flex items-center gap-1.5">
-                  <span className="font-semibold text-strong">{profile.followingCount}</span>
-                  <span>Following</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="font-semibold text-strong">{profile.followersCount}</span>
-                  <span>Followers</span>
-                </div>
+                {targetUserId ? (
+                  <Link
+                    to={`/app/profile/${targetUserId}/following`}
+                    className="flex items-center gap-1.5 transition hover:text-strong"
+                  >
+                    <span className="font-semibold text-strong">{profile.followingCount}</span>
+                    <span>Following</span>
+                  </Link>
+                ) : (
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-semibold text-strong">{profile.followingCount}</span>
+                    <span>Following</span>
+                  </div>
+                )}
+                {targetUserId ? (
+                  <Link
+                    to={`/app/profile/${targetUserId}/followers`}
+                    className="flex items-center gap-1.5 transition hover:text-strong"
+                  >
+                    <span className="font-semibold text-strong">{profile.followersCount}</span>
+                    <span>Followers</span>
+                  </Link>
+                ) : (
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-semibold text-strong">{profile.followersCount}</span>
+                    <span>Followers</span>
+                  </div>
+                )}
               </div>
             ) : null}
 
@@ -1010,7 +1102,7 @@ export function AppProfilePage({ profileUserId }: AppProfilePageProps) {
               {isCurrentUser ? (
                 <button
                   type="button"
-                  className="rounded-full border border-border/70 bg-bg px-5 py-2.5 text-[1.02rem] font-semibold text-text-secondary transition hover:text-strong"
+                  className="min-w-[150px] rounded-full bg-bg-muted px-6 py-2.5 text-center text-[1.02rem] font-semibold text-text-secondary transition hover:text-strong"
                   onClick={handleEditProfileNavigation}
                 >
                   Edit profile
@@ -1021,8 +1113,8 @@ export function AppProfilePage({ profileUserId }: AppProfilePageProps) {
                     type="button"
                     className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
                       isFollowing
-                        ? "border border-border/70 bg-bg text-text-secondary hover:text-strong"
-                        : "bg-brand text-white hover:bg-brand-hover"
+                        ? "min-w-[150px] bg-bg-muted px-6 py-2.5 text-[1.02rem] text-text-secondary hover:text-strong"
+                        : "min-w-[150px] bg-brand px-6 py-2.5 text-[1.02rem] text-white hover:bg-brand-hover"
                     }`}
                     onClick={() => void handleFollowToggle()}
                     disabled={isFollowLoading}
@@ -1031,7 +1123,7 @@ export function AppProfilePage({ profileUserId }: AppProfilePageProps) {
                   </button>
                   <button
                     type="button"
-                    className="rounded-full border border-border/70 bg-bg px-4 py-2 text-sm font-semibold text-text-secondary transition hover:text-strong"
+                    className="min-w-[150px] rounded-full bg-bg-muted px-6 py-2.5 text-center text-[1.02rem] font-semibold text-text-secondary transition hover:text-strong"
                     onClick={() =>
                       showToast({
                         title: "Messaging",
@@ -1046,11 +1138,7 @@ export function AppProfilePage({ profileUserId }: AppProfilePageProps) {
             </div>
           </div>
 
-          <div
-            className={`grid border-t border-border/70 ${
-              visibleTabs.length === 3 ? "grid-cols-3" : "grid-cols-2"
-            }`}
-          >
+          <div className={`grid ${visibleTabs.length === 3 ? "grid-cols-3" : "grid-cols-2"}`}>
             {visibleTabs.map((tab) => (
               <button
                 key={tab.id}
@@ -1067,6 +1155,41 @@ export function AppProfilePage({ profileUserId }: AppProfilePageProps) {
             ))}
           </div>
         </section>
+      ) : null}
+
+      {showBlockPrompt ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-4"
+          onClick={isBlockingUser ? undefined : () => setShowBlockPrompt(false)}
+        >
+          <div
+            className="w-full max-w-sm rounded-2xl border border-border/70 bg-bg p-4 shadow-xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h2 className="text-lg font-semibold text-strong">Block user?</h2>
+            <p className="mt-2 text-sm text-text-secondary">
+              You won&apos;t see posts from {profileHandleLabel} anymore.
+            </p>
+            <div className="mt-4 flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={() => void handleBlockUser()}
+                disabled={isBlockingUser}
+                className="w-full rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isBlockingUser ? "Blocking..." : "Block User"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowBlockPrompt(false)}
+                disabled={isBlockingUser}
+                className="w-full rounded-xl border border-border/70 bg-bg px-4 py-2.5 text-sm font-semibold text-text-secondary transition hover:text-strong disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
       ) : null}
 
       <div className="divide-y divide-border/70 bg-bg">

@@ -109,7 +109,7 @@ export function AppLayout({ activeNavId = 'home', children, rightRail }: AppLayo
               <div className="flex flex-col gap-5">
                 <div className="flex items-center justify-between">
                   <Logo imageClassName="h-12 w-auto" to="/app" />
-                  <ThemeToggle className="h-10 w-10 rounded-full border border-shell-border bg-bg text-shell-text-muted transition hover:text-shell-text" />
+                  <ThemeToggle className="h-11 w-11 text-shell-text-muted transition hover:text-shell-text" />
                 </div>
 
                 <Link
@@ -161,7 +161,7 @@ export function AppLayout({ activeNavId = 'home', children, rightRail }: AppLayo
           </aside>
 
           <main className="min-w-0 lg:col-start-2">
-            <div className="w-full overflow-hidden bg-bg lg:min-h-screen lg:border-x lg:border-border/70">
+            <div className="w-full bg-bg lg:min-h-screen lg:border-x lg:border-border/70">
               {children}
             </div>
           </main>
@@ -220,7 +220,7 @@ export function AppMobileHeader({
         <span className="text-lg font-semibold">{title}</span>
       )}
       <div className="flex items-center gap-2">
-        <ThemeToggle className="flex h-9 w-9 items-center justify-center rounded-full border border-border/70 text-text-secondary transition hover:text-strong" />
+        <ThemeToggle className="flex h-10 w-10 items-center justify-center text-text-secondary transition hover:text-strong" />
         {showAction ? (
           <Link
             className="flex h-9 w-9 items-center justify-center rounded-full bg-brand text-white"

@@ -151,6 +151,27 @@ export async function setUserFollowing(
   return { following };
 }
 
+export async function blockUser(userId: string | number): Promise<{ userId: string; blocked: boolean }> {
+  const response = await userFetch<unknown>(`/v1/users/${userId}/block`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+
+  if (typeof response === "object" && response !== null) {
+    const payload = response as { userId?: unknown; user_id?: unknown; blocked?: unknown };
+    const resolvedUserId =
+      typeof payload.userId === "string" || typeof payload.userId === "number"
+        ? String(payload.userId)
+        : typeof payload.user_id === "string" || typeof payload.user_id === "number"
+          ? String(payload.user_id)
+          : String(userId);
+    const blocked = typeof payload.blocked === "boolean" ? payload.blocked : true;
+    return { userId: resolvedUserId, blocked };
+  }
+
+  return { userId: String(userId), blocked: true };
+}
+
 export async function fetchUserFollowing({
   userId,
   limit,

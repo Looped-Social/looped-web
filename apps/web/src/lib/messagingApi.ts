@@ -9,9 +9,19 @@ export type CursorEnvelope<T> = {
   nextCursor?: string | null;
 };
 
+export type MessageAttachmentPayload = {
+  url: string;
+  type?: "image" | "video";
+  width?: number;
+  height?: number;
+  size_bytes?: number | null;
+  duration_seconds?: number | null;
+  thumbnail_url?: string | null;
+};
+
 type MessageSendPayload = {
   content: string;
-  attachments?: unknown[];
+  attachments?: Array<string | MessageAttachmentPayload>;
 };
 
 type MessageMediaPresignRequest = {
@@ -30,18 +40,23 @@ export type MessageMediaResolvedItem = {
   key?: string;
   downloadUrl?: string;
   expires_in_seconds?: number;
+  expiresInSeconds?: number;
+  mime_type?: string;
+  mimeType?: string;
 };
 
 async function authFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const token = await getFirebaseIdToken();
   const base = getApiBase();
+  const headers = new Headers(init?.headers ?? undefined);
+  headers.set("Authorization", `Bearer ${token}`);
+  if (init?.body !== undefined && init.body !== null && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
+
   const response = await fetch(`${base}${path}`, {
     ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(init?.headers ?? {}),
-      Authorization: `Bearer ${token}`,
-    },
+    headers,
   });
 
   if (!response.ok) {
@@ -59,14 +74,22 @@ async function authFetch<T>(path: string, init?: RequestInit): Promise<T> {
 function buildCursorParams({
   limit,
   cursor,
+  fallback,
+  min,
+  max,
 }: {
   limit?: number;
   cursor?: string;
+  fallback: number;
+  min: number;
+  max: number;
 }): URLSearchParams {
   const params = new URLSearchParams();
-  if (typeof limit === "number" && Number.isFinite(limit) && limit > 0) {
-    params.set("limit", String(limit));
-  }
+  const resolvedLimit =
+    typeof limit === "number" && Number.isFinite(limit)
+      ? Math.max(min, Math.min(max, Math.floor(limit)))
+      : fallback;
+  params.set("limit", String(resolvedLimit));
   if (cursor) params.set("cursor", cursor);
   return params;
 }
@@ -76,35 +99,35 @@ export async function fetchViewerState(): Promise<unknown> {
 }
 
 export async function fetchConversations({
-  limit = 50,
+  limit = 20,
   cursor,
 }: {
   limit?: number;
   cursor?: string;
 } = {}): Promise<CursorEnvelope<unknown>> {
-  const params = buildCursorParams({ limit, cursor });
+  const params = buildCursorParams({ limit, cursor, fallback: 20, min: 1, max: 100 });
   return authFetch<CursorEnvelope<unknown>>(`/v1/conversations?${params.toString()}`);
 }
 
 export async function fetchMessageRequests({
-  limit = 50,
+  limit = 20,
   cursor,
 }: {
   limit?: number;
   cursor?: string;
 } = {}): Promise<CursorEnvelope<unknown>> {
-  const params = buildCursorParams({ limit, cursor });
+  const params = buildCursorParams({ limit, cursor, fallback: 20, min: 1, max: 100 });
   return authFetch<CursorEnvelope<unknown>>(`/v1/message-requests?${params.toString()}`);
 }
 
 export async function fetchChannels({
-  limit = 50,
+  limit = 20,
   cursor,
 }: {
   limit?: number;
   cursor?: string;
 } = {}): Promise<CursorEnvelope<unknown>> {
-  const params = buildCursorParams({ limit, cursor });
+  const params = buildCursorParams({ limit, cursor, fallback: 20, min: 1, max: 100 });
   return authFetch<CursorEnvelope<unknown>>(`/v1/channels?${params.toString()}`);
 }
 
@@ -117,8 +140,9 @@ export async function searchMessages({
   limit?: number;
   cursor?: string;
 }): Promise<CursorEnvelope<unknown>> {
-  const params = buildCursorParams({ limit, cursor });
-  params.set("query", query);
+  const normalizedQuery = query.trim();
+  const params = buildCursorParams({ limit, cursor, fallback: 20, min: 1, max: 50 });
+  params.set("query", normalizedQuery);
   return authFetch<CursorEnvelope<unknown>>(`/v1/messages/search?${params.toString()}`);
 }
 
@@ -131,20 +155,22 @@ export async function searchUsersForMessages({
   limit?: number;
   cursor?: string;
 }): Promise<CursorEnvelope<unknown>> {
-  const params = buildCursorParams({ limit, cursor });
-  params.set("query", query);
+  const params = buildCursorParams({ limit, cursor, fallback: 20, min: 1, max: 100 });
+  params.set("query", query.trim());
   return authFetch<CursorEnvelope<unknown>>(`/v1/users/search?${params.toString()}`);
 }
 
 export async function approveMessageRequest(messageRequestId: string | number): Promise<unknown> {
   return authFetch<unknown>(`/v1/message-requests/${messageRequestId}/approve`, {
     method: "POST",
+    body: JSON.stringify({}),
   });
 }
 
 export async function rejectMessageRequest(messageRequestId: string | number): Promise<unknown> {
   return authFetch<unknown>(`/v1/message-requests/${messageRequestId}/reject`, {
     method: "POST",
+    body: JSON.stringify({}),
   });
 }
 
@@ -164,7 +190,7 @@ export async function fetchConversationMessages({
   limit?: number;
   cursor?: string;
 }): Promise<CursorEnvelope<unknown>> {
-  const params = buildCursorParams({ limit, cursor });
+  const params = buildCursorParams({ limit, cursor, fallback: 50, min: 1, max: 200 });
   return authFetch<CursorEnvelope<unknown>>(`/v1/conversations/${conversationId}/messages?${params.toString()}`);
 }
 
@@ -177,7 +203,7 @@ export async function fetchChannelMessages({
   limit?: number;
   cursor?: string;
 }): Promise<CursorEnvelope<unknown>> {
-  const params = buildCursorParams({ limit, cursor });
+  const params = buildCursorParams({ limit, cursor, fallback: 50, min: 1, max: 200 });
   return authFetch<CursorEnvelope<unknown>>(`/v1/channels/${channelId}/messages?${params.toString()}`);
 }
 
@@ -190,7 +216,7 @@ export async function fetchChannelMembers({
   limit?: number;
   cursor?: string;
 }): Promise<CursorEnvelope<unknown>> {
-  const params = buildCursorParams({ limit, cursor });
+  const params = buildCursorParams({ limit, cursor, fallback: 50, min: 1, max: 200 });
   return authFetch<CursorEnvelope<unknown>>(`/v1/channels/${channelId}/members?${params.toString()}`);
 }
 
@@ -201,7 +227,7 @@ export async function sendConversationMessage({
 }: {
   conversationId: string | number;
   content: string;
-  attachments?: unknown[];
+  attachments?: Array<string | MessageAttachmentPayload>;
 }): Promise<unknown> {
   const payload: MessageSendPayload = { content };
   if (attachments && attachments.length > 0) payload.attachments = attachments;
@@ -218,7 +244,7 @@ export async function sendChannelMessage({
 }: {
   channelId: string | number;
   content: string;
-  attachments?: unknown[];
+  attachments?: Array<string | MessageAttachmentPayload>;
 }): Promise<unknown> {
   const payload: MessageSendPayload = { content };
   if (attachments && attachments.length > 0) payload.attachments = attachments;
@@ -268,10 +294,27 @@ export async function setChannelMuted(
 
 export async function patchChannel(
   channelId: string | number,
-  payload: { name?: string; photoMediaAssetId?: number | string }
+  payload: { name?: string; photoMediaAssetId?: number | string | null; photo_media_asset_id?: number | string | null }
 ): Promise<unknown> {
   return authFetch<unknown>(`/v1/channels/${channelId}`, {
     method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function createChannel({
+  name,
+  memberUserIds,
+}: {
+  name: string;
+  memberUserIds?: Array<string | number>;
+}): Promise<unknown> {
+  const payload: { name: string; memberUserIds?: number[] } = { name };
+  if (memberUserIds && memberUserIds.length > 0) {
+    payload.memberUserIds = memberUserIds.map((value) => Number(value)).filter((value) => Number.isFinite(value));
+  }
+  return authFetch<unknown>("/v1/channels", {
+    method: "POST",
     body: JSON.stringify(payload),
   });
 }
@@ -292,6 +335,27 @@ export async function removeChannelMember(
 ): Promise<unknown> {
   return authFetch<unknown>(`/v1/channels/${channelId}/members/${userId}`, {
     method: "DELETE",
+  });
+}
+
+export async function setChannelMemberCanManageMembers({
+  channelId,
+  userId,
+  canManageMembers,
+}: {
+  channelId: string | number;
+  userId: string | number;
+  canManageMembers: boolean;
+}): Promise<unknown> {
+  return authFetch<unknown>(`/v1/channels/${channelId}/members/${userId}`, {
+    method: "PUT",
+    body: JSON.stringify({ canManageMembers }),
+  });
+}
+
+export async function joinChannel(channelId: string | number): Promise<unknown> {
+  return authFetch<unknown>(`/v1/channels/${channelId}/join`, {
+    method: "POST",
   });
 }
 

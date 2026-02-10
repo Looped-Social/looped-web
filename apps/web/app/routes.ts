@@ -25,6 +25,8 @@ export default [
   route('app/settings', 'routes/app/settings.tsx'),
   route('app/profile/anon/:anonProfileId', 'routes/app/profile-anon.tsx'),
   route('app/profile/anonymous', 'routes/app/profile-anonymous.tsx'),
+  route('app/profile/:userId/followers', 'routes/app/profile-followers.tsx'),
+  route('app/profile/:userId/following', 'routes/app/profile-following.tsx'),
   route('app/profile/:userId', 'routes/app/profile-user.tsx'),
   route('login', 'routes/marketing/login.tsx'),
   route('delete-account', 'routes/marketing/delete-account.tsx'),

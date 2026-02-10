@@ -11,8 +11,11 @@ import {
   fetchConversations,
   fetchViewerState,
   MessagingApiError,
+  type MessageAttachmentPayload,
   presignMessageMedia,
   resolveMessageMedia,
+  setChannelMuted,
+  setConversationMuted,
   sendChannelMessage,
   sendConversationMessage,
   type CursorEnvelope,
@@ -31,6 +34,13 @@ type MessageAttachment = {
   id: string;
   key?: string;
   url?: string;
+  thumbnailKey?: string;
+  thumbnailUrl?: string;
+  type?: "image" | "video";
+  width?: number;
+  height?: number;
+  durationSeconds?: number;
+  sizeBytes?: number;
   mimeType?: string;
 };
 
@@ -50,10 +60,17 @@ type AppMessageThreadPageProps = {
   threadId: string;
 };
 
-const POLL_INTERVAL_MS = 2_500;
+type MediaPreviewState = {
+  kind: "image" | "video";
+  src: string;
+  poster?: string;
+};
+
+const POLL_INTERVAL_MS = 10_000;
 const MAX_IMAGE_ATTACHMENTS = 4;
 const ZERO_WIDTH_SPACE = "\u200B";
 const DEFAULT_PROFILE_IMAGE_SRC = "/ios-icons/pfp2.svg";
+const RESOLVE_CACHE_LEEWAY_MS = 20_000;
 
 function handleProfileImageError(event: SyntheticEvent<HTMLImageElement>) {
   const image = event.currentTarget;
@@ -85,15 +102,14 @@ function ImageIcon({ className }: { className?: string }) {
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth="2"
+      strokeWidth="2.2"
       strokeLinecap="round"
       strokeLinejoin="round"
       className={className}
       aria-hidden="true"
     >
-      <rect x="3" y="3" width="18" height="18" rx="2" />
-      <circle cx="8.5" cy="8.5" r="1.5" />
-      <path d="m21 15-5-5L5 21" />
+      <path d="M12 5v14" />
+      <path d="M5 12h14" />
     </svg>
   );
 }
@@ -107,6 +123,24 @@ function PlayIcon({ className }: { className?: string }) {
       aria-hidden="true"
     >
       <path d="M8 5.2a1 1 0 0 1 1.5-.86l9 5.3a1 1 0 0 1 0 1.72l-9 5.3A1 1 0 0 1 8 15.8V5.2z" />
+    </svg>
+  );
+}
+
+function ArrowUpIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+    >
+      <path d="M12 19V6" />
+      <path d="m6.5 11.5 5.5-5.5 5.5 5.5" />
     </svg>
   );
 }
@@ -144,6 +178,17 @@ function getNumber(value: unknown): number | undefined {
   if (typeof value === "string" && value.trim().length > 0) {
     const parsed = Number(value);
     if (Number.isFinite(parsed)) return parsed;
+  }
+  return undefined;
+}
+
+function getBoolean(value: unknown): boolean | undefined {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number" && Number.isFinite(value)) return value !== 0;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "true" || normalized === "1") return true;
+    if (normalized === "false" || normalized === "0") return false;
   }
   return undefined;
 }
@@ -263,6 +308,9 @@ function readNextCursor(payload: unknown): string | undefined {
 
 function normalizeViewerId(payload: unknown): string | undefined {
   if (!isRecord(payload)) return undefined;
+  if (isRecord(payload.user)) {
+    return pickString(payload.user, ["id", "user_id", "userId"]);
+  }
   return pickString(payload, ["id", "user_id", "userId"]);
 }
 
@@ -353,14 +401,44 @@ function normalizeThreadMessage({
     }
 
     if (!isRecord(entry)) continue;
-    const key = normalizeOptional(pickString(entry, ["key", "media_key", "mediaKey"]));
-    const url = normalizeOptional(pickString(entry, ["url", "downloadUrl", "download_url", "cdn_url", "cdnUrl"]));
+    const rawUrl = normalizeOptional(pickString(entry, ["url", "downloadUrl", "download_url", "cdn_url", "cdnUrl"]));
+    const rawThumbnailUrl = normalizeOptional(
+      pickString(entry, ["thumbnail_url", "thumbnailUrl", "thumb_url", "thumbUrl"])
+    );
+    const keyFromUrl = rawUrl && rawUrl.startsWith("dm/") ? rawUrl : undefined;
+    const thumbnailKeyFromUrl = rawThumbnailUrl && rawThumbnailUrl.startsWith("dm/") ? rawThumbnailUrl : undefined;
+    const key = normalizeOptional(pickString(entry, ["key", "media_key", "mediaKey"])) ?? keyFromUrl;
+    const url = rawUrl && /^https?:\/\//i.test(rawUrl) ? rawUrl : undefined;
+    const thumbnailKey = normalizeOptional(pickString(entry, ["thumbnail_key", "thumbnailKey"])) ?? thumbnailKeyFromUrl;
+    const thumbnailUrl = rawThumbnailUrl && /^https?:\/\//i.test(rawThumbnailUrl) ? rawThumbnailUrl : undefined;
     const mimeType = normalizeOptional(pickString(entry, ["mime_type", "mimeType", "content_type", "contentType"]));
-    if (!key && !url) continue;
+    const attachmentTypeRaw = normalizeOptional(pickString(entry, ["type"]))?.toLowerCase();
+    const type =
+      attachmentTypeRaw === "video"
+        ? "video"
+        : attachmentTypeRaw === "image"
+          ? "image"
+          : mimeType?.startsWith("video/")
+            ? "video"
+            : mimeType?.startsWith("image/")
+              ? "image"
+              : undefined;
+    const width = pickNumber(entry, ["width"]);
+    const height = pickNumber(entry, ["height"]);
+    const durationSeconds = pickNumber(entry, ["duration_seconds", "durationSeconds"]);
+    const sizeBytes = pickNumber(entry, ["size_bytes", "sizeBytes"]);
+    if (!key && !url && !thumbnailKey && !thumbnailUrl) continue;
     attachments.push({
       id: `${stableId}:attachment:${index}`,
       key: key ?? undefined,
       url: url ?? undefined,
+      thumbnailKey: thumbnailKey ?? undefined,
+      thumbnailUrl: thumbnailUrl ?? undefined,
+      type,
+      width: width && width > 0 ? width : undefined,
+      height: height && height > 0 ? height : undefined,
+      durationSeconds: durationSeconds && durationSeconds >= 0 ? durationSeconds : undefined,
+      sizeBytes: sizeBytes && sizeBytes >= 0 ? sizeBytes : undefined,
       mimeType: mimeType ?? undefined,
     });
   }
@@ -393,12 +471,14 @@ function normalizeThreadMessage({
 }
 
 function isAttachmentImage(attachment: MessageAttachment): boolean {
+  if (attachment.type === "image") return true;
   if (attachment.mimeType?.startsWith("image/")) return true;
   if (attachment.url) return /\.(png|jpe?g|webp|heic|heif|bmp|svg)$/i.test(attachment.url);
   return false;
 }
 
 function isAttachmentVideo(attachment: MessageAttachment): boolean {
+  if (attachment.type === "video") return true;
   if (attachment.mimeType?.startsWith("video/")) return true;
   if (attachment.url) return /\.(mp4|mov|m4v|webm)$/i.test(attachment.url);
   return false;
@@ -408,6 +488,7 @@ function mapAttachmentError(code?: string): string | undefined {
   if (!code) return undefined;
   if (code === "unsupported_content_type") return "Unsupported file type.";
   if (code === "size_exceeds_limit") return "File too large.";
+  if (code === "message_media_bucket_not_configured") return "Media uploads are not available right now.";
   if (code === "invalid_attachments") return "Attachment payload is invalid.";
   return undefined;
 }
@@ -454,6 +535,7 @@ export function AppMessageThreadPage({ threadType, threadId }: AppMessageThreadP
 
   const [viewerId, setViewerId] = useState<string>();
   const [threadTitle, setThreadTitle] = useState(threadType === "channel" ? "Channel" : "Direct Message");
+  const [threadAvatarUrl, setThreadAvatarUrl] = useState<string>();
   const [membersById, setMembersById] = useState<Record<string, MemberPreview>>({});
   const [messages, setMessages] = useState<ThreadMessage[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -463,9 +545,13 @@ export function AppMessageThreadPage({ threadType, threadId }: AppMessageThreadP
   const [composerText, setComposerText] = useState("");
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [isSending, setIsSending] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
+  const [isMuteSaving, setIsMuteSaving] = useState(false);
+  const [mediaPreview, setMediaPreview] = useState<MediaPreviewState | null>(null);
 
   const seenMessageIdsRef = useRef<Set<string>>(new Set());
-  const nextCursorRef = useRef<string | undefined>(undefined);
+  const resolvedMediaCacheRef = useRef<Record<string, { downloadUrl: string; mimeType?: string; expiresAtMs: number }>>({});
+  const didScrollToBottomRef = useRef(false);
 
   const isGroup = threadType === "channel";
 
@@ -477,6 +563,22 @@ export function AppMessageThreadPage({ threadType, threadId }: AppMessageThreadP
     navigate("/app/messages", { replace: true });
   }, [navigate]);
 
+  const scrollToBottom = useCallback(() => {
+    if (typeof window === "undefined") return;
+    window.requestAnimationFrame(() => {
+      const pageHeight = Math.max(
+        document.body.scrollHeight,
+        document.documentElement.scrollHeight
+      );
+      window.scrollTo({ top: pageHeight, behavior: "auto" });
+    });
+  }, []);
+
+  useEffect(() => {
+    didScrollToBottomRef.current = false;
+    setThreadAvatarUrl(undefined);
+  }, [threadId, threadType]);
+
   const fetchThreadMessagesPage = useCallback(
     async (cursor?: string): Promise<CursorEnvelope<unknown>> => {
       if (threadType === "channel") {
@@ -487,39 +589,88 @@ export function AppMessageThreadPage({ threadType, threadId }: AppMessageThreadP
     [threadId, threadType]
   );
 
+  const fetchLatestThreadWindow = useCallback(async (): Promise<{ items: unknown[]; nextCursor?: string }> => {
+    const MAX_PAGES = 8;
+    const MAX_ITEMS = 400;
+
+    const firstPage = await fetchThreadMessagesPage();
+    const firstItems = extractItemsArray(firstPage);
+    const combinedItems = [...firstItems];
+
+    let nextCursor = readNextCursor(firstPage);
+    let pageCount = 1;
+    while (nextCursor && pageCount < MAX_PAGES && combinedItems.length < MAX_ITEMS) {
+      const page = await fetchThreadMessagesPage(nextCursor);
+      const items = extractItemsArray(page);
+      if (items.length === 0) break;
+      combinedItems.push(...items);
+      nextCursor = readNextCursor(page);
+      pageCount += 1;
+    }
+
+    return { items: combinedItems, nextCursor };
+  }, [fetchThreadMessagesPage]);
+
   const hydrateAttachmentUrls = useCallback(async (items: ThreadMessage[]): Promise<ThreadMessage[]> => {
-    const unresolvedKeys = Array.from(
+    const now = Date.now();
+    const cached = resolvedMediaCacheRef.current;
+    const allKeys = Array.from(
       new Set(
         items.flatMap((message) =>
           message.attachments
-            .filter((attachment) => !attachment.url && attachment.key && attachment.key.startsWith("dm/"))
-            .map((attachment) => attachment.key as string)
+            .flatMap((attachment) => [
+              attachment.key && attachment.key.startsWith("dm/") ? attachment.key : undefined,
+              attachment.thumbnailKey && attachment.thumbnailKey.startsWith("dm/") ? attachment.thumbnailKey : undefined,
+            ])
+            .filter((entry): entry is string => Boolean(entry))
         )
       )
     );
 
-    if (unresolvedKeys.length === 0) return items;
+    if (allKeys.length === 0) return items;
+
+    const unresolvedKeys = allKeys.filter((key) => {
+      const hit = cached[key];
+      return !hit || hit.expiresAtMs <= now + RESOLVE_CACHE_LEEWAY_MS;
+    });
 
     try {
-      const response = await resolveMessageMedia(unresolvedKeys);
-      const resolvedItems = extractItemsArray(response);
-      const downloadUrlByKey: Record<string, string> = {};
-      for (const entry of resolvedItems) {
-        if (!isRecord(entry)) continue;
-        const key = normalizeOptional(pickString(entry, ["key", "media_key", "mediaKey"]));
-        const url = normalizeOptional(pickString(entry, ["download_url", "downloadUrl", "url", "cdn_url", "cdnUrl"]));
-        if (key && url) downloadUrlByKey[key] = url;
+      if (unresolvedKeys.length > 0) {
+        for (let index = 0; index < unresolvedKeys.length; index += 50) {
+          const chunk = unresolvedKeys.slice(index, index + 50);
+          const response = await resolveMessageMedia(chunk);
+          const resolvedItems = extractItemsArray(response);
+          for (const entry of resolvedItems) {
+            if (!isRecord(entry)) continue;
+            const key = normalizeOptional(pickString(entry, ["key", "media_key", "mediaKey"]));
+            const url = normalizeOptional(pickString(entry, ["download_url", "downloadUrl", "url", "cdn_url", "cdnUrl"]));
+            if (!key || !url) continue;
+            const expiresInSeconds =
+              pickNumber(entry, ["expires_in_seconds", "expiresInSeconds"]) ??
+              300;
+            const mimeType = normalizeOptional(pickString(entry, ["mime_type", "mimeType", "content_type", "contentType"]));
+            cached[key] = {
+              downloadUrl: url,
+              mimeType: mimeType ?? undefined,
+              expiresAtMs: Date.now() + Math.max(1, expiresInSeconds) * 1000,
+            };
+          }
+        }
       }
 
       return items.map((message) => ({
         ...message,
         attachments: message.attachments.map((attachment) =>
-          attachment.url || !attachment.key
-            ? attachment
-            : {
-                ...attachment,
-                url: downloadUrlByKey[attachment.key] ?? attachment.url,
-              }
+          (() => {
+            const keyHit = attachment.key ? cached[attachment.key] : undefined;
+            const thumbnailHit = attachment.thumbnailKey ? cached[attachment.thumbnailKey] : undefined;
+            return {
+              ...attachment,
+              url: attachment.url ?? keyHit?.downloadUrl,
+              thumbnailUrl: attachment.thumbnailUrl ?? thumbnailHit?.downloadUrl,
+              mimeType: attachment.mimeType ?? keyHit?.mimeType,
+            };
+          })()
         ),
       }));
     } catch {
@@ -556,6 +707,11 @@ export function AppMessageThreadPage({ threadType, threadId }: AppMessageThreadP
       if (isRecord(channel)) {
         const title = normalizeOptional(pickString(channel, ["name", "title", "display_name", "displayName"]));
         if (title) setThreadTitle(title);
+        const avatar = normalizeOptional(
+          pickString(channel, ["photo_url", "photoUrl", "image_url", "imageUrl", "profile_image_url", "profileImageUrl"])
+        );
+        setThreadAvatarUrl(avatar ?? undefined);
+        setIsMuted(getBoolean(channel.muted) ?? false);
       }
       return;
     }
@@ -575,6 +731,14 @@ export function AppMessageThreadPage({ threadType, threadId }: AppMessageThreadP
         ? normalizeProfileName(otherProfile, "Direct Message")
         : normalizeOptional(pickString(conversation, ["name", "title", "other_user_display_name", "otherUserDisplayName"]));
       if (title) setThreadTitle(title);
+      const avatar =
+        otherProfile
+          ? normalizeOptional(
+              pickString(otherProfile, ["profile_image_url", "profileImageUrl", "avatar_url", "avatarUrl", "image_url", "imageUrl"])
+            )
+          : normalizeOptional(pickString(conversation, ["other_user_profile_image_url", "otherUserProfileImageUrl"]));
+      setThreadAvatarUrl(avatar ?? undefined);
+      setIsMuted(getBoolean(conversation.muted) ?? false);
     }
   }, [threadId, threadType]);
 
@@ -600,18 +764,21 @@ export function AppMessageThreadPage({ threadType, threadId }: AppMessageThreadP
       const normalizedViewerId = normalizeViewerId(viewer);
       setViewerId(normalizedViewerId);
 
-      const [memberMap] = await Promise.all([loadChannelMembers(), loadThreadMeta()]);
-      const page = await fetchThreadMessagesPage();
+      const [membersResult] = await Promise.allSettled([loadChannelMembers(), loadThreadMeta()]);
+      const memberMap =
+        membersResult.status === "fulfilled" && membersResult.value && Object.keys(membersResult.value).length > 0
+          ? membersResult.value
+          : {};
+
+      const page = await fetchLatestThreadWindow();
       const normalizedMessages = await normalizeMessages(
-        extractItemsArray(page),
+        page.items,
         normalizedViewerId,
         Object.keys(memberMap).length > 0 ? memberMap : undefined
       );
 
       const ids = new Set(normalizedMessages.map((message) => message.id));
       seenMessageIdsRef.current = ids;
-      const cursor = readNextCursor(page);
-      nextCursorRef.current = cursor;
       setMessages(normalizedMessages);
       setIsLoading(false);
     } catch (error) {
@@ -624,7 +791,7 @@ export function AppMessageThreadPage({ threadType, threadId }: AppMessageThreadP
       setLoadError(parseApiErrorMessage(error));
       setIsLoading(false);
     }
-  }, [fetchThreadMessagesPage, loadChannelMembers, loadThreadMeta, normalizeMessages]);
+  }, [fetchLatestThreadWindow, loadChannelMembers, loadThreadMeta, normalizeMessages]);
 
   useEffect(() => {
     void loadInitial();
@@ -634,8 +801,8 @@ export function AppMessageThreadPage({ threadType, threadId }: AppMessageThreadP
     if (blockState) return;
 
     try {
-      const page = await fetchThreadMessagesPage(nextCursorRef.current);
-      const normalizedMessages = await normalizeMessages(extractItemsArray(page), viewerId);
+      const page = await fetchLatestThreadWindow();
+      const normalizedMessages = await normalizeMessages(page.items, viewerId);
       if (normalizedMessages.length > 0) {
         setMessages((previous) => {
           const next = [...previous];
@@ -647,10 +814,6 @@ export function AppMessageThreadPage({ threadType, threadId }: AppMessageThreadP
           return next.sort((left, right) => left.createdAtMs - right.createdAtMs);
         });
       }
-      const incomingCursor = readNextCursor(page);
-      if (incomingCursor) {
-        nextCursorRef.current = incomingCursor;
-      }
     } catch (error) {
       const code = parseApiErrorCode(error);
       if (code === "message_request_pending") {
@@ -659,7 +822,7 @@ export function AppMessageThreadPage({ threadType, threadId }: AppMessageThreadP
         setBlockState("rejected");
       }
     }
-  }, [blockState, fetchThreadMessagesPage, normalizeMessages, viewerId]);
+  }, [blockState, fetchLatestThreadWindow, normalizeMessages, viewerId]);
 
   useEffect(() => {
     if (isLoading || loadError || blockState) return;
@@ -708,10 +871,17 @@ export function AppMessageThreadPage({ threadType, threadId }: AppMessageThreadP
     });
   }, [isGroup, messages]);
 
-  const uploadSelectedFiles = useCallback(async () => {
-    if (selectedFiles.length === 0) return [] as unknown[];
+  useEffect(() => {
+    if (isLoading || loadError || renderedMessages.length === 0) return;
+    if (didScrollToBottomRef.current) return;
+    didScrollToBottomRef.current = true;
+    scrollToBottom();
+  }, [isLoading, loadError, renderedMessages.length, scrollToBottom]);
 
-    const uploadedAttachments: unknown[] = [];
+  const uploadSelectedFiles = useCallback(async () => {
+    if (selectedFiles.length === 0) return [] as MessageAttachmentPayload[];
+
+    const uploadedAttachments: MessageAttachmentPayload[] = [];
     for (const file of selectedFiles) {
       const presign = await presignMessageMedia({
         contentType: file.type || "application/octet-stream",
@@ -724,6 +894,7 @@ export function AppMessageThreadPage({ threadType, threadId }: AppMessageThreadP
       );
       const key = normalizeOptional(pickString(presignRecord, ["key", "media_key", "mediaKey"]));
       if (!uploadUrl || !key) throw new Error("Unable to upload attachment.");
+      if (!key.startsWith("dm/")) throw new Error("Attachment key was invalid.");
 
       const method = normalizeOptional(getString(presignRecord.method)) ?? "PUT";
       const headersRaw = isRecord(presignRecord.headers) ? presignRecord.headers : {};
@@ -743,11 +914,70 @@ export function AppMessageThreadPage({ threadType, threadId }: AppMessageThreadP
       });
       if (!uploadResponse.ok) throw new Error("Attachment upload failed.");
 
+      const isVideo = file.type.startsWith("video/");
+      let width: number | undefined;
+      let height: number | undefined;
+      let durationSeconds: number | undefined;
+
+      try {
+        const objectUrl = URL.createObjectURL(file);
+        if (isVideo) {
+          const video = document.createElement("video");
+          video.preload = "metadata";
+          const metadata = await new Promise<{ width?: number; height?: number; durationSeconds?: number }>((resolve) => {
+            const cleanup = () => {
+              URL.revokeObjectURL(objectUrl);
+              video.removeAttribute("src");
+              video.load();
+            };
+            video.onloadedmetadata = () => {
+              resolve({
+                width: Number.isFinite(video.videoWidth) ? video.videoWidth : undefined,
+                height: Number.isFinite(video.videoHeight) ? video.videoHeight : undefined,
+                durationSeconds: Number.isFinite(video.duration) ? video.duration : undefined,
+              });
+              cleanup();
+            };
+            video.onerror = () => {
+              resolve({});
+              cleanup();
+            };
+            video.src = objectUrl;
+          });
+          width = metadata.width;
+          height = metadata.height;
+          durationSeconds = metadata.durationSeconds;
+        } else {
+          const image = new Image();
+          const metadata = await new Promise<{ width?: number; height?: number }>((resolve) => {
+            image.onload = () => {
+              resolve({
+                width: Number.isFinite(image.naturalWidth) ? image.naturalWidth : undefined,
+                height: Number.isFinite(image.naturalHeight) ? image.naturalHeight : undefined,
+              });
+              URL.revokeObjectURL(objectUrl);
+            };
+            image.onerror = () => {
+              resolve({});
+              URL.revokeObjectURL(objectUrl);
+            };
+            image.src = objectUrl;
+          });
+          width = metadata.width;
+          height = metadata.height;
+        }
+      } catch {
+        // Metadata is optional for backend payload.
+      }
+
       uploadedAttachments.push({
-        key,
-        contentType: file.type || undefined,
-        fileName: file.name,
-        sizeBytes: file.size,
+        url: key,
+        type: isVideo ? "video" : "image",
+        width,
+        height,
+        size_bytes: Number.isFinite(file.size) ? file.size : null,
+        duration_seconds: isVideo ? durationSeconds ?? null : null,
+        thumbnail_url: null,
       });
     }
     return uploadedAttachments;
@@ -790,6 +1020,7 @@ export function AppMessageThreadPage({ threadType, threadId }: AppMessageThreadP
 
       setComposerText("");
       setSelectedFiles([]);
+      scrollToBottom();
     } catch (error) {
       const code = parseApiErrorCode(error);
       if (code === "message_request_pending") setBlockState("pending");
@@ -821,7 +1052,31 @@ export function AppMessageThreadPage({ threadType, threadId }: AppMessageThreadP
     threadType,
     uploadSelectedFiles,
     viewerId,
+    scrollToBottom,
   ]);
+
+  const handleToggleMuted = useCallback(async () => {
+    if (isMuteSaving) return;
+    const nextMuted = !isMuted;
+    setIsMuted(nextMuted);
+    setIsMuteSaving(true);
+    try {
+      if (threadType === "channel") {
+        await setChannelMuted(threadId, nextMuted);
+      } else {
+        await setConversationMuted(threadId, nextMuted);
+      }
+    } catch (error) {
+      setIsMuted(!nextMuted);
+      showToast({
+        kind: "error",
+        title: "Couldn’t update notifications",
+        text: parseApiErrorMessage(error),
+      });
+    } finally {
+      setIsMuteSaving(false);
+    }
+  }, [isMuted, isMuteSaving, showToast, threadId, threadType]);
 
   const handleSelectFiles = useCallback(
     (event: ChangeEvent<HTMLInputElement>) => {
@@ -873,12 +1128,13 @@ export function AppMessageThreadPage({ threadType, threadId }: AppMessageThreadP
         ? "Request rejected. Messaging is unavailable for this thread."
         : null;
   const hasDraft = composerText.trim().length > 0 || selectedFiles.length > 0;
+  const closeMediaPreview = useCallback(() => setMediaPreview(null), []);
 
   return (
     <AppLayout activeNavId="messages">
       <AppMobileHeader title="Messages" showBack showAction={false} backHref="/app/messages" />
 
-      <header className="border-b border-border/70 bg-bg px-4 py-3 sm:px-6">
+      <header className="sticky top-0 z-30 border-b border-border/70 bg-bg px-4 py-3 sm:px-6">
         <button
           type="button"
           onClick={handleBackNavigation}
@@ -887,8 +1143,29 @@ export function AppMessageThreadPage({ threadType, threadId }: AppMessageThreadP
           <BackIcon className="h-4 w-4" />
           <span>Back to messages</span>
         </button>
-        <h1 className="truncate text-xl font-semibold text-strong">{threadTitle}</h1>
-        <p className="mt-1 text-sm text-text-secondary">{isGroup ? "Group thread" : "Direct message"}</p>
+        <div className="flex items-center gap-2">
+          <div className="h-9 w-9 shrink-0 overflow-hidden rounded-full bg-bg-muted">
+            <img
+              src={threadAvatarUrl ?? DEFAULT_PROFILE_IMAGE_SRC}
+              alt=""
+              className="h-full w-full object-cover"
+              loading="lazy"
+              onError={handleProfileImageError}
+            />
+          </div>
+          <h1 className="truncate text-xl font-semibold text-strong">{threadTitle}</h1>
+        </div>
+        <div className="mt-1 flex items-center justify-between gap-3">
+          <p className="text-sm text-text-secondary">{isGroup ? "Group thread" : "Direct message"}</p>
+          <button
+            type="button"
+            onClick={() => void handleToggleMuted()}
+            disabled={isMuteSaving}
+            className="rounded-full border border-border/70 px-3 py-1 text-xs font-semibold text-text-secondary transition hover:text-strong disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {isMuteSaving ? "Saving..." : isMuted ? "Unmute notifications" : "Mute notifications"}
+          </button>
+        </div>
       </header>
 
       <section className="min-h-[56vh] bg-bg px-3 pb-5 pt-3 sm:px-5">
@@ -997,7 +1274,18 @@ export function AppMessageThreadPage({ threadType, threadId }: AppMessageThreadP
 
                             if (isAttachmentImage(attachment)) {
                               return (
-                                <div key={attachment.id} className="relative h-[220px] w-[220px] overflow-hidden rounded-xl">
+                                <button
+                                  key={attachment.id}
+                                  type="button"
+                                  className="relative h-[220px] w-[220px] overflow-hidden rounded-xl"
+                                  onClick={() =>
+                                    setMediaPreview({
+                                      kind: "image",
+                                      src: attachment.url as string,
+                                    })
+                                  }
+                                  aria-label="Open image preview"
+                                >
                                   <img
                                     src={attachment.url}
                                     alt="Message attachment"
@@ -1012,14 +1300,31 @@ export function AppMessageThreadPage({ threadType, threadId }: AppMessageThreadP
                                       {formatMessageTime(message.createdAtMs)}
                                     </span>
                                   ) : null}
-                                </div>
+                                </button>
                               );
                             }
 
                             if (isAttachmentVideo(attachment)) {
                               return (
-                                <div key={attachment.id} className="relative h-[220px] w-[220px] overflow-hidden rounded-xl">
-                                  <video className="h-full w-full object-cover" src={attachment.url} controls />
+                                <button
+                                  key={attachment.id}
+                                  type="button"
+                                  className="relative h-[220px] w-[220px] overflow-hidden rounded-xl"
+                                  onClick={() =>
+                                    setMediaPreview({
+                                      kind: "video",
+                                      src: attachment.url as string,
+                                      poster: attachment.thumbnailUrl ?? attachment.url,
+                                    })
+                                  }
+                                  aria-label="Open video preview"
+                                >
+                                  <img
+                                    src={attachment.thumbnailUrl ?? attachment.url}
+                                    alt="Video attachment preview"
+                                    className="h-full w-full object-cover"
+                                    loading="lazy"
+                                  />
                                   <div
                                     className="pointer-events-none absolute inset-0 flex items-center justify-center"
                                     style={{ backgroundColor: "var(--color-thread-video-overlay)" }}
@@ -1036,7 +1341,7 @@ export function AppMessageThreadPage({ threadType, threadId }: AppMessageThreadP
                                       {formatMessageTime(message.createdAtMs)}
                                     </span>
                                   ) : null}
-                                </div>
+                                </button>
                               );
                             }
 
@@ -1069,6 +1374,41 @@ export function AppMessageThreadPage({ threadType, threadId }: AppMessageThreadP
         ) : null}
       </section>
 
+      {mediaPreview ? (
+        <div className="fixed inset-0 z-50 bg-black/80 p-3" onClick={closeMediaPreview}>
+          <div className="mx-auto flex h-full w-full max-w-[900px] flex-col" onClick={(event) => event.stopPropagation()}>
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={closeMediaPreview}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-black/45 text-white transition hover:bg-black/65"
+                aria-label="Close media preview"
+              >
+                <XIcon className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="mt-2 flex min-h-0 flex-1 items-center justify-center">
+              {mediaPreview.kind === "video" ? (
+                <video
+                  className="max-h-full max-w-full rounded-xl object-contain"
+                  src={mediaPreview.src}
+                  poster={mediaPreview.poster ?? mediaPreview.src}
+                  controls
+                  autoPlay
+                  playsInline
+                />
+              ) : (
+                <img
+                  src={mediaPreview.src}
+                  alt="Message media preview"
+                  className="max-h-full max-w-full rounded-xl object-contain"
+                />
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       <footer className="sticky bottom-0 border-t border-border/70 bg-bg px-4 pb-4 pt-3 sm:px-4">
         {selectedFiles.length > 0 ? (
           <div className="mb-2 flex flex-wrap gap-2">
@@ -1089,7 +1429,7 @@ export function AppMessageThreadPage({ threadType, threadId }: AppMessageThreadP
         ) : null}
 
         <div className="flex items-end gap-2 rounded-[24px] bg-bg-muted px-4 py-2.5">
-          <label className="inline-flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full text-text-secondary transition hover:text-strong">
+          <label className="inline-flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full text-brand transition hover:text-brand-hover">
             <ImageIcon className="h-5 w-5" />
             <input
               type="file"
@@ -1113,10 +1453,10 @@ export function AppMessageThreadPage({ threadType, threadId }: AppMessageThreadP
               type="button"
               onClick={() => void handleSend()}
               disabled={Boolean(blockState) || isSending}
-              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-text-light transition hover:text-text-secondary disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand text-white transition hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-60"
               aria-label="Send message"
             >
-              <img src="/ios-icons/action-send.svg" alt="" className="h-5 w-5 object-contain" loading="lazy" />
+              <ArrowUpIcon className="h-4 w-4" />
             </button>
           ) : null}
         </div>

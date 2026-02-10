@@ -1,5 +1,5 @@
 import { type ChangeEvent, type SyntheticEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router";
+import { useBlocker, useNavigate } from "react-router";
 
 import { AppLayout, AppMobileHeader } from "@/app/components/AppLayout/AppLayout";
 import { useToast } from "@/app/components/AppToast/AppToast";
@@ -381,6 +381,7 @@ export function AppEditProfilePage() {
   const [usernameMessage, setUsernameMessage] = useState<string | null>(null);
 
   const [isSaving, setIsSaving] = useState(false);
+  const [showExitPrompt, setShowExitPrompt] = useState(false);
 
   const effectiveAvatarSrc = photoPreviewUrl ?? avatarUrl ?? defaultProfileImageUrl ?? DEFAULT_PROFILE_IMAGE_SRC;
 
@@ -570,6 +571,13 @@ export function AppEditProfilePage() {
       form.displaySpecializationId !== initialForm.displaySpecializationId
     );
   }, [form, initialForm, photoFile]);
+  const blocker = useBlocker(hasUnsavedChanges && !isSaving);
+
+  useEffect(() => {
+    if (blocker.state === "blocked") {
+      setShowExitPrompt(true);
+    }
+  }, [blocker.state]);
 
   useEffect(() => {
     if (!hasUnsavedChanges) return;
@@ -594,15 +602,9 @@ export function AppEditProfilePage() {
     (usernameStatus === "available" || usernameStatus === "owned") &&
     !isSaving;
 
-  const confirmDiscardChanges = useCallback(() => {
-    if (!hasUnsavedChanges) return true;
-    return window.confirm("Discard unsaved changes?");
-  }, [hasUnsavedChanges]);
-
   const handleBack = useCallback(() => {
-    if (!confirmDiscardChanges()) return;
     navigate("/app/profile", { replace: true });
-  }, [confirmDiscardChanges, navigate]);
+  }, [navigate]);
 
   const handleInput = useCallback((field: keyof EditProfileForm, value: string) => {
     setForm((previous) => ({
@@ -634,8 +636,8 @@ export function AppEditProfilePage() {
     [showToast]
   );
 
-  const handleSave = useCallback(async () => {
-    if (!canSave || !initialForm) return;
+  const saveProfile = useCallback(async (): Promise<boolean> => {
+    if (!canSave || !initialForm) return false;
 
     setIsSaving(true);
 
@@ -675,7 +677,8 @@ export function AppEditProfilePage() {
         title: "Profile updated",
         message: "Your changes were saved.",
       });
-      navigate("/app/profile", { replace: true });
+      setShowExitPrompt(false);
+      return true;
     } catch (error) {
       const parsed = parseApiError(error);
       showToast({
@@ -683,10 +686,41 @@ export function AppEditProfilePage() {
         message: messageForProfileError(parsed.code, parsed.message),
         tone: "error",
       });
+      return false;
     } finally {
       setIsSaving(false);
     }
-  }, [canSave, form, initialForm, navigate, normalizedUsername, photoFile, showToast]);
+  }, [canSave, form, initialForm, normalizedUsername, photoFile, showToast]);
+
+  const handleSave = useCallback(async () => {
+    await saveProfile();
+  }, [saveProfile]);
+
+  const handleSaveAndExit = useCallback(async () => {
+    const saved = await saveProfile();
+    if (!saved) return;
+    if (blocker.state === "blocked") {
+      blocker.proceed();
+      return;
+    }
+    navigate("/app/profile", { replace: true });
+  }, [blocker, navigate, saveProfile]);
+
+  const handleDiscardAndExit = useCallback(() => {
+    setShowExitPrompt(false);
+    if (blocker.state === "blocked") {
+      blocker.proceed();
+      return;
+    }
+    navigate("/app/profile", { replace: true });
+  }, [blocker, navigate]);
+
+  const handleCancelExitPrompt = useCallback(() => {
+    setShowExitPrompt(false);
+    if (blocker.state === "blocked") {
+      blocker.reset();
+    }
+  }, [blocker]);
 
   return (
     <AppLayout activeNavId="profile">
@@ -866,6 +900,49 @@ export function AppEditProfilePage() {
             >
               {isSaving ? "Saving..." : "Save Changes"}
             </button>
+          </div>
+        </div>
+      ) : null}
+
+      {showExitPrompt ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-4"
+          onClick={handleCancelExitPrompt}
+        >
+          <div
+            className="w-full max-w-sm rounded-2xl border border-border/70 bg-bg p-4 shadow-xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h2 className="text-lg font-semibold text-strong">Save changes before leaving?</h2>
+            <p className="mt-2 text-sm text-text-secondary">
+              You have unsaved edits. Would you like to save, or continue without saving?
+            </p>
+            <div className="mt-4 flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={() => void handleSaveAndExit()}
+                disabled={isSaving || !canSave}
+                className="w-full rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isSaving ? "Saving..." : "Save and leave"}
+              </button>
+              <button
+                type="button"
+                onClick={handleDiscardAndExit}
+                disabled={isSaving}
+                className="w-full rounded-xl border border-border/70 bg-bg px-4 py-2.5 text-sm font-semibold text-text-secondary transition hover:text-strong disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Continue without saving
+              </button>
+              <button
+                type="button"
+                onClick={handleCancelExitPrompt}
+                disabled={isSaving}
+                className="w-full rounded-xl border border-border/70 bg-bg px-4 py-2.5 text-sm font-semibold text-text-secondary transition hover:text-strong disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Cancel
+              </button>
+            </div>
           </div>
         </div>
       ) : null}
