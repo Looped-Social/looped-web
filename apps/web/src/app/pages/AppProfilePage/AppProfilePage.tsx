@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { type SyntheticEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 
 import { AppLayout, AppMobileHeader } from "@/app/components/AppLayout/AppLayout";
-import { MenuDots, ProfileIcon } from "@/app/components/AppIcons/AppIcons";
+import { MenuDots } from "@/app/components/AppIcons/AppIcons";
 import { useToast } from "@/app/components/AppToast/AppToast";
 import { PostCard, type PostData } from "@/app/components/PostCard/PostCard";
+import { extractMediaAssetIds } from "@/lib/postMediaIds";
 import {
   UserApiError,
   fetchUserMe,
@@ -13,6 +14,15 @@ import {
   fetchUserProfile,
   setUserFollowing,
 } from "@/lib/userApi";
+
+const DEFAULT_PROFILE_IMAGE_SRC = "/ios-icons/pfp2.svg";
+
+function handleProfileImageError(event: SyntheticEvent<HTMLImageElement>) {
+  const image = event.currentTarget;
+  if (image.dataset.fallbackApplied === "true") return;
+  image.dataset.fallbackApplied = "true";
+  image.src = DEFAULT_PROFILE_IMAGE_SRC;
+}
 
 type AppProfilePageProps = {
   profileUserId?: string;
@@ -213,6 +223,7 @@ function normalizePostItemToPostData(item: unknown): PostData | null {
     viewerLiked: pickBoolean(item, ["user_liked", "userLiked"]) ?? false,
     viewerSaved: pickBoolean(item, ["is_saved", "isSaved"]) ?? false,
     viewerHasReposted: pickBoolean(item, ["viewer_has_reposted", "viewerHasReposted"]) ?? false,
+    mediaAssetIds: extractMediaAssetIds(item),
     stats: { likes, comments, reposts, shares, saves },
     isAnonymous,
   };
@@ -652,11 +663,13 @@ export function AppProfilePage({ profileUserId }: AppProfilePageProps) {
             <div className="flex items-start justify-between gap-4">
               <div className="flex items-center gap-3">
                 <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full bg-bg-muted text-text-secondary">
-                  {profile.avatarUrl ? (
-                    <img src={profile.avatarUrl} alt="" className="h-full w-full object-cover" loading="lazy" />
-                  ) : (
-                    <ProfileIcon className="h-8 w-8" />
-                  )}
+                  <img
+                    src={profile.avatarUrl ?? DEFAULT_PROFILE_IMAGE_SRC}
+                    alt=""
+                    className="h-full w-full object-cover"
+                    loading="lazy"
+                    onError={handleProfileImageError}
+                  />
                 </div>
                 <div>
                   <p className={`text-2xl font-semibold ${profile.isAnonymous ? "text-secondary" : "text-strong"}`}>

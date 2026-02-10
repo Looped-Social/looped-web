@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 
 import { AppLayout, AppMobileHeader } from "@/app/components/AppLayout/AppLayout";
-import { MenuDots, ProfileIcon } from "@/app/components/AppIcons/AppIcons";
+import { MenuDots } from "@/app/components/AppIcons/AppIcons";
 import { useToast } from "@/app/components/AppToast/AppToast";
 import { PostCard, type PostData } from "@/app/components/PostCard/PostCard";
 import {
@@ -12,6 +12,9 @@ import {
   fetchAnonReposts,
   setAnonFollowing,
 } from "@/lib/anonProfileApi";
+import { extractMediaAssetIds } from "@/lib/postMediaIds";
+
+const DEFAULT_PROFILE_IMAGE_SRC = "/ios-icons/pfp2.svg";
 
 type AppAnonProfilePageProps = {
   anonProfileId: string;
@@ -237,6 +240,7 @@ function normalizePostItemToPostData(item: unknown): PostData | null {
     viewerLiked: pickBoolean(node, ["user_liked", "userLiked"]) ?? false,
     viewerSaved: pickBoolean(node, ["is_saved", "isSaved"]) ?? false,
     viewerHasReposted: pickBoolean(node, ["viewer_has_reposted", "viewerHasReposted"]) ?? false,
+    mediaAssetIds: extractMediaAssetIds(node),
     stats: { likes, comments, reposts, shares, saves },
     isAnonymous,
   };
@@ -490,7 +494,7 @@ export function AppAnonProfilePage({ anonProfileId }: AppAnonProfilePageProps) {
             <div className="flex items-start justify-between gap-4">
               <div className="flex items-center gap-3">
                 <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full bg-bg-muted text-text-secondary">
-                  <ProfileIcon className="h-8 w-8" />
+                  <img src={DEFAULT_PROFILE_IMAGE_SRC} alt="" className="h-full w-full object-cover" loading="lazy" />
                 </div>
                 <div>
                   <p className="text-2xl font-semibold text-strong">{profile.name}</p>

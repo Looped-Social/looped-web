@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { AppSearchPanel, type FilterOption } from "@/app/components/AppSearchPanel/AppSearchPanel";
 import { AppLayout, AppMobileHeader } from "@/app/components/AppLayout/AppLayout";
 import { PostCard, type PostData } from "@/app/components/PostCard/PostCard";
 import { FeedApiError, fetchFeed, fetchFollowedCommunities, type FeedMode } from "@/lib/feedApi";
+import { extractMediaAssetIds } from "@/lib/postMediaIds";
 
 const feedTabs = [
   { id: "for-you", label: "For You", mode: "for_you" },
@@ -384,6 +385,7 @@ function normalizeFeedItemToPostData(item: unknown): PostData | null {
     viewerLiked,
     viewerSaved,
     viewerHasReposted,
+    mediaAssetIds: extractMediaAssetIds(post),
     stats: { likes, comments, reposts, shares, saves },
     isAnonymous,
   };
@@ -403,6 +405,9 @@ export function AppFeedPage() {
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [feedStatus, setFeedStatus] = useState<"idle" | "loading" | "loading-more" | "error">("idle");
   const [feedError, setFeedError] = useState<string | null>(null);
+  const infiniteSentinelRef = useRef<HTMLDivElement | null>(null);
+  const lastAutoLoadCursorRef = useRef<string | null>(null);
+  const feedStatusRef = useRef(feedStatus);
 
   const rightRail = (
     <AppSearchPanel
@@ -462,10 +467,43 @@ export function AppFeedPage() {
   }, [activeCommunityId, activeMode]);
 
   useEffect(() => {
+    feedStatusRef.current = feedStatus;
+  }, [feedStatus]);
+
+  useEffect(() => {
     setPosts([]);
     setNextCursor(null);
+    lastAutoLoadCursorRef.current = null;
     void loadFeed({ replace: true });
   }, [activeMode, activeCommunityId, loadFeed]);
+
+  useEffect(() => {
+    const node = infiniteSentinelRef.current;
+    if (!node) return;
+    if (!nextCursor) return;
+    if (feedStatus === "loading" || feedStatus === "loading-more") return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        if (!entry?.isIntersecting) return;
+        if (!nextCursor) return;
+        if (feedStatusRef.current === "loading" || feedStatusRef.current === "loading-more") return;
+        if (lastAutoLoadCursorRef.current === nextCursor) return;
+
+        lastAutoLoadCursorRef.current = nextCursor;
+        void loadFeed({ cursor: nextCursor, replace: false });
+      },
+      {
+        root: null,
+        rootMargin: "300px 0px",
+        threshold: 0.01,
+      }
+    );
+
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [feedStatus, loadFeed, nextCursor]);
 
   return (
     <AppLayout activeNavId="home" rightRail={rightRail}>
@@ -520,17 +558,7 @@ export function AppFeedPage() {
           </>
         ) : null}
 
-        {nextCursor && feedStatus !== "loading-more" ? (
-          <div className="flex justify-center px-4 py-5">
-            <button
-              type="button"
-              onClick={() => void loadFeed({ cursor: nextCursor, replace: false })}
-              className="rounded-full border border-border/70 bg-bg px-4 py-2 text-sm font-semibold text-text-secondary transition hover:text-strong"
-            >
-              Load more
-            </button>
-          </div>
-        ) : null}
+        {nextCursor ? <div ref={infiniteSentinelRef} className="h-6 w-full" aria-hidden="true" /> : null}
 
         {feedStatus === "loading-more" ? (
           <div className="px-4 py-5 text-center text-sm text-text-secondary">Loading more…</div>

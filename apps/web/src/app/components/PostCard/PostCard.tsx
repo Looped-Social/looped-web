@@ -1,11 +1,22 @@
-import { useEffect, useMemo, useState } from "react";
+import { type SyntheticEvent, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
 
-import { MenuDots, ProfileIcon } from "@/app/components/AppIcons/AppIcons";
+import { MenuDots } from "@/app/components/AppIcons/AppIcons";
+import { PostMediaGrid } from "@/app/components/PostMediaGrid/PostMediaGrid";
 import { useToast } from "@/app/components/AppToast/AppToast";
 import type { CommunityPermissions } from "@/lib/communityPermissionsApi";
 import { getCommunityPermissions } from "@/lib/communityPermissionsApi";
-import { PostActionsApiError, setPostLike, setPostReposted, setPostSaved } from "@/lib/postActionsApi";
+import { type ResolvedMediaAsset, resolveMediaAssets } from "@/lib/mediaApi";
+import { PostActionsApiError, setPostLike, setPostReposted, setPostSaved, sharePost } from "@/lib/postActionsApi";
+
+const DEFAULT_PROFILE_IMAGE_SRC = "/ios-icons/pfp2.svg";
+
+function handleProfileImageError(event: SyntheticEvent<HTMLImageElement>) {
+  const image = event.currentTarget;
+  if (image.dataset.fallbackApplied === "true") return;
+  image.dataset.fallbackApplied = "true";
+  image.src = DEFAULT_PROFILE_IMAGE_SRC;
+}
 
 export type PostData = {
   id: string;
@@ -21,6 +32,7 @@ export type PostData = {
   viewerLiked?: boolean;
   viewerSaved?: boolean;
   viewerHasReposted?: boolean;
+  mediaAssetIds?: string[];
   stats: {
     likes: number;
     comments: number;
@@ -53,6 +65,33 @@ function parseApiError(details?: string): { error?: string; message?: string } {
     // ignore
   }
   return { message: trimmed };
+}
+
+function titleForWriteError(code?: string, fallbackTitle = "Action unavailable"): string {
+  if (!code) return fallbackTitle;
+  if (code === "community_not_verified" || code === "user_not_verified" || code === "verification_expired") {
+    return "Verification required";
+  }
+  if (code === "specialization_not_joined") return "Join required";
+  if (code === "community_banned") return "Community unavailable";
+  return fallbackTitle;
+}
+
+function messageForWriteError(code?: string, fallbackMessage = "This action isn't available right now."): string {
+  if (!code) return fallbackMessage;
+  if (code === "community_not_verified" || code === "user_not_verified") {
+    return "You must be verified in this community. Verify in the iOS app.";
+  }
+  if (code === "verification_expired") {
+    return "Your verification expired. Re-verify in the iOS app.";
+  }
+  if (code === "specialization_not_joined") {
+    return "Join this major or field first.";
+  }
+  if (code === "community_banned") {
+    return "This community is currently unavailable.";
+  }
+  return fallbackMessage;
 }
 
 function HeartIcon({ filled, className }: { filled: boolean; className?: string }) {
@@ -100,20 +139,24 @@ function CommentIcon({ className }: { className?: string }) {
 function RepostIcon({ className }: { className?: string }) {
   return (
     <svg
-      viewBox="0 0 24 24"
+      viewBox="0 0 640 640"
       className={`shrink-0 ${className ?? ""}`}
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
+      fill="currentColor"
       aria-hidden="true"
     >
-      <path d="M16 3l4 4-4 4" />
-      <path d="M20 7H9a4 4 0 0 0-4 4v1" />
-      <path d="M8 21l-4-4 4-4" />
-      <path d="M4 17h11a4 4 0 0 0 4-4v-1" />
+      <path d="M150.6 105.4C138.1 92.9 117.8 92.9 105.3 105.4L41.3 169.4C32.1 178.6 29.4 192.3 34.4 204.3C39.4 216.3 51.1 224 64 224L96 224L96 448C96 501 139 544 192 544L320 544C337.7 544 352 529.7 352 512C352 494.3 337.7 480 320 480L192 480C174.3 480 160 465.7 160 448L160 224L192 224C204.9 224 216.6 216.2 221.6 204.2C226.6 192.2 223.8 178.5 214.7 169.3L150.7 105.3zM489.4 534.6C501.9 547.1 522.2 547.1 534.7 534.6L598.7 470.6C607.9 461.4 610.6 447.7 605.6 435.7C600.6 423.7 588.9 416 576 416L544 416L544 192C544 139 501 96 448 96L320 96C302.3 96 288 110.3 288 128C288 145.7 302.3 160 320 160L448 160C465.7 160 480 174.3 480 192L480 416L448 416C435.1 416 423.4 423.8 418.4 435.8C413.4 447.8 416.2 461.5 425.3 470.7L489.3 534.7z" />
     </svg>
+  );
+}
+
+function ShareIcon({ className }: { className?: string }) {
+  return (
+    <img
+      src="/ios-icons/action-send.svg"
+      alt=""
+      className={`shrink-0 object-contain ${className ?? ""}`}
+      loading="lazy"
+    />
   );
 }
 
@@ -176,19 +219,27 @@ export function PostCard({ post }: PostCardProps) {
   const [isLikeLoading, setIsLikeLoading] = useState(false);
 
   const [isReposted, setIsReposted] = useState(post.viewerHasReposted ?? false);
-  const [repostCount, setRepostCount] = useState(post.stats.reposts ?? post.stats.shares ?? 0);
   const [isRepostLoading, setIsRepostLoading] = useState(false);
 
   const [isSaved, setIsSaved] = useState(post.viewerSaved ?? false);
   const [isSaveLoading, setIsSaveLoading] = useState(false);
+  const [shareCount, setShareCount] = useState(post.stats.shares ?? 0);
+  const [isShareLoading, setIsShareLoading] = useState(false);
+  const [resolvedMedia, setResolvedMedia] = useState<ResolvedMediaAsset[]>([]);
+
   const canOpenProfile = Boolean(post.authorProfileHref);
+  const communityHref =
+    post.communityId !== undefined && post.communityId !== null && String(post.communityId).length > 0
+      ? `/app/community/${post.communityId}`
+      : undefined;
+  const mediaAssetIdsKey = (post.mediaAssetIds ?? []).join(",");
 
   useEffect(() => {
     setIsLiked(post.viewerLiked ?? false);
     setLikesCount(post.stats.likes);
     setIsReposted(post.viewerHasReposted ?? false);
-    setRepostCount(post.stats.reposts ?? post.stats.shares ?? 0);
     setIsSaved(post.viewerSaved ?? false);
+    setShareCount(post.stats.shares ?? 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [post.id]);
 
@@ -208,6 +259,37 @@ export function PostCard({ post }: PostCardProps) {
       active = false;
     };
   }, [post.communityId]);
+
+  useEffect(() => {
+    let active = true;
+    const ids = (post.mediaAssetIds ?? []).filter((id) => id.trim().length > 0);
+    if (ids.length === 0) {
+      setResolvedMedia([]);
+      return () => {
+        active = false;
+      };
+    }
+
+    resolveMediaAssets(ids)
+      .then((resolved) => {
+        if (!active) return;
+        const map: Record<string, ResolvedMediaAsset> = {};
+        for (const asset of resolved) {
+          map[asset.id] = asset;
+        }
+        const ordered = ids.map((id) => map[id]).filter((asset): asset is ResolvedMediaAsset => Boolean(asset));
+        // iOS behavior: if any ID fails resolution, keep the original post unchanged.
+        setResolvedMedia(ordered.length === ids.length ? ordered : []);
+      })
+      .catch(() => {
+        if (!active) return;
+        setResolvedMedia([]);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [mediaAssetIdsKey, post.id, post.mediaAssetIds]);
 
   const isReactionLocked = useMemo(() => {
     if (!permissions) return false;
@@ -246,8 +328,8 @@ export function PostCard({ post }: PostCardProps) {
 
       if (error instanceof PostActionsApiError) {
         const parsed = parseApiError(error.details);
-        const title = parsed.error === "community_not_verified" ? "Verification required" : "Couldn't like post";
-        const message = parsed.message ?? "This action isn't available right now.";
+        const title = titleForWriteError(parsed.error, "Couldn't like post");
+        const message = parsed.message ?? messageForWriteError(parsed.error);
         showToast({ title, message, tone: "error" });
         return;
       }
@@ -275,11 +357,9 @@ export function PostCard({ post }: PostCardProps) {
     }
 
     const previous = isReposted;
-    const previousCount = repostCount;
     const next = !previous;
 
     setIsReposted(next);
-    setRepostCount((count) => (next ? count + 1 : Math.max(count - 1, 0)));
     setIsRepostLoading(true);
 
     try {
@@ -287,13 +367,12 @@ export function PostCard({ post }: PostCardProps) {
       setIsReposted(response.viewerHasReposted);
     } catch (error) {
       setIsReposted(previous);
-      setRepostCount(previousCount);
 
       if (error instanceof PostActionsApiError) {
         const parsed = parseApiError(error.details);
         showToast({
-          title: "Couldn't repost",
-          message: parsed.message ?? "This action isn't available right now.",
+          title: titleForWriteError(parsed.error, "Couldn't repost"),
+          message: parsed.message ?? messageForWriteError(parsed.error),
           tone: "error",
         });
         return;
@@ -336,8 +415,8 @@ export function PostCard({ post }: PostCardProps) {
       if (error instanceof PostActionsApiError) {
         const parsed = parseApiError(error.details);
         showToast({
-          title: "Couldn't save",
-          message: parsed.message ?? "This action isn't available right now.",
+          title: titleForWriteError(parsed.error, "Couldn't save"),
+          message: parsed.message ?? messageForWriteError(parsed.error),
           tone: "error",
         });
         return;
@@ -353,8 +432,127 @@ export function PostCard({ post }: PostCardProps) {
     }
   };
 
+  const handleShare = async () => {
+    if (isShareLoading) return;
+
+    if (isReactionLocked) {
+      showToast({
+        title: actionLockTitle(permissions),
+        message: actionLockMessage(permissions, "share"),
+        tone: "error",
+      });
+      return;
+    }
+
+    const previousCount = shareCount;
+    setShareCount((count) => count + 1);
+    setIsShareLoading(true);
+
+    try {
+      const response = await sharePost(post.id);
+      if (response.shareCount !== undefined) {
+        setShareCount(response.shareCount);
+      }
+    } catch (error) {
+      setShareCount(previousCount);
+
+      if (error instanceof PostActionsApiError) {
+        const parsed = parseApiError(error.details);
+        showToast({
+          title: titleForWriteError(parsed.error, "Couldn't share"),
+          message: parsed.message ?? messageForWriteError(parsed.error),
+          tone: "error",
+        });
+        return;
+      }
+
+      showToast({
+        title: "Couldn't share",
+        message: error instanceof Error ? error.message : "Try again.",
+        tone: "error",
+      });
+    } finally {
+      setIsShareLoading(false);
+    }
+  };
+
+  const mediaViewerHeader = (
+    <div className="flex min-w-0 items-center gap-2.5">
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white/10 text-white">
+        <img
+          src={post.authorProfileImageUrl ?? DEFAULT_PROFILE_IMAGE_SRC}
+          alt=""
+          className="h-full w-full object-cover"
+          loading="lazy"
+          onError={handleProfileImageError}
+        />
+      </div>
+      <div className="min-w-0">
+        <p className="truncate text-[30px] font-semibold leading-[1.05] text-white">{post.author}</p>
+        {post.context ? <p className="truncate text-[25px] leading-[1.1] text-white/80">{post.context}</p> : null}
+      </div>
+    </div>
+  );
+
+  const mediaViewerFooter = (
+    <div className="flex items-center justify-between gap-3">
+      <div className="flex items-center gap-2.5">
+        <button
+          className="inline-flex items-center gap-1 rounded-full px-1 py-1 text-[15px] font-medium text-white/85 transition hover:text-white disabled:opacity-60"
+          aria-label="Like"
+          type="button"
+          onClick={() => void handleLikeToggle()}
+          disabled={isLikeLoading}
+        >
+          <HeartIcon filled={isLiked} className={`h-[22px] w-[22px] flex-none ${isLiked ? "text-brand" : "text-white/85"}`} />
+          <span className="text-sm font-medium tabular-nums">{likesCount}</span>
+        </button>
+
+        <Link
+          to={`/app/post/${post.id}/comments`}
+          className="inline-flex items-center gap-1 rounded-full px-1 py-1 text-[15px] font-medium text-white/85 transition hover:text-white"
+          aria-label="Comment"
+        >
+          <CommentIcon className="h-[22px] w-[22px] flex-none" />
+          <span className="text-sm font-medium tabular-nums">{post.stats.comments}</span>
+        </Link>
+
+        <button
+          className="inline-flex items-center rounded-full px-1 py-1 text-[15px] font-medium text-white/85 transition hover:text-white disabled:opacity-60"
+          aria-label="Repost"
+          type="button"
+          onClick={() => void handleRepostToggle()}
+          disabled={isRepostLoading}
+        >
+          <RepostIcon className={`h-[24px] w-[24px] flex-none ${isReposted ? "text-brand" : "text-white/85"}`} />
+        </button>
+
+        <button
+          className="inline-flex items-center gap-1 rounded-full px-1 py-1 text-[15px] font-medium text-white/85 transition hover:text-white disabled:opacity-60"
+          aria-label="Share"
+          type="button"
+          onClick={() => void handleShare()}
+          disabled={isShareLoading}
+        >
+          <ShareIcon className="h-[22px] w-[22px] flex-none" />
+          <span className="text-sm font-medium tabular-nums">{shareCount}</span>
+        </button>
+      </div>
+      <button
+        className="inline-flex items-center justify-center rounded-full px-1 py-1 text-white/85 transition hover:text-white disabled:opacity-60"
+        type="button"
+        aria-label="Save"
+        onClick={() => void handleSaveToggle()}
+        disabled={isSaveLoading}
+      >
+        <BookmarkIcon filled={isSaved} className={`h-[22px] w-[22px] flex-none ${isSaved ? "text-brand" : "text-white/85"}`} />
+      </button>
+    </div>
+  );
+  const contentOffsetClass = post.isAnonymous ? "" : "pl-[3.25rem]";
+
   return (
-    <article className="bg-bg px-4 py-4">
+    <article className="bg-bg px-4 py-5">
       {post.repostedBy ? (
         <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-text-secondary">
           <RepostIcon className="h-4 w-4 opacity-70" />
@@ -375,9 +573,10 @@ export function PostCard({ post }: PostCardProps) {
                   alt=""
                   className="h-full w-full object-cover"
                   loading="lazy"
+                  onError={handleProfileImageError}
                 />
               ) : (
-                <ProfileIcon className="h-5 w-5" />
+                <img src={DEFAULT_PROFILE_IMAGE_SRC} alt="" className="h-full w-full object-cover" loading="lazy" />
               )}
             </Link>
           ) : (
@@ -388,9 +587,10 @@ export function PostCard({ post }: PostCardProps) {
                   alt=""
                   className="h-full w-full object-cover"
                   loading="lazy"
+                  onError={handleProfileImageError}
                 />
               ) : (
-                <ProfileIcon className="h-5 w-5" />
+                <img src={DEFAULT_PROFILE_IMAGE_SRC} alt="" className="h-full w-full object-cover" loading="lazy" />
               )}
             </div>
           )
@@ -398,37 +598,40 @@ export function PostCard({ post }: PostCardProps) {
 
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-3">
-            {canOpenProfile ? (
-              <Link to={post.authorProfileHref!} className="min-w-0 rounded-md transition hover:opacity-90">
-                <div className="flex flex-wrap items-center gap-2">
-                  <p className={`text-sm font-semibold ${post.isAnonymous ? "text-secondary" : "text-strong"}`}>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-baseline gap-x-1 gap-y-0.5 leading-tight">
+                {canOpenProfile ? (
+                  <Link
+                    to={post.authorProfileHref!}
+                    className={`text-[1.12rem] font-semibold transition hover:opacity-90 ${post.isAnonymous ? "text-secondary" : "text-strong"}`}
+                  >
+                    {post.author}
+                  </Link>
+                ) : (
+                  <p className={`text-[1.12rem] font-semibold ${post.isAnonymous ? "text-secondary" : "text-strong"}`}>
                     {post.author}
                   </p>
-                  {post.subtitle ? (
-                    <>
-                      <span className="text-xs text-text-light">·</span>
-                      <p className="text-xs text-text-secondary">{post.subtitle}</p>
-                    </>
-                  ) : null}
-                </div>
-                {post.context ? <p className="text-xs text-text-secondary">{post.context}</p> : null}
-              </Link>
-            ) : (
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <p className={`text-sm font-semibold ${post.isAnonymous ? "text-secondary" : "text-strong"}`}>
-                    {post.author}
-                  </p>
-                  {post.subtitle ? (
-                    <>
-                      <span className="text-xs text-text-light">·</span>
-                      <p className="text-xs text-text-secondary">{post.subtitle}</p>
-                    </>
-                  ) : null}
-                </div>
-                {post.context ? <p className="text-xs text-text-secondary">{post.context}</p> : null}
+                )}
+                {post.subtitle ? (
+                  <>
+                    <span className="text-[1.08rem] leading-none text-text-light">·</span>
+                    <p className="text-[1.03rem] text-text-secondary">{post.subtitle}</p>
+                  </>
+                ) : null}
               </div>
-            )}
+              {post.context ? (
+                communityHref ? (
+                  <Link
+                    to={communityHref}
+                    className="mt-0.5 block text-[0.95rem] leading-tight text-text-secondary transition hover:text-strong"
+                  >
+                    {post.context}
+                  </Link>
+                ) : (
+                  <p className="mt-0.5 text-[0.95rem] leading-tight text-text-secondary">{post.context}</p>
+                )
+              ) : null}
+            </div>
             <button
               className="text-text-light transition hover:text-strong"
               type="button"
@@ -438,69 +641,88 @@ export function PostCard({ post }: PostCardProps) {
             </button>
           </div>
 
-          <p className="mt-3 text-sm leading-relaxed text-text-primary">{post.content}</p>
-
-          <div className="mt-4 flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2.5">
-              <button
-                className="inline-flex items-center gap-1 rounded-full px-1 py-1 text-[15px] font-medium text-text-secondary transition hover:text-strong disabled:opacity-60"
-                aria-label="Like"
-                type="button"
-                onClick={() => void handleLikeToggle()}
-                disabled={isLikeLoading}
-              >
-                <span className="relative">
-                  <HeartIcon
-                    filled={isLiked}
-                    className={`h-[22px] w-[22px] flex-none ${isLiked ? "text-brand" : "text-text-secondary"}`}
-                  />
-                  {isReactionLocked ? (
-                    <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-bg">
-                      <LockIcon className="h-2.5 w-2.5 flex-none text-text-secondary" />
-                    </span>
-                  ) : null}
-                </span>
-                <span className="text-sm font-medium tabular-nums">{likesCount}</span>
-              </button>
-
-              <button
-                className="inline-flex items-center gap-1 rounded-full px-1 py-1 text-[15px] font-medium text-text-secondary transition hover:text-strong"
-                aria-label="Comment"
-                type="button"
-              >
-                <CommentIcon className="h-[22px] w-[22px] flex-none" />
-                <span className="text-sm font-medium tabular-nums">{post.stats.comments}</span>
-              </button>
-
-              <button
-                className="inline-flex items-center gap-1 rounded-full px-1 py-1 text-[15px] font-medium text-text-secondary transition hover:text-strong disabled:opacity-60"
-                aria-label="Repost"
-                type="button"
-                onClick={() => void handleRepostToggle()}
-                disabled={isRepostLoading}
-              >
-                <RepostIcon
-                  className={`h-[24px] w-[24px] flex-none ${isReposted ? "text-brand" : "text-text-secondary"}`}
-                />
-                <span className="text-sm font-medium tabular-nums">{repostCount}</span>
-              </button>
-            </div>
-            <button
-              className="inline-flex items-center justify-center rounded-full px-1 py-1 text-text-secondary transition hover:text-strong"
-              type="button"
-              aria-label="Save"
-              onClick={() => void handleSaveToggle()}
-              disabled={isSaveLoading}
-            >
-              <BookmarkIcon
-                filled={isSaved}
-                className={`h-[22px] w-[22px] flex-none ${isSaved ? "text-brand" : "text-text-secondary"}`}
-              />
-            </button>
-          </div>
-
-          <p className="mt-2 text-xs text-text-light">{post.time}</p>
+          {post.content ? <p className="mt-3 text-[1.08rem] leading-[1.45] text-text-primary">{post.content}</p> : null}
+          {resolvedMedia.length > 0 ? (
+            <PostMediaGrid
+              attachments={resolvedMedia}
+              className={post.content ? "mt-3" : "mt-1"}
+              viewerHeader={mediaViewerHeader}
+              viewerFooter={mediaViewerFooter}
+            />
+          ) : null}
         </div>
+      </div>
+
+      <div className={`mt-4 ${contentOffsetClass}`}>
+        <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3.5">
+          <button
+            className="inline-flex items-center gap-1 text-[1rem] font-medium text-text-secondary transition hover:text-strong disabled:opacity-60"
+            aria-label="Like"
+            type="button"
+            onClick={() => void handleLikeToggle()}
+            disabled={isLikeLoading}
+          >
+            <span className="relative">
+              <HeartIcon
+                filled={isLiked}
+                className={`h-[22px] w-[22px] flex-none ${isLiked ? "text-brand" : "text-text-secondary"}`}
+              />
+              {isReactionLocked ? (
+                <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-bg">
+                  <LockIcon className="h-2.5 w-2.5 flex-none text-text-secondary" />
+                </span>
+              ) : null}
+            </span>
+            <span className="text-[1.02rem] font-medium tabular-nums">{likesCount}</span>
+          </button>
+
+          <Link
+            to={`/app/post/${post.id}/comments`}
+            className="inline-flex items-center gap-1 text-[1rem] font-medium text-text-secondary transition hover:text-strong"
+            aria-label="Comment"
+          >
+            <CommentIcon className="h-[22px] w-[22px] flex-none" />
+            <span className="text-[1.02rem] font-medium tabular-nums">{post.stats.comments}</span>
+          </Link>
+
+          <button
+            className="inline-flex items-center text-[1rem] font-medium text-text-secondary transition hover:text-strong disabled:opacity-60"
+            aria-label="Repost"
+            type="button"
+            onClick={() => void handleRepostToggle()}
+            disabled={isRepostLoading}
+          >
+            <RepostIcon
+              className={`h-[24px] w-[24px] flex-none ${isReposted ? "text-brand" : "text-text-secondary"}`}
+            />
+          </button>
+
+          <button
+            className="inline-flex items-center gap-1 text-[1rem] font-medium text-text-secondary transition hover:text-strong disabled:opacity-60"
+            aria-label="Share"
+            type="button"
+            onClick={() => void handleShare()}
+            disabled={isShareLoading}
+          >
+            <ShareIcon className="h-[22px] w-[22px] flex-none" />
+            <span className="text-[1.02rem] font-medium tabular-nums">{shareCount}</span>
+          </button>
+        </div>
+        <button
+          className="inline-flex items-center justify-center text-text-secondary transition hover:text-strong disabled:opacity-60"
+          type="button"
+          aria-label="Save"
+          onClick={() => void handleSaveToggle()}
+          disabled={isSaveLoading}
+        >
+          <BookmarkIcon
+            filled={isSaved}
+            className={`h-[22px] w-[22px] flex-none ${isSaved ? "text-brand" : "text-text-secondary"}`}
+          />
+        </button>
+        </div>
+        <p className="mt-2 text-[0.95rem] text-text-light">{post.time}</p>
       </div>
     </article>
   );

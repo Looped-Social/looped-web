@@ -1,4 +1,4 @@
-import { type MouseEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { type MouseEvent, type SyntheticEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 
 import { AppLayout, AppMobileHeader } from "@/app/components/AppLayout/AppLayout";
@@ -34,6 +34,14 @@ const SOCIAL_NOTIFICATION_TYPES = new Set([
   "repost",
   "post_from_followed",
 ]);
+const DEFAULT_PROFILE_IMAGE_SRC = "/ios-icons/pfp2.svg";
+
+function handleProfileImageError(event: SyntheticEvent<HTMLImageElement>) {
+  const image = event.currentTarget;
+  if (image.dataset.fallbackApplied === "true") return;
+  image.dataset.fallbackApplied = "true";
+  image.src = DEFAULT_PROFILE_IMAGE_SRC;
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -776,16 +784,13 @@ export function AppNotificationsPage() {
               <div className="flex items-start gap-3">
                 <div className="relative">
                   <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-bg-muted text-sm font-semibold text-text-secondary">
-                    {actorImageUrl ? (
-                      <img
-                        src={actorImageUrl}
-                        alt=""
-                        className="h-full w-full object-cover"
-                        loading="lazy"
-                      />
-                    ) : (
-                      actorName.charAt(0).toUpperCase()
-                    )}
+                    <img
+                      src={actorImageUrl ?? DEFAULT_PROFILE_IMAGE_SRC}
+                      alt=""
+                      className="h-full w-full object-cover"
+                      loading="lazy"
+                      onError={handleProfileImageError}
+                    />
                   </div>
                   {notification.unread ? (
                     <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-brand" />

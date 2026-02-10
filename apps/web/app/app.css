@@ -4,6 +4,12 @@
 
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
+:root {
+  --color-thread-bubble-them: #eef2f7;
+  --color-thread-video-overlay: rgba(0, 0, 0, 0.45);
+  --color-thread-media-time: rgba(0, 0, 0, 0.55);
+}
+
 .app-store-img-light {
   display: block;
 }
@@ -29,6 +35,9 @@
   --color-shell-border: var(--color-shell-border-dark);
   --color-shell-text: var(--color-shell-text-dark);
   --color-shell-text-muted: var(--color-shell-text-muted-dark);
+  --color-thread-bubble-them: #1a1a1a;
+  --color-thread-video-overlay: rgba(0, 0, 0, 0.52);
+  --color-thread-media-time: rgba(0, 0, 0, 0.62);
 }
 
 [data-theme="dark"] .app-store-img-light {

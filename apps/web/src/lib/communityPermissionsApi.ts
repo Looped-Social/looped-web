@@ -5,6 +5,7 @@ export class CommunityPermissionsApiError extends ApiError {}
 
 export type CommunityPermissions = {
   can_post: boolean;
+  canPost?: boolean;
   requires_verification: boolean;
   requires_join: boolean;
   requiresJoin?: boolean;
@@ -48,4 +49,3 @@ export function getCommunityPermissions(communityId: string | number): Promise<C
   permissionsCache.set(key, promise);
   return promise;
 }
-

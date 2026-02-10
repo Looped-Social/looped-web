@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type SyntheticEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 
 import { AppLayout } from "@/app/components/AppLayout/AppLayout";
@@ -97,6 +97,14 @@ type SearchResultsState = {
 const RECENT_SEARCHES_KEY = "recentSearches";
 const RECENT_SEARCH_LIMIT = 5;
 const SEARCH_DEBOUNCE_MS = 300;
+const DEFAULT_PROFILE_IMAGE_SRC = "/ios-icons/pfp2.svg";
+
+function handleProfileImageError(event: SyntheticEvent<HTMLImageElement>) {
+  const image = event.currentTarget;
+  if (image.dataset.fallbackApplied === "true") return;
+  image.dataset.fallbackApplied = "true";
+  image.src = DEFAULT_PROFILE_IMAGE_SRC;
+}
 
 const FILTERS: Array<{ id: SearchFilterId; label: string }> = [
   { id: "all", label: "All" },
@@ -899,12 +907,9 @@ export function AppSearchPage() {
 
   const handleCommunityTap = useCallback(
     (community: CommunityCard | CommunityResult) => {
-      showToast({
-        title: "Community",
-        message: `Open ${community.label} from the feed for now.`,
-      });
+      navigate(`/app/community/${community.id}`);
     },
-    [showToast]
+    [navigate]
   );
 
   const handlePostTap = useCallback(
@@ -1179,11 +1184,13 @@ export function AppSearchPage() {
                             className="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-bg-muted/35"
                           >
                             <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-bg-muted text-sm font-semibold text-text-secondary">
-                              {user.avatarUrl ? (
-                                <img src={user.avatarUrl} alt="" className="h-full w-full object-cover" loading="lazy" />
-                              ) : (
-                                initialsFromName(user.name)
-                              )}
+                              <img
+                                src={user.avatarUrl ?? DEFAULT_PROFILE_IMAGE_SRC}
+                                alt=""
+                                className="h-full w-full object-cover"
+                                loading="lazy"
+                                onError={handleProfileImageError}
+                              />
                             </div>
                             <div className="min-w-0">
                               <p className="truncate text-sm font-semibold text-strong">{user.name}</p>

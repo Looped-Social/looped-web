@@ -17,16 +17,22 @@ export type CursorEnvelope<T> = {
   nextCursor?: string | null;
 };
 
+function clampLimit(value: number | undefined, fallback: number, min: number, max: number): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
+  return Math.max(min, Math.min(max, Math.floor(value)));
+}
+
 async function userFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const token = await getFirebaseIdToken();
   const base = getApiBase();
+  const headers = new Headers(init?.headers ?? undefined);
+  headers.set("Authorization", `Bearer ${token}`);
+  if (init?.body !== undefined && init.body !== null && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
   const response = await fetch(`${base}${path}`, {
     ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(init?.headers ?? {}),
-      Authorization: `Bearer ${token}`,
-    },
+    headers,
   });
 
   if (!response.ok) {
@@ -51,7 +57,7 @@ export async function fetchUserProfile(userId: string | number): Promise<unknown
 
 export async function fetchUserPosts({
   userId,
-  limit = 20,
+  limit,
   cursor,
 }: {
   userId: string | number;
@@ -59,9 +65,73 @@ export async function fetchUserPosts({
   cursor?: string;
 }): Promise<CursorEnvelope<unknown>> {
   const params = new URLSearchParams();
-  params.set("limit", String(limit));
+  params.set("limit", String(clampLimit(limit, 20, 1, 100)));
   if (cursor) params.set("cursor", cursor);
   return userFetch<CursorEnvelope<unknown>>(`/v1/users/${userId}/posts?${params.toString()}`);
+}
+
+export async function fetchUserReposts({
+  userId,
+  limit,
+  cursor,
+}: {
+  userId: string | number;
+  limit?: number;
+  cursor?: string;
+}): Promise<CursorEnvelope<unknown>> {
+  const params = new URLSearchParams();
+  params.set("limit", String(clampLimit(limit, 20, 1, 100)));
+  if (cursor) params.set("cursor", cursor);
+  return userFetch<CursorEnvelope<unknown>>(`/v1/users/${userId}/reposts?${params.toString()}`);
+}
+
+export async function fetchUserSavedPosts({
+  userId,
+  limit,
+  cursor,
+}: {
+  userId: string | number;
+  limit?: number;
+  cursor?: string;
+}): Promise<CursorEnvelope<unknown>> {
+  const params = new URLSearchParams();
+  params.set("limit", String(clampLimit(limit, 20, 1, 100)));
+  if (cursor) params.set("cursor", cursor);
+  return userFetch<CursorEnvelope<unknown>>(`/v1/users/${userId}/posts/saved?${params.toString()}`);
+}
+
+export async function fetchMyContent({
+  limit,
+  cursor,
+  includePostPreview = false,
+}: {
+  limit?: number;
+  cursor?: string;
+  includePostPreview?: boolean;
+} = {}): Promise<CursorEnvelope<unknown>> {
+  const params = new URLSearchParams();
+  params.set("limit", String(clampLimit(limit, 20, 1, 100)));
+  if (cursor) params.set("cursor", cursor);
+  params.set("include_post_preview", includePostPreview ? "true" : "false");
+  return userFetch<CursorEnvelope<unknown>>(`/v1/users/me/content?${params.toString()}`);
+}
+
+export async function fetchUserContent({
+  userId,
+  limit,
+  cursor,
+  includePostPreview = false,
+}: {
+  userId: string | number;
+  limit?: number;
+  cursor?: string;
+  includePostPreview?: boolean;
+}): Promise<CursorEnvelope<unknown>> {
+  const params = new URLSearchParams();
+  params.set("limit", String(clampLimit(limit, 20, 1, 100)));
+  if (cursor) params.set("cursor", cursor);
+  params.set("include_post_preview", includePostPreview ? "true" : "false");
+  return userFetch<CursorEnvelope<unknown>>(`/v1/users/${userId}/content?${params.toString()}`);
 }
 
 export async function setUserFollowing(
@@ -83,7 +153,7 @@ export async function setUserFollowing(
 
 export async function fetchUserFollowing({
   userId,
-  limit = 50,
+  limit,
   cursor,
   query,
 }: {
@@ -93,7 +163,7 @@ export async function fetchUserFollowing({
   query?: string;
 }): Promise<CursorEnvelope<unknown>> {
   const params = new URLSearchParams();
-  params.set("limit", String(limit));
+  params.set("limit", String(clampLimit(limit, 50, 1, 100)));
   if (cursor) params.set("cursor", cursor);
   if (query && query.trim().length > 0) params.set("query", query.trim());
   return userFetch<CursorEnvelope<unknown>>(`/v1/users/${userId}/following?${params.toString()}`);

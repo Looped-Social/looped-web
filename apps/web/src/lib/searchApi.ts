@@ -12,16 +12,22 @@ export type CursorEnvelope<T> = {
 export type SpecializationType = "major" | "field";
 export type CommunitySearchKind = "company" | "school" | "major" | "field";
 
+function clampLimit(value: number | undefined, fallback: number, min: number, max: number): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
+  return Math.max(min, Math.min(max, Math.floor(value)));
+}
+
 async function authFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const token = await getFirebaseIdToken();
   const base = getApiBase();
+  const headers = new Headers(init?.headers ?? undefined);
+  headers.set("Authorization", `Bearer ${token}`);
+  if (init?.body !== undefined && init.body !== null && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
   const response = await fetch(`${base}${path}`, {
     ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(init?.headers ?? {}),
-      Authorization: `Bearer ${token}`,
-    },
+    headers,
   });
 
   if (!response.ok) {
@@ -52,13 +58,13 @@ function buildCursorParams({
 }
 
 export async function fetchTrendingPosts({
-  limit = 3,
+  limit,
   communityId,
 }: {
   limit?: number;
   communityId?: string | number;
 } = {}): Promise<CursorEnvelope<unknown>> {
-  const params = buildCursorParams({ limit });
+  const params = buildCursorParams({ limit: clampLimit(limit, 3, 1, 10) });
   if (communityId !== undefined && communityId !== null && String(communityId).length > 0) {
     params.set("communityId", String(communityId));
   }
@@ -117,15 +123,19 @@ export async function searchUsers({
 
 export async function searchPosts({
   query,
-  limit = 20,
+  limit,
   cursor,
 }: {
   query: string;
   limit?: number;
   cursor?: string;
 }): Promise<CursorEnvelope<unknown>> {
-  const params = buildCursorParams({ limit, cursor });
-  params.set("query", query);
+  const normalizedQuery = query.trim();
+  if (!normalizedQuery) {
+    throw new SearchApiError(422, "query_required", "query_required");
+  }
+  const params = buildCursorParams({ limit: clampLimit(limit, 20, 1, 100), cursor });
+  params.set("query", normalizedQuery);
   return authFetch<CursorEnvelope<unknown>>(`/v1/posts/search?${params.toString()}`);
 }
 
@@ -157,4 +167,3 @@ export async function searchHashtags({
   params.set("query", query);
   return authFetch<CursorEnvelope<unknown>>(`/v1/hashtags/search?${params.toString()}`);
 }
-

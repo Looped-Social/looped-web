@@ -1,7 +1,8 @@
 import { Link } from "react-router";
 
 import { AppLayout, AppMobileHeader } from "@/app/components/AppLayout/AppLayout";
-import { ProfileIcon } from "@/app/components/AppIcons/AppIcons";
+
+const DEFAULT_PROFILE_IMAGE_SRC = "/ios-icons/pfp2.svg";
 
 export function AppAnonymousProfilePage() {
   return (
@@ -10,8 +11,8 @@ export function AppAnonymousProfilePage() {
 
       <section className="border-b border-border/70 bg-bg px-4 py-6">
         <div className="mx-auto flex max-w-[440px] flex-col items-center text-center">
-          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-bg-muted text-text-secondary">
-            <ProfileIcon className="h-9 w-9" />
+          <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-full bg-bg-muted text-text-secondary">
+            <img src={DEFAULT_PROFILE_IMAGE_SRC} alt="" className="h-full w-full object-cover" loading="lazy" />
           </div>
           <h1 className="mt-4 text-2xl font-semibold text-strong">Anonymous</h1>
           <p className="mt-2 text-sm text-text-secondary">

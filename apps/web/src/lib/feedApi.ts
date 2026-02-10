@@ -9,16 +9,22 @@ export type CursorEnvelope<T> = {
   nextCursor?: string | null;
 };
 
+function clampLimit(value: number | undefined, fallback: number, min: number, max: number): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
+  return Math.max(min, Math.min(max, Math.floor(value)));
+}
+
 async function authFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const token = await getFirebaseIdToken();
   const base = getApiBase();
+  const headers = new Headers(init?.headers ?? undefined);
+  headers.set("Authorization", `Bearer ${token}`);
+  if (init?.body !== undefined && init.body !== null && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
   const response = await fetch(`${base}${path}`, {
     ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(init?.headers ?? {}),
-      Authorization: `Bearer ${token}`,
-    },
+    headers,
   });
 
   if (!response.ok) {
@@ -33,21 +39,21 @@ async function authFetch<T>(path: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-export type FeedMode = "for_you" | "new" | "following";
+export type FeedMode = "for_you" | "new" | "recent" | "following";
 
 export async function fetchFeed({
-  limit = 20,
+  limit,
   cursor,
-  mode,
+  mode = "for_you",
   communityId,
 }: {
   limit?: number;
   cursor?: string;
-  mode: FeedMode;
+  mode?: FeedMode;
   communityId?: string | number;
 }): Promise<CursorEnvelope<unknown>> {
   const params = new URLSearchParams();
-  params.set("limit", String(limit));
+  params.set("limit", String(clampLimit(limit, 20, 1, 100)));
   params.set("mode", mode);
   if (cursor) params.set("cursor", cursor);
   if (communityId !== undefined && communityId !== null && String(communityId).length > 0) {
@@ -58,7 +64,7 @@ export async function fetchFeed({
 }
 
 export async function fetchFollowedCommunities({
-  limit = 50,
+  limit,
   cursor,
   order = "relevant",
 }: {
@@ -67,7 +73,7 @@ export async function fetchFollowedCommunities({
   order?: string;
 } = {}): Promise<CursorEnvelope<unknown>> {
   const params = new URLSearchParams();
-  params.set("limit", String(limit));
+  params.set("limit", String(clampLimit(limit, 50, 1, 100)));
   if (cursor) params.set("cursor", cursor);
   if (order) params.set("order", order);
 
