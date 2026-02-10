@@ -536,7 +536,6 @@ export function AppMessageThreadPage({ threadType, threadId }: AppMessageThreadP
   const [viewerId, setViewerId] = useState<string>();
   const [threadTitle, setThreadTitle] = useState(threadType === "channel" ? "Channel" : "Direct Message");
   const [threadAvatarUrl, setThreadAvatarUrl] = useState<string>();
-  const [membersById, setMembersById] = useState<Record<string, MemberPreview>>({});
   const [messages, setMessages] = useState<ThreadMessage[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -551,7 +550,9 @@ export function AppMessageThreadPage({ threadType, threadId }: AppMessageThreadP
 
   const seenMessageIdsRef = useRef<Set<string>>(new Set());
   const resolvedMediaCacheRef = useRef<Record<string, { downloadUrl: string; mimeType?: string; expiresAtMs: number }>>({});
+  const membersByIdRef = useRef<Record<string, MemberPreview>>({});
   const didScrollToBottomRef = useRef(false);
+  const pollInFlightRef = useRef(false);
 
   const isGroup = threadType === "channel";
 
@@ -577,6 +578,7 @@ export function AppMessageThreadPage({ threadType, threadId }: AppMessageThreadP
   useEffect(() => {
     didScrollToBottomRef.current = false;
     setThreadAvatarUrl(undefined);
+    membersByIdRef.current = {};
   }, [threadId, threadType]);
 
   const fetchThreadMessagesPage = useCallback(
@@ -685,7 +687,7 @@ export function AppMessageThreadPage({ threadType, threadId }: AppMessageThreadP
           normalizeThreadMessage({
             item,
             viewerId: currentViewerId,
-            membersById: currentMembers ?? membersById,
+            membersById: currentMembers ?? membersByIdRef.current,
             isGroup,
           })
         )
@@ -694,7 +696,7 @@ export function AppMessageThreadPage({ threadType, threadId }: AppMessageThreadP
       const hydrated = await hydrateAttachmentUrls(normalized);
       return hydrated.sort((left, right) => left.createdAtMs - right.createdAtMs);
     },
-    [hydrateAttachmentUrls, isGroup, membersById]
+    [hydrateAttachmentUrls, isGroup]
   );
 
   const loadThreadMeta = useCallback(async () => {
@@ -750,7 +752,7 @@ export function AppMessageThreadPage({ threadType, threadId }: AppMessageThreadP
       .filter((entry): entry is MemberPreview => Boolean(entry));
     const map: Record<string, MemberPreview> = {};
     for (const member of normalized) map[member.id] = member;
-    setMembersById(map);
+    membersByIdRef.current = map;
     return map;
   }, [threadId, threadType]);
 
@@ -799,10 +801,12 @@ export function AppMessageThreadPage({ threadType, threadId }: AppMessageThreadP
 
   const pollForMessages = useCallback(async () => {
     if (blockState) return;
+    if (pollInFlightRef.current) return;
+    pollInFlightRef.current = true;
 
     try {
-      const page = await fetchLatestThreadWindow();
-      const normalizedMessages = await normalizeMessages(page.items, viewerId);
+      const page = await fetchThreadMessagesPage();
+      const normalizedMessages = await normalizeMessages(extractItemsArray(page), viewerId);
       if (normalizedMessages.length > 0) {
         setMessages((previous) => {
           const next = [...previous];
@@ -821,8 +825,10 @@ export function AppMessageThreadPage({ threadType, threadId }: AppMessageThreadP
       } else if (code === "message_request_rejected") {
         setBlockState("rejected");
       }
+    } finally {
+      pollInFlightRef.current = false;
     }
-  }, [blockState, fetchLatestThreadWindow, normalizeMessages, viewerId]);
+  }, [blockState, fetchThreadMessagesPage, normalizeMessages, viewerId]);
 
   useEffect(() => {
     if (isLoading || loadError || blockState) return;
@@ -1134,6 +1140,7 @@ export function AppMessageThreadPage({ threadType, threadId }: AppMessageThreadP
     <AppLayout activeNavId="messages">
       <AppMobileHeader title="Messages" showBack showAction={false} backHref="/app/messages" />
 
+      <div className="flex min-h-[calc(100dvh-56px)] flex-col lg:min-h-screen">
       <header className="sticky top-0 z-30 border-b border-border/70 bg-bg px-4 py-3 sm:px-6">
         <button
           type="button"
@@ -1168,7 +1175,7 @@ export function AppMessageThreadPage({ threadType, threadId }: AppMessageThreadP
         </div>
       </header>
 
-      <section className="min-h-[56vh] bg-bg px-3 pb-5 pt-3 sm:px-5">
+      <section className="flex-1 bg-bg px-3 pb-5 pt-3 sm:px-5">
         {blockBannerText ? (
           <div className="mb-3 rounded-xl border border-border/70 bg-bg-muted px-3 py-2 text-sm font-medium text-text-secondary">
             {blockBannerText}
@@ -1409,7 +1416,7 @@ export function AppMessageThreadPage({ threadType, threadId }: AppMessageThreadP
         </div>
       ) : null}
 
-      <footer className="sticky bottom-0 border-t border-border/70 bg-bg px-4 pb-4 pt-3 sm:px-4">
+      <footer className="sticky bottom-0 mt-auto border-t border-border/70 bg-bg px-4 pb-4 pt-3 sm:px-4">
         {selectedFiles.length > 0 ? (
           <div className="mb-2 flex flex-wrap gap-2">
             {selectedFiles.map((file) => (
@@ -1461,6 +1468,7 @@ export function AppMessageThreadPage({ threadType, threadId }: AppMessageThreadP
           ) : null}
         </div>
       </footer>
+      </div>
     </AppLayout>
   );
 }
