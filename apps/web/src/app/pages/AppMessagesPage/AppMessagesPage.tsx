@@ -1005,10 +1005,10 @@ export function AppMessagesPage() {
           <button
             type="button"
             onClick={() => setActiveTabId("messages")}
-            className={`h-10 cursor-pointer rounded-full text-[1.03rem] font-semibold transition ${
+            className={`h-10 cursor-pointer rounded-full text-[1.03rem] transition ${
               activeTabId === "messages"
-                ? "bg-brand text-white shadow-[0_1px_1px_rgba(0,0,0,0.06)]"
-                : "border border-border/80 bg-bg text-text-secondary hover:text-strong"
+                ? "bg-brand font-semibold text-white shadow-[0_1px_1px_rgba(0,0,0,0.06)]"
+                : "border border-border/80 bg-bg font-medium text-text-secondary hover:text-strong"
             }`}
           >
             Messages
@@ -1016,10 +1016,10 @@ export function AppMessagesPage() {
           <button
             type="button"
             onClick={() => setActiveTabId("requests")}
-            className={`h-10 cursor-pointer rounded-full text-[1.03rem] font-semibold transition ${
+            className={`h-10 cursor-pointer rounded-full text-[1.03rem] transition ${
               activeTabId === "requests"
-                ? "bg-brand text-white shadow-[0_1px_1px_rgba(0,0,0,0.06)]"
-                : "border border-border/80 bg-bg text-text-secondary hover:text-strong"
+                ? "bg-brand font-semibold text-white shadow-[0_1px_1px_rgba(0,0,0,0.06)]"
+                : "border border-border/80 bg-bg font-medium text-text-secondary hover:text-strong"
             }`}
           >
             Requests

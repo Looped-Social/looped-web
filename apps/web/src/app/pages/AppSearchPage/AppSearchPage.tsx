@@ -3,6 +3,8 @@ import { useNavigate } from "react-router";
 
 import { AppLayout } from "@/app/components/AppLayout/AppLayout";
 import { useToast } from "@/app/components/AppToast/AppToast";
+import { fetchPostDetail } from "@/lib/commentsApi";
+import { fetchFollowedCommunities } from "@/lib/feedApi";
 import {
   SearchApiError,
   fetchFieldsIndex,
@@ -29,21 +31,24 @@ type SearchFilterId =
 
 type SearchStatus = "idle" | "loading" | "ready" | "error";
 type LandingStatus = "loading" | "ready" | "error";
+type LandingSectionId = "majors" | "fields";
 
 type TrendingPost = {
   id: string;
-  authorName: string;
+  title: string;
+  subtitle: string;
   content: string;
-  timeLabel: string;
-  communityLabel?: string;
+  imageUrl?: string;
 };
 
 type CommunityCard = {
   id: string;
   label: string;
   subtitle?: string;
+  description?: string;
   membersLabel?: string;
   icon?: string;
+  imageUrl?: string;
   kind?: string;
 };
 
@@ -77,8 +82,10 @@ type CommunityResult = {
   id: string;
   label: string;
   subtitle?: string;
+  description?: string;
   membersLabel?: string;
   icon?: string;
+  imageUrl?: string;
   kind?: string;
 };
 
@@ -98,6 +105,11 @@ const RECENT_SEARCHES_KEY = "recentSearches";
 const RECENT_SEARCH_LIMIT = 5;
 const SEARCH_DEBOUNCE_MS = 300;
 const DEFAULT_PROFILE_IMAGE_SRC = "/ios-icons/pfp2.svg";
+const TRENDING_LIMIT = 3;
+const RECOMMENDED_COMMUNITIES_LIMIT = 8;
+const SPECIALIZATIONS_INITIAL_LIMIT = 24;
+const SPECIALIZATIONS_LOAD_MORE_LIMIT = 40;
+const SPECIALIZATION_GRID_PAGE_SIZE = 8;
 
 function handleProfileImageError(event: SyntheticEvent<HTMLImageElement>) {
   const image = event.currentTarget;
@@ -148,6 +160,23 @@ function ChevronLeftIcon({ className }: { className?: string }) {
       aria-hidden="true"
     >
       <path d="M15 18l-6-6 6-6" />
+    </svg>
+  );
+}
+
+function ChevronRightIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+    >
+      <path d="M9 18l6-6-6-6" />
     </svg>
   );
 }
@@ -257,6 +286,90 @@ function extractItemsArray(payload: unknown): unknown[] {
   return [];
 }
 
+function extractNextCursor(payload: unknown): string | null {
+  if (!isRecord(payload)) return null;
+  const next = normalizedOptional(payload.next_cursor ?? payload.nextCursor);
+  return next ?? null;
+}
+
+function extractIconValue(value: unknown): string | undefined {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : undefined;
+  }
+  if (!isRecord(value)) return undefined;
+
+  const kind = normalizedOptional(value.kind)?.toLowerCase();
+  const resolved = normalizedOptional(value.value);
+  if (!resolved) return undefined;
+  if (kind === "sf_symbol") return undefined;
+  return resolved;
+}
+
+function chunkByPage<T>(items: T[], pageSize: number): T[][] {
+  if (pageSize <= 0) return [items];
+  const pages: T[][] = [];
+  for (let index = 0; index < items.length; index += pageSize) {
+    pages.push(items.slice(index, index + pageSize));
+  }
+  return pages;
+}
+
+function mergeUniqueById<T extends { id: string }>(existing: T[], incoming: T[]): T[] {
+  if (incoming.length === 0) return existing;
+  const seen = new Set(existing.map((item) => item.id));
+  const next = [...existing];
+  for (const item of incoming) {
+    if (seen.has(item.id)) continue;
+    seen.add(item.id);
+    next.push(item);
+  }
+  return next;
+}
+
+type PagerDot = {
+  key: string;
+  page: number;
+  emphasis: "active" | "near" | "far" | "edge" | "placeholder";
+};
+
+function buildPagerDots(totalPages: number, currentPage: number, maxVisible = 5): PagerDot[] {
+  if (totalPages <= 0) return [];
+  if (maxVisible <= 0) return [];
+
+  const visibleCount = Math.min(totalPages, maxVisible);
+  const half = Math.floor(visibleCount / 2);
+  const maxStart = Math.max(totalPages - visibleCount, 0);
+  const start = Math.max(0, Math.min(currentPage - half, maxStart));
+  const end = start + visibleCount - 1;
+
+  const dots: PagerDot[] = [];
+  for (let page = start; page <= end; page += 1) {
+    const distance = Math.abs(page - currentPage);
+    const isWindowEdge = (page === start && start > 0) || (page === end && end < totalPages - 1);
+
+    let emphasis: PagerDot["emphasis"] = "far";
+    if (page === currentPage) emphasis = "active";
+    else if (isWindowEdge) emphasis = "edge";
+    else if (distance === 1) emphasis = "near";
+
+    dots.push({ key: `page-${page}`, page, emphasis });
+  }
+
+  if (dots.length < maxVisible) {
+    const placeholdersNeeded = maxVisible - dots.length;
+    for (let index = 0; index < placeholdersNeeded; index += 1) {
+      dots.push({
+        key: `placeholder-${index}`,
+        page: Math.max(totalPages - 1, 0),
+        emphasis: "placeholder",
+      });
+    }
+  }
+
+  return dots;
+}
+
 function formatMembersLabel(value: unknown): string | undefined {
   const count = getNumber(value);
   if (count === undefined) return undefined;
@@ -303,7 +416,8 @@ function normalizeSpecializationIndexMap(payload: unknown): Record<string, strin
     const name = pickString(entry, ["name", "title", "label"]);
     const shortName = pickString(entry, ["short_name", "shortName"]);
     const icon =
-      pickString(entry, ["emoji", "icon_emoji", "iconEmoji", "icon", "icon_url", "iconUrl"]) ??
+      extractIconValue(entry.icon) ??
+      pickString(entry, ["emoji", "icon_emoji", "iconEmoji", "icon_value", "iconValue", "icon_url", "iconUrl"]) ??
       undefined;
     if (!icon) continue;
 
@@ -316,16 +430,19 @@ function normalizeSpecializationIndexMap(payload: unknown): Record<string, strin
 }
 
 function resolveSpecializationIcon(item: Record<string, unknown>, icons: Record<string, string>): string | undefined {
-  const directIcon = pickString(item, [
-    "emoji",
-    "icon_emoji",
-    "iconEmoji",
-    "icon",
-    "icon_url",
-    "iconUrl",
-    "image_url",
-    "imageUrl",
-  ]);
+  const directIcon =
+    extractIconValue(item.icon) ??
+    pickString(item, [
+      "emoji",
+      "icon_emoji",
+      "iconEmoji",
+      "icon_value",
+      "iconValue",
+      "icon_url",
+      "iconUrl",
+      "image_url",
+      "imageUrl",
+    ]);
   if (directIcon) return directIcon;
 
   const id = pickString(item, ["id", "specialization_id", "specializationId"]);
@@ -344,43 +461,34 @@ function normalizeTrendingPost(item: unknown): TrendingPost | null {
   const id = pickString(post, ["id", "post_id", "postId"]);
   if (!id) return null;
 
-  const isAnonymous =
-    pickBoolean(post, ["author_is_anonymous", "authorIsAnonymous", "is_anonymous", "isAnonymous"]) ?? false;
-
-  const firstName = pickString(post, ["author_first_name", "authorFirstName"]);
-  const lastName = pickString(post, ["author_last_name", "authorLastName"]);
-  const fullName = [normalizedOptional(firstName), normalizedOptional(lastName)]
-    .filter((value): value is string => Boolean(value))
-    .join(" ")
-    .trim();
-
-  const authorName = isAnonymous
-    ? "Anonymous"
-    : fullName ||
-      pickString(post, ["author_display_name", "authorDisplayName", "author_name", "authorName", "author_handle", "authorHandle"]) ||
-      "User";
-
   const content = pickString(post, ["content", "text", "body", "message"]) ?? "";
+  const fallbackTitle = normalizedOptional(content.slice(0, 90));
+  const title = normalizedOptional(pickString(post, ["title", "headline", "name"])) ?? fallbackTitle ?? "Trending post";
   const communityLabel =
-    pickString(post, ["community_short_name", "communityShortName", "community_name", "communityName"]) ?? undefined;
+    normalizedOptional(
+      pickString(post, ["community_short_name", "communityShortName", "community_name", "communityName"])
+    ) ?? "Trending";
   const timeLabel = formatTimeAgo(post.created_at ?? post.createdAt ?? post.timestamp ?? post.time);
+  const subtitle = `${communityLabel} · ${timeLabel}`;
+  const imageUrl = normalizedOptional(
+    pickString(post, ["cdn_url", "cdnUrl", "media_url", "mediaUrl", "image_url", "imageUrl"])
+  );
 
-  return { id, authorName, content, communityLabel, timeLabel };
+  return { id, title, subtitle, content, imageUrl };
+}
+
+function normalizeCommunityKind(item: unknown): string | undefined {
+  if (!isRecord(item)) return undefined;
+  return normalizedOptional(pickString(item, ["kind", "community_kind", "communityKind", "type"]));
 }
 
 function normalizeCommunityCard(item: unknown): CommunityCard | null {
   if (!isRecord(item)) return null;
   const id = pickString(item, ["id", "community_id", "communityId", "loop_id", "loopId"]);
   const label =
-    pickString(item, ["short_name", "shortName", "name", "display_name", "displayName", "title"]) ??
+    pickString(item, ["name", "display_name", "displayName", "title", "short_name", "shortName"]) ??
     pickString(item, ["handle", "username"]);
   if (!id || !label) return null;
-
-  const subtitle =
-    pickString(item, ["name", "display_name", "displayName"]) &&
-    pickString(item, ["short_name", "shortName"])
-      ? pickString(item, ["name", "display_name", "displayName"])
-      : undefined;
 
   const membersLabel = formatMembersLabel(
     item.member_count ??
@@ -391,23 +499,22 @@ function normalizeCommunityCard(item: unknown): CommunityCard | null {
       item.followers_count
   );
 
-  const icon = pickString(item, [
-    "emoji",
-    "icon_emoji",
-    "iconEmoji",
-    "icon",
-    "icon_url",
-    "iconUrl",
-    "image_url",
-    "imageUrl",
-  ]);
+  const icon =
+    extractIconValue(item.icon) ??
+    pickString(item, ["emoji", "icon_emoji", "iconEmoji", "icon_value", "iconValue", "icon_url", "iconUrl"]);
+  const imageUrl = pickString(item, ["image_url", "imageUrl"]);
+  const description = normalizedOptional(pickString(item, ["description", "bio", "summary"]));
+  const shortName = normalizedOptional(pickString(item, ["short_name", "shortName"]));
+  const subtitle = shortName && shortName !== label ? shortName : undefined;
 
   return {
     id,
     label,
-    subtitle: subtitle ?? undefined,
+    subtitle,
+    description,
     membersLabel,
     icon: icon ?? undefined,
+    imageUrl: imageUrl ?? undefined,
     kind: pickString(item, ["kind", "community_kind", "communityKind"]),
   };
 }
@@ -554,6 +661,18 @@ function normalizeRecentSearches(input: unknown): string[] {
   return unique;
 }
 
+function resolveLandingSectionOrder({
+  followsCompany,
+  followsSchool,
+}: {
+  followsCompany: boolean;
+  followsSchool: boolean;
+}): LandingSectionId[] {
+  if (followsCompany && !followsSchool) return ["fields", "majors"];
+  if (followsSchool && !followsCompany) return ["majors", "fields"];
+  return ["majors", "fields"];
+}
+
 function SectionHeader({ title, subtitle }: { title: string; subtitle?: string }) {
   return (
     <div>
@@ -599,12 +718,15 @@ function SearchFilterPill({
   );
 }
 
-function IconBadge({ icon, label }: { icon?: string; label: string }) {
+function IconBadge({ icon, imageUrl, label }: { icon?: string; imageUrl?: string; label: string }) {
+  const image = normalizedOptional(imageUrl);
   const display = icon && icon.trim().length ? icon.trim() : initialsFromName(label).slice(0, 1);
   const isImageUrl = /^https?:\/\//i.test(display);
   return (
     <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-xl border border-border/40 bg-bg-muted text-xl">
-      {isImageUrl ? <img src={display} alt="" className="h-full w-full object-cover" loading="lazy" /> : <span>{display}</span>}
+      {image ? <img src={image} alt="" className="h-full w-full object-cover" loading="lazy" /> : null}
+      {!image && isImageUrl ? <img src={display} alt="" className="h-full w-full object-cover" loading="lazy" /> : null}
+      {!image && !isImageUrl ? <span>{display}</span> : null}
     </div>
   );
 }
@@ -623,6 +745,17 @@ export function AppSearchPage() {
   const [recommendedCommunities, setRecommendedCommunities] = useState<CommunityCard[]>([]);
   const [majorCards, setMajorCards] = useState<SpecializationCard[]>([]);
   const [fieldCards, setFieldCards] = useState<SpecializationCard[]>([]);
+  const [specializationIcons, setSpecializationIcons] = useState<Record<string, string>>({});
+  const [communitiesNextCursor, setCommunitiesNextCursor] = useState<string | null>(null);
+  const [majorsNextCursor, setMajorsNextCursor] = useState<string | null>(null);
+  const [fieldsNextCursor, setFieldsNextCursor] = useState<string | null>(null);
+  const [sectionOrder, setSectionOrder] = useState<LandingSectionId[]>(["majors", "fields"]);
+  const [isLoadingMoreCommunities, setIsLoadingMoreCommunities] = useState(false);
+  const [isLoadingMoreMajors, setIsLoadingMoreMajors] = useState(false);
+  const [isLoadingMoreFields, setIsLoadingMoreFields] = useState(false);
+  const [trendingPage, setTrendingPage] = useState(0);
+  const [majorPage, setMajorPage] = useState(0);
+  const [fieldPage, setFieldPage] = useState(0);
 
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
 
@@ -636,6 +769,10 @@ export function AppSearchPage() {
   });
 
   const requestRef = useRef(0);
+  const communitiesScrollerRef = useRef<HTMLDivElement | null>(null);
+  const lastCommunityCardRef = useRef<HTMLButtonElement | null>(null);
+  const majorPagerRef = useRef<HTMLDivElement | null>(null);
+  const fieldPagerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     try {
@@ -680,6 +817,15 @@ export function AppSearchPage() {
     persistRecentSearches([]);
   }, [persistRecentSearches]);
 
+  const majorPages = useMemo(
+    () => chunkByPage(majorCards, SPECIALIZATION_GRID_PAGE_SIZE),
+    [majorCards]
+  );
+  const fieldPages = useMemo(
+    () => chunkByPage(fieldCards, SPECIALIZATION_GRID_PAGE_SIZE),
+    [fieldCards]
+  );
+
   const loadLanding = useCallback(async () => {
     setLandingStatus("loading");
     setLandingError(null);
@@ -687,10 +833,10 @@ export function AppSearchPage() {
     try {
       const [trendingResponse, communitiesResponse, majorsBrowseResponse, fieldsBrowseResponse, majorsIndexResponse, fieldsIndexResponse] =
         await Promise.all([
-          fetchTrendingPosts({ limit: 3 }),
-          fetchRecommendedCommunities({ limit: 8 }),
-          fetchSpecializationsBrowse({ type: "major", limit: 24 }),
-          fetchSpecializationsBrowse({ type: "field", limit: 40 }),
+          fetchTrendingPosts({ limit: TRENDING_LIMIT }),
+          fetchRecommendedCommunities({ limit: RECOMMENDED_COMMUNITIES_LIMIT }),
+          fetchSpecializationsBrowse({ type: "major", limit: SPECIALIZATIONS_INITIAL_LIMIT }),
+          fetchSpecializationsBrowse({ type: "field", limit: SPECIALIZATIONS_INITIAL_LIMIT }),
           fetchMajorsIndex(),
           fetchFieldsIndex(),
         ]);
@@ -710,10 +856,49 @@ export function AppSearchPage() {
         .map((item) => normalizeSpecializationCard(item, combinedIcons))
         .filter((item): item is SpecializationCard => Boolean(item));
 
-      setTrendingPosts(nextTrending.slice(0, 3));
-      setRecommendedCommunities(nextCommunities.slice(0, 8));
-      setMajorCards(nextMajors.slice(0, 24));
-      setFieldCards(nextFields.slice(0, 40));
+      let followsCompany = false;
+      let followsSchool = false;
+
+      const scanFollowedKinds = (payload: unknown) => {
+        for (const entry of extractItemsArray(payload)) {
+          const normalizedKind = normalizeCommunityKind(entry)?.toLowerCase();
+          if (normalizedKind === "company") followsCompany = true;
+          if (normalizedKind === "school") followsSchool = true;
+          if (followsCompany && followsSchool) return;
+        }
+      };
+
+      try {
+        let followedResponse = await fetchFollowedCommunities({ limit: 100 });
+        scanFollowedKinds(followedResponse);
+        let followedCursor = extractNextCursor(followedResponse);
+        let pagesLoaded = 0;
+
+        while ((!followsCompany || !followsSchool) && followedCursor && pagesLoaded < 2) {
+          followedResponse = await fetchFollowedCommunities({ limit: 100, cursor: followedCursor });
+          scanFollowedKinds(followedResponse);
+          followedCursor = extractNextCursor(followedResponse);
+          pagesLoaded += 1;
+        }
+      } catch {
+        // Keep default ordering when this auxiliary signal is unavailable.
+      }
+
+      setSpecializationIcons(combinedIcons);
+      setTrendingPosts(nextTrending.slice(0, TRENDING_LIMIT));
+      setRecommendedCommunities(nextCommunities);
+      setMajorCards(nextMajors);
+      setFieldCards(nextFields);
+      setCommunitiesNextCursor(extractNextCursor(communitiesResponse));
+      setMajorsNextCursor(extractNextCursor(majorsBrowseResponse));
+      setFieldsNextCursor(extractNextCursor(fieldsBrowseResponse));
+      setSectionOrder(resolveLandingSectionOrder({ followsCompany, followsSchool }));
+      setIsLoadingMoreCommunities(false);
+      setIsLoadingMoreMajors(false);
+      setIsLoadingMoreFields(false);
+      setTrendingPage(0);
+      setMajorPage(0);
+      setFieldPage(0);
       setLandingStatus("ready");
     } catch (error) {
       setLandingError(parseApiErrorMessage(error));
@@ -724,6 +909,180 @@ export function AppSearchPage() {
   useEffect(() => {
     void loadLanding();
   }, [loadLanding]);
+
+  const loadMoreCommunities = useCallback(async () => {
+    if (landingStatus !== "ready" || !communitiesNextCursor || isLoadingMoreCommunities) return;
+
+    setIsLoadingMoreCommunities(true);
+    try {
+      const response = await fetchRecommendedCommunities({
+        limit: RECOMMENDED_COMMUNITIES_LIMIT,
+        cursor: communitiesNextCursor,
+      });
+      const nextItems = extractItemsArray(response)
+        .map(normalizeCommunityCard)
+        .filter((item): item is CommunityCard => Boolean(item));
+      setRecommendedCommunities((current) => mergeUniqueById(current, nextItems));
+      setCommunitiesNextCursor(extractNextCursor(response));
+    } catch {
+      // Keep current data and allow retry when the card re-enters view.
+    } finally {
+      setIsLoadingMoreCommunities(false);
+    }
+  }, [communitiesNextCursor, isLoadingMoreCommunities, landingStatus]);
+
+  const loadMoreMajors = useCallback(async () => {
+    if (landingStatus !== "ready" || !majorsNextCursor || isLoadingMoreMajors) return;
+
+    setIsLoadingMoreMajors(true);
+    try {
+      const response = await fetchSpecializationsBrowse({
+        type: "major",
+        limit: SPECIALIZATIONS_LOAD_MORE_LIMIT,
+        cursor: majorsNextCursor,
+      });
+      const nextItems = extractItemsArray(response)
+        .map((item) => normalizeSpecializationCard(item, specializationIcons))
+        .filter((item): item is SpecializationCard => Boolean(item));
+      setMajorCards((current) => mergeUniqueById(current, nextItems));
+      setMajorsNextCursor(extractNextCursor(response));
+    } catch {
+      // Keep current data and retry later.
+    } finally {
+      setIsLoadingMoreMajors(false);
+    }
+  }, [isLoadingMoreMajors, landingStatus, majorsNextCursor, specializationIcons]);
+
+  const loadMoreFields = useCallback(async () => {
+    if (landingStatus !== "ready" || !fieldsNextCursor || isLoadingMoreFields) return;
+
+    setIsLoadingMoreFields(true);
+    try {
+      const response = await fetchSpecializationsBrowse({
+        type: "field",
+        limit: SPECIALIZATIONS_LOAD_MORE_LIMIT,
+        cursor: fieldsNextCursor,
+      });
+      const nextItems = extractItemsArray(response)
+        .map((item) => normalizeSpecializationCard(item, specializationIcons))
+        .filter((item): item is SpecializationCard => Boolean(item));
+      setFieldCards((current) => mergeUniqueById(current, nextItems));
+      setFieldsNextCursor(extractNextCursor(response));
+    } catch {
+      // Keep current data and retry later.
+    } finally {
+      setIsLoadingMoreFields(false);
+    }
+  }, [fieldsNextCursor, isLoadingMoreFields, landingStatus, specializationIcons]);
+
+  useEffect(() => {
+    const root = communitiesScrollerRef.current;
+    const target = lastCommunityCardRef.current;
+    if (!root || !target || !communitiesNextCursor) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((entry) => entry.isIntersecting)) return;
+        void loadMoreCommunities();
+      },
+      {
+        root,
+        threshold: 0.85,
+      }
+    );
+
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [communitiesNextCursor, loadMoreCommunities, recommendedCommunities.length]);
+
+  useEffect(() => {
+    setTrendingPage((current) => Math.min(current, Math.max(trendingPosts.length - 1, 0)));
+  }, [trendingPosts.length]);
+
+  useEffect(() => {
+    setMajorPage((current) => Math.min(current, Math.max(majorPages.length - 1, 0)));
+  }, [majorPages.length]);
+
+  useEffect(() => {
+    setFieldPage((current) => Math.min(current, Math.max(fieldPages.length - 1, 0)));
+  }, [fieldPages.length]);
+
+  const handleTrendingScroll = useCallback(
+    (event: SyntheticEvent<HTMLDivElement>) => {
+      const container = event.currentTarget;
+      const pageWidth = container.clientWidth || 1;
+      const nextPage = Math.max(0, Math.min(Math.round(container.scrollLeft / pageWidth), trendingPosts.length - 1));
+      setTrendingPage(nextPage);
+    },
+    [trendingPosts.length]
+  );
+
+  const handleMajorsPagerScroll = useCallback(
+    (event: SyntheticEvent<HTMLDivElement>) => {
+      const container = event.currentTarget;
+      const pageWidth = container.clientWidth || 1;
+      const nextPage = Math.max(0, Math.min(Math.round(container.scrollLeft / pageWidth), majorPages.length - 1));
+      setMajorPage(nextPage);
+      if (nextPage >= majorPages.length - 1) {
+        void loadMoreMajors();
+      }
+    },
+    [loadMoreMajors, majorPages.length]
+  );
+
+  const handleFieldsPagerScroll = useCallback(
+    (event: SyntheticEvent<HTMLDivElement>) => {
+      const container = event.currentTarget;
+      const pageWidth = container.clientWidth || 1;
+      const nextPage = Math.max(0, Math.min(Math.round(container.scrollLeft / pageWidth), fieldPages.length - 1));
+      setFieldPage(nextPage);
+      if (nextPage >= fieldPages.length - 1) {
+        void loadMoreFields();
+      }
+    },
+    [fieldPages.length, loadMoreFields]
+  );
+
+  const scrollPagerToPage = useCallback((container: HTMLDivElement | null, page: number) => {
+    if (!container) return;
+    const clamped = Math.max(page, 0);
+    container.scrollTo({
+      left: clamped * container.clientWidth,
+      behavior: "smooth",
+    });
+  }, []);
+
+  const handleMajorsPrev = useCallback(() => {
+    if (majorPage <= 0) return;
+    scrollPagerToPage(majorPagerRef.current, majorPage - 1);
+  }, [majorPage, scrollPagerToPage]);
+
+  const handleMajorsNext = useCallback(() => {
+    const lastPage = Math.max(majorPages.length - 1, 0);
+    if (majorPage < lastPage) {
+      scrollPagerToPage(majorPagerRef.current, majorPage + 1);
+      return;
+    }
+    if (majorsNextCursor) {
+      void loadMoreMajors();
+    }
+  }, [loadMoreMajors, majorPage, majorPages.length, majorsNextCursor, scrollPagerToPage]);
+
+  const handleFieldsPrev = useCallback(() => {
+    if (fieldPage <= 0) return;
+    scrollPagerToPage(fieldPagerRef.current, fieldPage - 1);
+  }, [fieldPage, scrollPagerToPage]);
+
+  const handleFieldsNext = useCallback(() => {
+    const lastPage = Math.max(fieldPages.length - 1, 0);
+    if (fieldPage < lastPage) {
+      scrollPagerToPage(fieldPagerRef.current, fieldPage + 1);
+      return;
+    }
+    if (fieldsNextCursor) {
+      void loadMoreFields();
+    }
+  }, [fieldPage, fieldPages.length, fieldsNextCursor, loadMoreFields, scrollPagerToPage]);
 
   useEffect(() => {
     if (!isResultsOpen) return;
@@ -787,8 +1146,10 @@ export function AppSearchPage() {
                     id: item.id,
                     label: item.label,
                     subtitle: item.subtitle,
+                    description: item.description,
                     membersLabel: item.membersLabel,
                     icon: item.icon,
+                    imageUrl: item.imageUrl,
                     kind: item.kind,
                   }))
               : [];
@@ -847,8 +1208,10 @@ export function AppSearchPage() {
               id: item.id,
               label: item.label,
               subtitle: item.subtitle,
+              description: item.description,
               membersLabel: item.membersLabel,
               icon: item.icon,
+              imageUrl: item.imageUrl,
               kind: item.kind,
             }));
         }
@@ -882,6 +1245,61 @@ export function AppSearchPage() {
     );
   }, [searchResults]);
 
+  const landingSpecializationSections = useMemo(
+    () =>
+      sectionOrder.map((sectionId) => {
+        if (sectionId === "majors") {
+          return {
+            id: sectionId,
+            title: "Majors",
+            pages: majorPages,
+            currentPage: majorPage,
+            isLoadingMore: isLoadingMoreMajors,
+            hasMore: Boolean(majorsNextCursor),
+            onScroll: handleMajorsPagerScroll,
+            pagerRef: majorPagerRef,
+            onPrev: handleMajorsPrev,
+            onNext: handleMajorsNext,
+            canPrev: majorPage > 0,
+            canNext: majorPage < majorPages.length - 1 || (Boolean(majorsNextCursor) && !isLoadingMoreMajors),
+            dots: buildPagerDots(majorPages.length, majorPage, 5),
+          };
+        }
+        return {
+          id: sectionId,
+          title: "Fields",
+          pages: fieldPages,
+          currentPage: fieldPage,
+          isLoadingMore: isLoadingMoreFields,
+          hasMore: Boolean(fieldsNextCursor),
+          onScroll: handleFieldsPagerScroll,
+          pagerRef: fieldPagerRef,
+          onPrev: handleFieldsPrev,
+          onNext: handleFieldsNext,
+          canPrev: fieldPage > 0,
+          canNext: fieldPage < fieldPages.length - 1 || (Boolean(fieldsNextCursor) && !isLoadingMoreFields),
+          dots: buildPagerDots(fieldPages.length, fieldPage, 5),
+        };
+      }),
+    [
+      fieldPage,
+      fieldPages,
+      fieldsNextCursor,
+      handleFieldsNext,
+      handleFieldsPagerScroll,
+      handleFieldsPrev,
+      handleMajorsNext,
+      handleMajorsPagerScroll,
+      handleMajorsPrev,
+      isLoadingMoreFields,
+      isLoadingMoreMajors,
+      majorPage,
+      majorPages,
+      majorsNextCursor,
+      sectionOrder,
+    ]
+  );
+
   const handleOpenResults = useCallback(() => {
     setIsResultsOpen(true);
   }, []);
@@ -912,14 +1330,21 @@ export function AppSearchPage() {
     [navigate]
   );
 
+  const setCommunityLastCardRef = useCallback((node: HTMLButtonElement | null) => {
+    lastCommunityCardRef.current = node;
+  }, []);
+
   const handlePostTap = useCallback(
-    (post: TrendingPost | PostResult) => {
-      showToast({
-        title: "Post",
-        message: "Post detail from search is coming next.",
-      });
-      if ("authorId" in post && post.authorId) {
-        navigate(`/app/profile/${post.authorId}`);
+    async (post: TrendingPost | PostResult) => {
+      try {
+        await fetchPostDetail(post.id);
+        navigate(`/app/post/${post.id}/comments`);
+      } catch {
+        showToast({
+          kind: "error",
+          title: "Couldn’t open post",
+          message: "Couldn’t open post",
+        });
       }
     },
     [navigate, showToast]
@@ -932,16 +1357,19 @@ export function AppSearchPage() {
           <div className="mx-auto w-full max-w-[560px] space-y-8">
             <LandingSearchButton onClick={handleOpenResults} />
 
-            <section className="space-y-3">
+            <section className="space-y-4">
               <SectionHeader title="Trending Posts" />
 
               {landingStatus === "loading" ? (
                 <div className="space-y-3">
                   {Array.from({ length: 2 }, (_, index) => (
-                    <div key={`trending-skeleton-${index}`} className="animate-pulse rounded-2xl border border-border/60 bg-bg px-4 py-3">
-                      <div className="h-3 w-1/3 rounded-full bg-bg-muted" />
-                      <div className="mt-2 h-3 w-full rounded-full bg-bg-muted" />
-                      <div className="mt-2 h-3 w-2/3 rounded-full bg-bg-muted" />
+                    <div key={`trending-skeleton-${index}`} className="animate-pulse overflow-hidden rounded-3xl border border-border/60 bg-bg">
+                      <div className="h-40 w-full bg-bg-muted" />
+                      <div className="space-y-2 px-4 py-4">
+                        <div className="h-4 w-2/3 rounded-full bg-bg-muted" />
+                        <div className="h-3 w-1/2 rounded-full bg-bg-muted" />
+                        <div className="h-3 w-full rounded-full bg-bg-muted" />
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -963,21 +1391,47 @@ export function AppSearchPage() {
 
               {landingStatus === "ready" ? (
                 trendingPosts.length ? (
-                  <div className="divide-y divide-border/60 rounded-2xl border border-border/60 bg-bg">
-                    {trendingPosts.map((post) => (
-                      <button
-                        key={post.id}
-                        type="button"
-                        onClick={() => handlePostTap(post)}
-                        className="w-full px-4 py-3 text-left transition hover:bg-bg-muted/45"
-                      >
-                        <p className="text-sm font-semibold text-strong">{post.authorName}</p>
-                        <p className="mt-1 line-clamp-2 text-sm text-text-primary">{post.content}</p>
-                        <p className="mt-2 text-xs text-text-light">
-                          {post.communityLabel ? `Posted in ${post.communityLabel}` : "Trending now"} · {post.timeLabel}
-                        </p>
-                      </button>
-                    ))}
+                  <div className="space-y-3">
+                    <div
+                      onScroll={handleTrendingScroll}
+                      className="flex snap-x snap-mandatory gap-3 overflow-x-auto scroll-smooth pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                    >
+                      {trendingPosts.map((post) => (
+                        <button
+                          key={post.id}
+                          type="button"
+                          onClick={() => void handlePostTap(post)}
+                          className="w-full shrink-0 snap-start overflow-hidden rounded-3xl border border-border/60 bg-bg text-left transition hover:bg-bg-muted/20"
+                        >
+                          {post.imageUrl ? (
+                            <img src={post.imageUrl} alt="" className="h-44 w-full object-cover" loading="lazy" />
+                          ) : (
+                            <div className="flex h-44 w-full items-end bg-gradient-to-br from-brand/20 via-bg-muted to-bg px-4 pb-4">
+                              <p className="line-clamp-2 text-lg font-semibold text-strong">{post.title}</p>
+                            </div>
+                          )}
+                          <div className="space-y-1 px-4 py-4">
+                            <p className="line-clamp-1 text-base font-semibold text-strong">{post.title}</p>
+                            <p className="text-xs font-medium uppercase tracking-wide text-text-secondary">{post.subtitle}</p>
+                            {post.content ? <p className="line-clamp-2 text-sm text-text-primary">{post.content}</p> : null}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+
+                    {trendingPosts.length > 1 ? (
+                      <div className="flex items-center justify-center gap-1.5">
+                        {trendingPosts.map((post, index) => (
+                          <span
+                            key={`trending-dot-${post.id}`}
+                            className={`h-1.5 rounded-full transition-all ${
+                              index === trendingPage ? "w-5 bg-brand" : "w-1.5 bg-border"
+                            }`}
+                            aria-hidden="true"
+                          />
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
                 ) : (
                   <p className="text-sm text-text-secondary">No trending posts yet.</p>
@@ -985,25 +1439,38 @@ export function AppSearchPage() {
               ) : null}
             </section>
 
-            <section className="space-y-3">
+            <section className="space-y-4">
               <SectionHeader title="Communities" subtitle="Recommended communities for you" />
               {landingStatus === "ready" && recommendedCommunities.length > 0 ? (
-                <div className="flex snap-x gap-3 overflow-x-auto pb-1">
-                  {recommendedCommunities.map((community) => (
+                <div
+                  ref={communitiesScrollerRef}
+                  className="flex snap-x snap-mandatory gap-3 overflow-x-auto scroll-smooth pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                >
+                  {recommendedCommunities.map((community, index) => (
                     <button
                       key={community.id}
                       type="button"
+                      ref={index === recommendedCommunities.length - 1 ? setCommunityLastCardRef : undefined}
                       onClick={() => handleCommunityTap(community)}
-                      className="w-[128px] shrink-0 snap-start rounded-2xl border border-border/60 bg-bg px-3 py-3 text-center transition hover:bg-bg-muted/35"
+                      className="w-[216px] shrink-0 snap-start rounded-2xl border border-border/60 bg-bg px-3 py-3 text-left transition hover:bg-bg-muted/30"
                     >
-                      <div className="mx-auto flex w-fit justify-center">
-                        <IconBadge icon={community.icon} label={community.label} />
+                      <div className="flex items-center gap-3">
+                        <IconBadge icon={community.icon} imageUrl={community.imageUrl} label={community.label} />
+                        <div className="min-w-0">
+                          <p className="line-clamp-1 text-sm font-semibold text-strong">{community.label}</p>
+                          <p className="line-clamp-1 text-xs text-text-secondary">{community.subtitle ?? community.kind ?? ""}</p>
+                        </div>
                       </div>
-                      <p className="mt-2 line-clamp-1 text-[2rem] leading-[1.2] font-semibold text-strong sm:text-2xl">{community.label}</p>
-                      <p className="line-clamp-1 text-sm text-text-secondary">{community.subtitle ?? community.kind ?? ""}</p>
-                      <p className="mt-1 text-sm text-text-light">{community.membersLabel ?? "0 members"}</p>
+                      <p className="mt-3 text-xs font-medium text-text-light">{community.membersLabel ?? "0 members"}</p>
                     </button>
                   ))}
+                  {isLoadingMoreCommunities ? (
+                    <div className="w-[216px] shrink-0 animate-pulse rounded-2xl border border-border/60 bg-bg px-3 py-3">
+                      <div className="h-4 w-1/2 rounded-full bg-bg-muted" />
+                      <div className="mt-3 h-3 w-full rounded-full bg-bg-muted" />
+                      <div className="mt-2 h-3 w-2/3 rounded-full bg-bg-muted" />
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
               {landingStatus === "ready" && recommendedCommunities.length === 0 ? (
@@ -1011,51 +1478,97 @@ export function AppSearchPage() {
               ) : null}
             </section>
 
-            {majorCards.length > 0 ? (
-              <section className="space-y-3">
-                <SectionHeader title="Majors" />
-                <div className="grid grid-cols-4 gap-x-3 gap-y-4 sm:grid-cols-5">
-                  {majorCards.map((major) => (
-                    <button
-                      key={major.id}
-                      type="button"
-                      onClick={() => handleCommunityTap({ id: major.id, label: major.label })}
-                      className="text-center"
-                    >
-                      <div className="mx-auto flex w-fit justify-center">
-                        <IconBadge icon={major.icon} label={major.label} />
-                      </div>
-                      <p className="mt-2 line-clamp-1 text-sm font-semibold text-strong">{major.label}</p>
-                      <p className="text-sm text-text-light">{major.membersLabel ?? "0 members"}</p>
-                    </button>
-                  ))}
+            {landingSpecializationSections.map((section) => (
+              <section key={section.id} className="space-y-4">
+                <div className="flex items-center justify-between gap-3">
+                  <SectionHeader title={section.title} />
+                  {section.pages.length > 1 || section.hasMore ? (
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={section.onPrev}
+                        disabled={!section.canPrev}
+                        className={`inline-flex h-11 w-11 items-center justify-center transition ${
+                          section.canPrev
+                            ? "text-strong hover:text-brand"
+                            : "text-text-light/70"
+                        }`}
+                        aria-label={`Previous ${section.title.toLowerCase()} page`}
+                      >
+                        <ChevronLeftIcon className="h-7 w-7" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={section.onNext}
+                        disabled={!section.canNext}
+                        className={`inline-flex h-11 w-11 items-center justify-center transition ${
+                          section.canNext
+                            ? "text-strong hover:text-brand"
+                            : "text-text-light/70"
+                        }`}
+                        aria-label={`Next ${section.title.toLowerCase()} page`}
+                      >
+                        <ChevronRightIcon className="h-7 w-7" />
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
+                {section.pages.length ? (
+                  <>
+                    <div
+                      ref={section.pagerRef}
+                      onScroll={section.onScroll}
+                      className="flex snap-x snap-mandatory overflow-x-auto scroll-smooth pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                    >
+                      {section.pages.map((page, pageIndex) => (
+                        <div key={`${section.id}-page-${pageIndex}`} className="w-full shrink-0 snap-start">
+                          <div className="grid grid-cols-4 gap-x-3 gap-y-4">
+                            {page.map((card) => (
+                              <button
+                                key={card.id}
+                                type="button"
+                                onClick={() => handleCommunityTap({ id: card.id, label: card.label })}
+                                className="text-center"
+                              >
+                                <div className="mx-auto flex w-fit justify-center">
+                                  <IconBadge icon={card.icon} label={card.label} />
+                                </div>
+                                <p className="mt-2 line-clamp-1 text-sm font-semibold text-strong">{card.label}</p>
+                                <p className="text-xs text-text-light">{card.membersLabel ?? "0 members"}</p>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    {section.pages.length > 1 ? (
+                      <div className="flex items-center justify-center gap-1.5">
+                        {section.dots.map((dot) => (
+                          <span
+                            key={`${section.id}-dot-${dot.key}`}
+                            className={`h-1.5 rounded-full transition-all ${
+                              dot.emphasis === "active"
+                                ? "w-5 bg-brand"
+                                : dot.emphasis === "near"
+                                  ? "h-2 w-2 bg-border"
+                                  : dot.emphasis === "edge"
+                                    ? "h-1 w-1 bg-border/70"
+                                    : dot.emphasis === "placeholder"
+                                      ? "w-1.5 bg-border/45"
+                                      : "w-1.5 bg-border/80"
+                            }`}
+                            aria-hidden="true"
+                          />
+                        ))}
+                      </div>
+                    ) : null}
+                    {section.isLoadingMore ? <p className="text-center text-xs text-text-light">Loading more...</p> : null}
+                  </>
+                ) : (
+                  <p className="text-sm text-text-secondary">No {section.title.toLowerCase()} yet.</p>
+                )}
               </section>
-            ) : null}
-
-            <section className="space-y-3">
-              <SectionHeader title="Fields" />
-              {fieldCards.length ? (
-                <div className="grid grid-cols-4 gap-x-3 gap-y-4 sm:grid-cols-5">
-                  {fieldCards.map((field) => (
-                    <button
-                      key={field.id}
-                      type="button"
-                      onClick={() => handleCommunityTap({ id: field.id, label: field.label })}
-                      className="text-center"
-                    >
-                      <div className="mx-auto flex w-fit justify-center">
-                        <IconBadge icon={field.icon} label={field.label} />
-                      </div>
-                      <p className="mt-2 line-clamp-1 text-sm font-semibold text-strong">{field.label}</p>
-                      <p className="text-sm text-text-light">{field.membersLabel ?? "0 members"}</p>
-                    </button>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-sm text-text-secondary">No fields yet.</p>
-              )}
-            </section>
+            ))}
           </div>
         ) : (
           <div className="mx-auto w-full max-w-[560px]">
@@ -1216,7 +1729,7 @@ export function AppSearchPage() {
                             }}
                             className="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-bg-muted/35"
                           >
-                            <IconBadge icon={community.icon} label={community.label} />
+                            <IconBadge icon={community.icon} imageUrl={community.imageUrl} label={community.label} />
                             <div className="min-w-0">
                               <p className="truncate text-sm font-semibold text-strong">{community.label}</p>
                               <p className="truncate text-xs text-text-secondary">
@@ -1264,7 +1777,7 @@ export function AppSearchPage() {
                             type="button"
                             onClick={() => {
                               saveRecentSearch(query.trim());
-                              handlePostTap(post);
+                              void handlePostTap(post);
                             }}
                             className="w-full px-4 py-3 text-left transition hover:bg-bg-muted/35"
                           >
