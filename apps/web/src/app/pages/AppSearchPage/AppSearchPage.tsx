@@ -3,8 +3,12 @@ import { useNavigate } from "react-router";
 
 import { AppLayout } from "@/app/components/AppLayout/AppLayout";
 import { useToast } from "@/app/components/AppToast/AppToast";
+import { PostCard, type PostData } from "@/app/components/PostCard/PostCard";
 import { fetchPostDetail } from "@/lib/commentsApi";
 import { fetchFollowedCommunities } from "@/lib/feedApi";
+import { extractMediaAssetIds } from "@/lib/postMediaIds";
+import { normalizePostPoll } from "@/lib/postPoll";
+import { fetchHashtagPosts } from "@/lib/postReadApi";
 import {
   SearchApiError,
   fetchFieldsIndex,
@@ -32,6 +36,8 @@ type SearchFilterId =
 type SearchStatus = "idle" | "loading" | "ready" | "error";
 type LandingStatus = "loading" | "ready" | "error";
 type LandingSectionId = "majors" | "fields";
+type SearchResultsMode = "results" | "post-search-feed" | "hashtag-feed";
+type SearchFeedStatus = "idle" | "loading" | "loading-more" | "ready" | "error";
 
 type TrendingPost = {
   id: string;
@@ -222,6 +228,14 @@ function pickString(source: Record<string, unknown>, keys: string[]): string | u
 function pickBoolean(source: Record<string, unknown>, keys: string[]): boolean | undefined {
   for (const key of keys) {
     const value = getBoolean(source[key]);
+    if (value !== undefined) return value;
+  }
+  return undefined;
+}
+
+function pickNumber(source: Record<string, unknown>, keys: string[]): number | undefined {
+  for (const key of keys) {
+    const value = getNumber(source[key]);
     if (value !== undefined) return value;
   }
   return undefined;
@@ -632,6 +646,174 @@ function normalizePostResult(item: unknown): PostResult | null {
   };
 }
 
+function normalizePostResults(payload: unknown): PostResult[] {
+  return extractItemsArray(payload).map(normalizePostResult).filter((item): item is PostResult => Boolean(item));
+}
+
+function capitalize(value: string): string {
+  if (!value) return "";
+  return `${value.slice(0, 1).toUpperCase()}${value.slice(1)}`;
+}
+
+function preferredName({
+  name,
+  shortName,
+  preferShortNames = true,
+}: {
+  name?: string;
+  shortName?: string;
+  preferShortNames?: boolean;
+}): string | undefined {
+  const normalizedName = normalizedOptional(name);
+  const normalizedShort = normalizedOptional(shortName);
+  if (preferShortNames && normalizedShort) return normalizedShort;
+  return normalizedName ?? normalizedShort;
+}
+
+function displayCommunityPreferredName(value: unknown): string | undefined {
+  if (!isRecord(value)) return undefined;
+  return preferredName({
+    name: pickString(value, ["name"]),
+    shortName: pickString(value, ["short_name", "shortName"]),
+    preferShortNames: true,
+  });
+}
+
+function normalizeFeedPost(item: unknown): PostData | null {
+  if (!isRecord(item)) return null;
+  const post = isRecord(item.post) ? item.post : item;
+
+  const id = pickString(post, ["id", "post_id", "postId"]);
+  if (!id) return null;
+
+  const isAnonymous =
+    pickBoolean(post, ["author_is_anonymous", "authorIsAnonymous", "is_anonymous", "isAnonymous", "is_anon", "isAnon"]) ??
+    pickBoolean(post, ["anon", "anonymous"]) ??
+    false;
+
+  const communityId = pickString(post, ["community_id", "communityId"]);
+  const postedCommunityName = preferredName({
+    name: pickString(post, ["community_name", "communityName"]),
+    shortName: pickString(post, ["community_short_name", "communityShortName"]),
+    preferShortNames: true,
+  });
+  const communityKind = pickString(post, ["community_kind", "communityKind"]);
+
+  const displaySpecializationName = displayCommunityPreferredName(
+    post.author_display_specialization ?? post.authorDisplaySpecialization
+  );
+  const displayCommunityName = displayCommunityPreferredName(post.author_display_community ?? post.authorDisplayCommunity);
+
+  const subtitle = isAnonymous
+    ? ""
+    : displayCommunityName
+      ? `${displaySpecializationName ?? "Member"} @ ${displayCommunityName}`
+      : displaySpecializationName ?? "";
+
+  const firstName = pickString(post, ["author_first_name", "authorFirstName"]);
+  const lastName = pickString(post, ["author_last_name", "authorLastName"]);
+  const fullName = [normalizedOptional(firstName), normalizedOptional(lastName)]
+    .filter((value): value is string => Boolean(value))
+    .join(" ")
+    .trim();
+  const authorName = isAnonymous
+    ? "Anonymous"
+    : fullName ||
+      pickString(post, ["author_display_name", "authorDisplayName", "author_name", "authorName", "author_handle", "authorHandle"]) ||
+      "User";
+
+  const authorId = pickString(post, ["author_id", "authorId"]);
+  const anonProfileId =
+    pickString(post, ["anon_profile_id", "anonProfileId", "author_anon_profile_id", "authorAnonProfileId"]) ??
+    (() => {
+      const anonProfile =
+        (isRecord(post.anon_profile) ? post.anon_profile : null) ??
+        (isRecord(post.anonProfile) ? post.anonProfile : null) ??
+        (isRecord(post.author_anon_profile) ? post.author_anon_profile : null) ??
+        (isRecord(post.authorAnonProfile) ? post.authorAnonProfile : null);
+      if (!anonProfile) return undefined;
+      return pickString(anonProfile, ["id", "anon_profile_id", "anonProfileId"]);
+    })();
+
+  const context = postedCommunityName
+    ? `Posted in ${postedCommunityName}`
+    : communityKind
+      ? `Posted in ${capitalize(communityKind)}`
+      : "";
+
+  const content = pickString(post, ["content", "text", "body", "message"]) ?? "";
+  const time =
+    pickString(post, ["time_ago", "timeAgo", "created_at_human", "createdAtHuman"]) ??
+    formatTimeAgo(post.created_at ?? post.createdAt ?? post.timestamp ?? post.time);
+
+  const statsRecord =
+    (isRecord(post.stats) ? post.stats : null) ??
+    (isRecord(post.counts) ? post.counts : null) ??
+    (isRecord(post.engagement) ? post.engagement : null) ??
+    null;
+
+  const likes =
+    pickNumber(post, ["like_count", "likes_count", "likes", "likeCount", "likesCount"]) ??
+    (statsRecord ? pickNumber(statsRecord, ["like_count", "likes_count", "likes", "likeCount", "likesCount"]) : undefined) ??
+    0;
+  const comments =
+    pickNumber(post, ["comment_count", "comments_count", "comments", "commentCount", "commentsCount"]) ??
+    (statsRecord ? pickNumber(statsRecord, ["comment_count", "comments_count", "comments", "commentCount", "commentsCount"]) : undefined) ??
+    0;
+  const reposts =
+    pickNumber(post, ["repost_count", "reposts_count", "reposts", "repostCount", "repostsCount"]) ??
+    (statsRecord ? pickNumber(statsRecord, ["repost_count", "reposts_count", "reposts", "repostCount", "repostsCount"]) : undefined) ??
+    0;
+  const shares =
+    pickNumber(post, ["share_count", "shareCount", "shares_count", "sharesCount"]) ??
+    (statsRecord ? pickNumber(statsRecord, ["share_count", "shareCount", "shares_count", "sharesCount"]) : undefined) ??
+    0;
+  const saves =
+    pickNumber(post, ["save_count", "saves_count", "saves", "saveCount", "savesCount"]) ??
+    (statsRecord ? pickNumber(statsRecord, ["save_count", "saves_count", "saves", "saveCount", "savesCount"]) : undefined) ??
+    0;
+
+  const viewerLiked = pickBoolean(post, ["user_liked", "userLiked"]) ?? false;
+  const viewerSaved = pickBoolean(post, ["is_saved", "isSaved"]) ?? false;
+  const viewerHasReposted = pickBoolean(post, ["viewer_has_reposted", "viewerHasReposted"]) ?? false;
+  const authorProfileImageUrl = pickString(post, ["author_profile_image_url", "authorProfileImageUrl"]);
+
+  return {
+    id,
+    communityId,
+    author: authorName,
+    subtitle,
+    context,
+    content,
+    time,
+    authorProfileImageUrl: authorProfileImageUrl ?? undefined,
+    authorProfileHref: isAnonymous
+      ? anonProfileId
+        ? `/app/profile/anon/${anonProfileId}`
+        : "/app/profile/anonymous"
+      : authorId
+        ? `/app/profile/${authorId}`
+        : undefined,
+    viewerLiked,
+    viewerSaved,
+    viewerHasReposted,
+    poll: normalizePostPoll(post),
+    mediaAssetIds: extractMediaAssetIds(post),
+    stats: {
+      likes,
+      comments,
+      reposts,
+      shares,
+      saves,
+    },
+    isAnonymous,
+  };
+}
+
+function normalizeFeedPosts(payload: unknown): PostData[] {
+  return extractItemsArray(payload).map(normalizeFeedPost).filter((item): item is PostData => Boolean(item));
+}
+
 function normalizeHashtagResult(item: unknown): HashtagResult | null {
   if (!isRecord(item)) return null;
   const name = pickString(item, ["name", "tag", "hashtag"]);
@@ -767,8 +949,17 @@ export function AppSearchPage() {
     communities: [],
     hashtags: [],
   });
+  const [resultsMode, setResultsMode] = useState<SearchResultsMode>("results");
+  const [feedStatus, setFeedStatus] = useState<SearchFeedStatus>("idle");
+  const [feedError, setFeedError] = useState<string | null>(null);
+  const [feedPosts, setFeedPosts] = useState<PostData[]>([]);
+  const [feedNextCursor, setFeedNextCursor] = useState<string | null>(null);
+  const [feedQuery, setFeedQuery] = useState("");
+  const [feedHashtag, setFeedHashtag] = useState("");
 
   const requestRef = useRef(0);
+  const feedRequestRef = useRef(0);
+  const previousQueryRef = useRef(query);
   const communitiesScrollerRef = useRef<HTMLDivElement | null>(null);
   const lastCommunityCardRef = useRef<HTMLButtonElement | null>(null);
   const majorPagerRef = useRef<HTMLDivElement | null>(null);
@@ -1085,7 +1276,7 @@ export function AppSearchPage() {
   }, [fieldPage, fieldPages.length, fieldsNextCursor, loadMoreFields, scrollPagerToPage]);
 
   useEffect(() => {
-    if (!isResultsOpen) return;
+    if (!isResultsOpen || resultsMode !== "results") return;
     const trimmed = query.trim();
     if (!trimmed) {
       setSearchStatus("idle");
@@ -1096,145 +1287,153 @@ export function AppSearchPage() {
         communities: [],
         hashtags: [],
       });
+      previousQueryRef.current = query;
       return;
     }
+
+    const queryChanged = previousQueryRef.current !== query;
+    previousQueryRef.current = query;
 
     requestRef.current += 1;
     const requestId = requestRef.current;
     setSearchStatus("loading");
     setSearchError(null);
 
-    const timer = window.setTimeout(async () => {
-      const normalizedQuery = trimmed.startsWith("#") ? trimmed.slice(1).trim() : trimmed;
-      const hashtagOnly = trimmed.startsWith("#") && activeFilter === "all";
+    const timer = window.setTimeout(
+      async () => {
+        const normalizedQuery = trimmed.startsWith("#") ? trimmed.slice(1).trim() : trimmed;
+        const hashtagOnly = trimmed.startsWith("#") && activeFilter === "all";
 
-      const updateIfCurrent = (next: Partial<SearchResultsState>, status: SearchStatus, errorMessage: string | null) => {
-        if (requestRef.current !== requestId) return;
-        setSearchResults((previous) => ({ ...previous, ...next }));
-        setSearchStatus(status);
-        setSearchError(errorMessage);
-      };
+        const updateIfCurrent = (next: Partial<SearchResultsState>, status: SearchStatus, errorMessage: string | null) => {
+          if (requestRef.current !== requestId) return;
+          setSearchResults((previous) => ({ ...previous, ...next }));
+          setSearchStatus(status);
+          setSearchError(errorMessage);
+        };
 
-      try {
-        if (hashtagOnly) {
-          const hashtagResponse = await searchHashtags({ query: normalizedQuery, limit: 5 });
-          const hashtags = extractItemsArray(hashtagResponse)
-            .map(normalizeHashtagResult)
-            .filter((item): item is HashtagResult => Boolean(item));
-          updateIfCurrent({ users: [], posts: [], communities: [], hashtags }, "ready", null);
-          return;
-        }
-
-        if (activeFilter === "all") {
-          const [usersResult, communitiesResult, hashtagsResult, postsResult] = await Promise.allSettled([
-            searchUsers({ query: trimmed, limit: 20 }),
-            searchCommunities({ query: trimmed, limit: 20 }),
-            searchHashtags({ query: trimmed, limit: 5 }),
-            searchPosts({ query: trimmed, limit: 10 }),
-          ]);
-
-          const users =
-            usersResult.status === "fulfilled"
-              ? extractItemsArray(usersResult.value).map(normalizeUserResult).filter((item): item is UserResult => Boolean(item))
-              : [];
-          const communities =
-            communitiesResult.status === "fulfilled"
-              ? extractItemsArray(communitiesResult.value)
-                  .map(normalizeCommunityCard)
-                  .filter((item): item is CommunityCard => Boolean(item))
-                  .map((item) => ({
-                    id: item.id,
-                    label: item.label,
-                    subtitle: item.subtitle,
-                    description: item.description,
-                    membersLabel: item.membersLabel,
-                    icon: item.icon,
-                    imageUrl: item.imageUrl,
-                    kind: item.kind,
-                  }))
-              : [];
-          const hashtags =
-            hashtagsResult.status === "fulfilled"
-              ? extractItemsArray(hashtagsResult.value)
-                  .map(normalizeHashtagResult)
-                  .filter((item): item is HashtagResult => Boolean(item))
-              : [];
-          const posts =
-            postsResult.status === "fulfilled"
-              ? extractItemsArray(postsResult.value).map(normalizePostResult).filter((item): item is PostResult => Boolean(item))
-              : [];
-
-          const everythingEmpty = users.length === 0 && communities.length === 0 && hashtags.length === 0 && posts.length === 0;
-          const primaryFailed =
-            usersResult.status === "rejected" && communitiesResult.status === "rejected" && postsResult.status === "rejected";
-
-          if (everythingEmpty && primaryFailed) {
-            const message = parseApiErrorMessage(usersResult.status === "rejected" ? usersResult.reason : communitiesResult);
-            updateIfCurrent({ users, communities, hashtags, posts }, "error", message);
+        try {
+          if (hashtagOnly) {
+            const hashtagResponse = await searchHashtags({ query: normalizedQuery, limit: 5 });
+            const hashtags = extractItemsArray(hashtagResponse)
+              .map(normalizeHashtagResult)
+              .filter((item): item is HashtagResult => Boolean(item));
+            updateIfCurrent({ users: [], posts: [], communities: [], hashtags }, "ready", null);
             return;
           }
 
-          updateIfCurrent({ users, communities, hashtags, posts }, "ready", null);
-          return;
+          if (activeFilter === "all") {
+            const [usersResult, communitiesResult, hashtagsResult, postsResult] = await Promise.allSettled([
+              searchUsers({ query: trimmed, limit: 20 }),
+              searchCommunities({ query: trimmed, limit: 20 }),
+              searchHashtags({ query: trimmed, limit: 5 }),
+              searchPosts({ query: trimmed, limit: 10 }),
+            ]);
+
+            const users =
+              usersResult.status === "fulfilled"
+                ? extractItemsArray(usersResult.value).map(normalizeUserResult).filter((item): item is UserResult => Boolean(item))
+                : [];
+            const communities =
+              communitiesResult.status === "fulfilled"
+                ? extractItemsArray(communitiesResult.value)
+                    .map(normalizeCommunityCard)
+                    .filter((item): item is CommunityCard => Boolean(item))
+                    .map((item) => ({
+                      id: item.id,
+                      label: item.label,
+                      subtitle: item.subtitle,
+                      description: item.description,
+                      membersLabel: item.membersLabel,
+                      icon: item.icon,
+                      imageUrl: item.imageUrl,
+                      kind: item.kind,
+                    }))
+                : [];
+            const hashtags =
+              hashtagsResult.status === "fulfilled"
+                ? extractItemsArray(hashtagsResult.value)
+                    .map(normalizeHashtagResult)
+                    .filter((item): item is HashtagResult => Boolean(item))
+                : [];
+            const posts = postsResult.status === "fulfilled" ? normalizePostResults(postsResult.value) : [];
+
+            const everythingEmpty = users.length === 0 && communities.length === 0 && hashtags.length === 0 && posts.length === 0;
+            const coreFailed =
+              usersResult.status === "rejected" &&
+              communitiesResult.status === "rejected" &&
+              hashtagsResult.status === "rejected";
+
+            if (everythingEmpty && coreFailed) {
+              const firstCoreFailure = [usersResult, communitiesResult, hashtagsResult].find(
+                (result): result is PromiseRejectedResult => result.status === "rejected"
+              );
+              updateIfCurrent({ users, communities, hashtags, posts }, "error", parseApiErrorMessage(firstCoreFailure?.reason));
+              return;
+            }
+
+            updateIfCurrent({ users, communities, hashtags, posts }, "ready", null);
+            return;
+          }
+
+          let nextUsers: UserResult[] = [];
+          let nextPosts: PostResult[] = [];
+          let nextCommunities: CommunityResult[] = [];
+          const nextHashtags: HashtagResult[] = [];
+
+          if (activeFilter === "users") {
+            const response = await searchUsers({ query: trimmed, limit: 20 });
+            nextUsers = extractItemsArray(response).map(normalizeUserResult).filter((item): item is UserResult => Boolean(item));
+          } else if (activeFilter === "posts") {
+            const response = await searchPosts({ query: trimmed, limit: 20 });
+            nextPosts = normalizePostResults(response);
+          } else {
+            const kindByFilter: Partial<Record<SearchFilterId, CommunitySearchKind>> = {
+              companies: "company",
+              schools: "school",
+              majors: "major",
+              fields: "field",
+            };
+            const response = await searchCommunities({
+              query: trimmed,
+              kind: kindByFilter[activeFilter],
+              limit: 20,
+            });
+            nextCommunities = extractItemsArray(response)
+              .map(normalizeCommunityCard)
+              .filter((item): item is CommunityCard => Boolean(item))
+              .map((item) => ({
+                id: item.id,
+                label: item.label,
+                subtitle: item.subtitle,
+                description: item.description,
+                membersLabel: item.membersLabel,
+                icon: item.icon,
+                imageUrl: item.imageUrl,
+                kind: item.kind,
+              }));
+          }
+
+          updateIfCurrent(
+            {
+              users: nextUsers,
+              posts: nextPosts,
+              communities: nextCommunities,
+              hashtags: nextHashtags,
+            },
+            "ready",
+            null
+          );
+        } catch (error) {
+          updateIfCurrent({ users: [], posts: [], communities: [], hashtags: [] }, "error", parseApiErrorMessage(error));
         }
-
-        let nextUsers: UserResult[] = [];
-        let nextPosts: PostResult[] = [];
-        let nextCommunities: CommunityResult[] = [];
-        const nextHashtags: HashtagResult[] = [];
-
-        if (activeFilter === "users") {
-          const response = await searchUsers({ query: trimmed, limit: 20 });
-          nextUsers = extractItemsArray(response).map(normalizeUserResult).filter((item): item is UserResult => Boolean(item));
-        } else if (activeFilter === "posts") {
-          const response = await searchPosts({ query: trimmed, limit: 20 });
-          nextPosts = extractItemsArray(response).map(normalizePostResult).filter((item): item is PostResult => Boolean(item));
-        } else {
-          const kindByFilter: Partial<Record<SearchFilterId, CommunitySearchKind>> = {
-            companies: "company",
-            schools: "school",
-            majors: "major",
-            fields: "field",
-          };
-          const response = await searchCommunities({
-            query: trimmed,
-            kind: kindByFilter[activeFilter],
-            limit: 20,
-          });
-          nextCommunities = extractItemsArray(response)
-            .map(normalizeCommunityCard)
-            .filter((item): item is CommunityCard => Boolean(item))
-            .map((item) => ({
-              id: item.id,
-              label: item.label,
-              subtitle: item.subtitle,
-              description: item.description,
-              membersLabel: item.membersLabel,
-              icon: item.icon,
-              imageUrl: item.imageUrl,
-              kind: item.kind,
-            }));
-        }
-
-        updateIfCurrent(
-          {
-            users: nextUsers,
-            posts: nextPosts,
-            communities: nextCommunities,
-            hashtags: nextHashtags,
-          },
-          "ready",
-          null
-        );
-      } catch (error) {
-        updateIfCurrent({ users: [], posts: [], communities: [], hashtags: [] }, "error", parseApiErrorMessage(error));
-      }
-    }, SEARCH_DEBOUNCE_MS);
+      },
+      queryChanged ? SEARCH_DEBOUNCE_MS : 0
+    );
 
     return () => {
       window.clearTimeout(timer);
     };
-  }, [activeFilter, isResultsOpen, query]);
+  }, [activeFilter, isResultsOpen, query, resultsMode]);
 
   const hasAnyResults = useMemo(() => {
     return (
@@ -1300,21 +1499,138 @@ export function AppSearchPage() {
     ]
   );
 
+  const clearFeedState = useCallback(() => {
+    feedRequestRef.current += 1;
+    setResultsMode("results");
+    setFeedStatus("idle");
+    setFeedError(null);
+    setFeedPosts([]);
+    setFeedNextCursor(null);
+    setFeedQuery("");
+    setFeedHashtag("");
+  }, []);
+
+  const openPostSearchFeed = useCallback(async (value: string) => {
+    const trimmed = value.trim();
+    if (!trimmed) return;
+
+    const requestId = feedRequestRef.current + 1;
+    feedRequestRef.current = requestId;
+
+    setResultsMode("post-search-feed");
+    setFeedQuery(trimmed);
+    setFeedHashtag("");
+    setFeedStatus("loading");
+    setFeedError(null);
+    setFeedPosts([]);
+    setFeedNextCursor(null);
+
+    try {
+      const response = await searchPosts({ query: trimmed, limit: 20 });
+      if (feedRequestRef.current !== requestId) return;
+      setFeedPosts(normalizeFeedPosts(response));
+      setFeedNextCursor(extractNextCursor(response));
+      setFeedStatus("ready");
+    } catch (error) {
+      if (feedRequestRef.current !== requestId) return;
+      setFeedPosts([]);
+      setFeedNextCursor(null);
+      setFeedStatus("error");
+      setFeedError(parseApiErrorMessage(error));
+    }
+  }, []);
+
+  const openHashtagFeed = useCallback(async (value: string) => {
+    const normalized = value.trim().replace(/^#/, "").trim();
+    if (!normalized) return;
+
+    const requestId = feedRequestRef.current + 1;
+    feedRequestRef.current = requestId;
+
+    setResultsMode("hashtag-feed");
+    setFeedQuery("");
+    setFeedHashtag(normalized);
+    setFeedStatus("loading");
+    setFeedError(null);
+    setFeedPosts([]);
+    setFeedNextCursor(null);
+
+    try {
+      const response = await fetchHashtagPosts({ name: normalized, limit: 20 });
+      if (feedRequestRef.current !== requestId) return;
+      setFeedPosts(normalizeFeedPosts(response));
+      setFeedNextCursor(extractNextCursor(response));
+      setFeedStatus("ready");
+    } catch (error) {
+      if (feedRequestRef.current !== requestId) return;
+      setFeedPosts([]);
+      setFeedNextCursor(null);
+      setFeedStatus("error");
+      setFeedError(parseApiErrorMessage(error));
+    }
+  }, []);
+
+  const handleLoadMoreFeedPosts = useCallback(async () => {
+    if (!feedNextCursor || (resultsMode !== "post-search-feed" && resultsMode !== "hashtag-feed")) return;
+    if (feedStatus === "loading" || feedStatus === "loading-more") return;
+    if (resultsMode === "post-search-feed" && !feedQuery.trim()) return;
+    if (resultsMode === "hashtag-feed" && !feedHashtag.trim()) return;
+
+    const requestId = feedRequestRef.current + 1;
+    feedRequestRef.current = requestId;
+
+    setFeedStatus("loading-more");
+    setFeedError(null);
+
+    try {
+      const response =
+        resultsMode === "post-search-feed"
+          ? await searchPosts({ query: feedQuery.trim(), limit: 20, cursor: feedNextCursor })
+          : await fetchHashtagPosts({ name: feedHashtag.trim(), limit: 20, cursor: feedNextCursor });
+
+      if (feedRequestRef.current !== requestId) return;
+
+      setFeedPosts((current) => mergeUniqueById(current, normalizeFeedPosts(response)));
+      setFeedNextCursor(extractNextCursor(response));
+      setFeedStatus("ready");
+    } catch (error) {
+      if (feedRequestRef.current !== requestId) return;
+      setFeedStatus("ready");
+      setFeedError(parseApiErrorMessage(error));
+    }
+  }, [feedHashtag, feedNextCursor, feedQuery, feedStatus, resultsMode]);
+
+  const feedTitle = useMemo(() => {
+    if (resultsMode === "post-search-feed") return `Posts for "${feedQuery}"`;
+    if (resultsMode === "hashtag-feed") return `#${feedHashtag}`;
+    return "Search";
+  }, [feedHashtag, feedQuery, resultsMode]);
+
   const handleOpenResults = useCallback(() => {
     setIsResultsOpen(true);
+    setResultsMode("results");
   }, []);
 
   const handleCloseResults = useCallback(() => {
+    requestRef.current += 1;
     setIsResultsOpen(false);
     setSearchStatus("idle");
     setSearchError(null);
-  }, []);
+    clearFeedState();
+  }, [clearFeedState]);
 
   const handleSubmitQuery = useCallback(() => {
     const trimmed = query.trim();
     if (!trimmed) return;
     saveRecentSearch(trimmed);
-  }, [query, saveRecentSearch]);
+    if (trimmed.startsWith("#")) {
+      void openHashtagFeed(trimmed);
+      return;
+    }
+    if (activeFilter === "all" || activeFilter === "posts") {
+      void openPostSearchFeed(trimmed);
+    }
+  }, [activeFilter, openHashtagFeed, openPostSearchFeed, query, saveRecentSearch]);
 
   const handleTapFilter = useCallback(
     (filterId: SearchFilterId) => {
@@ -1573,225 +1889,313 @@ export function AppSearchPage() {
         ) : (
           <div className="mx-auto w-full max-w-[560px]">
             <div className="sticky top-0 z-10 -mx-4 border-b border-border/60 bg-bg px-4 pb-3 pt-1 sm:-mx-5 sm:px-5">
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handleCloseResults}
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-border/70 text-text-secondary transition hover:text-strong"
-                  aria-label="Back"
-                >
-                  <ChevronLeftIcon className="h-5 w-5" />
-                </button>
-                <div className="flex h-11 flex-1 items-center gap-2 rounded-xl bg-bg-muted px-3 text-text-secondary">
-                  <SearchIcon className="h-5 w-5" />
-                  <input
-                    value={query}
-                    onChange={(event) => setQuery(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") {
-                        event.preventDefault();
-                        handleSubmitQuery();
-                      }
-                    }}
-                    autoFocus
-                    type="search"
-                    placeholder="Search Looped"
-                    className="w-full bg-transparent text-base text-strong outline-none placeholder:text-text-light"
-                    aria-label="Search Looped"
-                  />
+              {resultsMode === "results" ? (
+                <>
+                  <div className="flex items-center gap-2">
+                    <div className="flex h-11 flex-1 items-center gap-2 rounded-xl bg-bg-muted px-3 text-text-secondary">
+                      <SearchIcon className="h-5 w-5" />
+                      <input
+                        value={query}
+                        onChange={(event) => setQuery(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.preventDefault();
+                            handleSubmitQuery();
+                          }
+                        }}
+                        autoFocus
+                        type="search"
+                        placeholder="Search Looped"
+                        className="w-full bg-transparent text-base text-strong outline-none placeholder:text-text-light"
+                        aria-label="Search Looped"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleCloseResults}
+                      className="px-1 text-sm font-semibold text-text-secondary transition hover:text-strong"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                  <div className="mt-3 flex gap-2 overflow-x-auto pb-0.5">
+                    {FILTERS.map((filter) => (
+                      <SearchFilterPill
+                        key={filter.id}
+                        label={filter.label}
+                        active={activeFilter === filter.id}
+                        onClick={() => handleTapFilter(filter.id)}
+                      />
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={clearFeedState}
+                    className="inline-flex h-11 w-11 items-center justify-center text-text-secondary transition hover:text-strong"
+                    aria-label="Back"
+                  >
+                    <ChevronLeftIcon className="h-7 w-7" />
+                  </button>
+                  <h2
+                    className={`min-w-0 flex-1 truncate font-semibold ${
+                      resultsMode === "hashtag-feed"
+                        ? "text-[1.75rem] leading-tight text-brand"
+                        : "text-base text-strong"
+                    }`}
+                  >
+                    {feedTitle}
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={handleCloseResults}
+                    className="px-1 text-sm font-semibold text-text-secondary transition hover:text-strong"
+                  >
+                    Cancel
+                  </button>
                 </div>
-              </div>
-              <div className="mt-3 flex gap-2 overflow-x-auto pb-0.5">
-                {FILTERS.map((filter) => (
-                  <SearchFilterPill
-                    key={filter.id}
-                    label={filter.label}
-                    active={activeFilter === filter.id}
-                    onClick={() => handleTapFilter(filter.id)}
-                  />
-                ))}
-              </div>
+              )}
             </div>
 
             <div className="space-y-4 pt-4">
-              {!query.trim() ? (
+              {resultsMode !== "results" ? (
                 <section className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <h2 className="text-base font-semibold text-strong">Recent searches</h2>
-                    {recentSearches.length ? (
+                  {feedStatus === "loading" ? (
+                    <div className="space-y-2">
+                      {Array.from({ length: 4 }, (_, index) => (
+                        <div key={`feed-skeleton-${index}`} className="animate-pulse rounded-2xl border border-border/60 bg-bg px-4 py-3">
+                          <div className="h-3 w-1/3 rounded-full bg-bg-muted" />
+                          <div className="mt-2 h-3 w-2/3 rounded-full bg-bg-muted" />
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+
+                  {feedStatus === "error" && feedPosts.length === 0 ? (
+                    <div className="space-y-2 rounded-2xl border border-border/70 bg-bg px-4 py-3">
+                      <p className="text-sm font-semibold text-strong">Unable to load posts right now.</p>
+                      <p className="text-sm text-text-secondary">{feedError}</p>
                       <button
                         type="button"
-                        onClick={clearRecentSearches}
-                        className="text-sm font-semibold text-brand transition hover:text-brand-hover"
+                        onClick={() => {
+                          if (resultsMode === "post-search-feed") {
+                            void openPostSearchFeed(feedQuery);
+                            return;
+                          }
+                          void openHashtagFeed(feedHashtag);
+                        }}
+                        className="rounded-full bg-brand px-3 py-1.5 text-xs font-semibold text-white"
                       >
-                        Clear
+                        Retry
                       </button>
-                    ) : null}
-                  </div>
-
-                  {recentSearches.length ? (
-                    <ul className="divide-y divide-border/60 rounded-2xl border border-border/60 bg-bg">
-                      {recentSearches.map((entry) => (
-                        <li key={entry} className="flex items-center justify-between gap-3 px-4 py-3">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setQuery(entry);
-                            }}
-                            className="flex-1 text-left text-sm text-text-primary transition hover:text-strong"
-                          >
-                            {entry}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => removeRecentSearch(entry)}
-                            className="text-xs font-semibold text-text-light transition hover:text-strong"
-                          >
-                            Remove
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="text-sm text-text-secondary">No recent searches.</p>
-                  )}
-                </section>
-              ) : null}
-
-              {query.trim() && searchStatus === "loading" ? (
-                <div className="space-y-2">
-                  {Array.from({ length: 4 }, (_, index) => (
-                    <div key={`search-skeleton-${index}`} className="animate-pulse rounded-2xl border border-border/60 bg-bg px-4 py-3">
-                      <div className="h-3 w-1/3 rounded-full bg-bg-muted" />
-                      <div className="mt-2 h-3 w-2/3 rounded-full bg-bg-muted" />
                     </div>
-                  ))}
-                </div>
-              ) : null}
+                  ) : null}
 
-              {query.trim() && searchStatus === "error" ? (
-                <div className="space-y-2 rounded-2xl border border-border/70 bg-bg px-4 py-3">
-                  <p className="text-sm font-semibold text-strong">Unable to search right now.</p>
-                  <p className="text-sm text-text-secondary">{searchError}</p>
-                </div>
-              ) : null}
+                  {feedStatus === "ready" && feedPosts.length === 0 ? <p className="text-sm text-text-secondary">No posts found.</p> : null}
 
-              {query.trim() && searchStatus === "ready" && !hasAnyResults ? (
-                <p className="text-sm text-text-secondary">No results found.</p>
-              ) : null}
-
-              {query.trim() && searchStatus === "ready" && hasAnyResults ? (
-                <div className="space-y-5">
-                  {searchResults.users.length > 0 ? (
-                    <section className="space-y-2">
-                      <h3 className="text-sm font-semibold text-strong">Users</h3>
-                      <div className="divide-y divide-border/60 rounded-2xl border border-border/60 bg-bg">
-                        {searchResults.users.map((user) => (
-                          <button
-                            key={user.id}
-                            type="button"
-                            onClick={() => {
-                              saveRecentSearch(query.trim());
-                              navigate(`/app/profile/${user.id}`);
-                            }}
-                            className="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-bg-muted/35"
-                          >
-                            <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-bg-muted text-sm font-semibold text-text-secondary">
-                              <img
-                                src={user.avatarUrl ?? DEFAULT_PROFILE_IMAGE_SRC}
-                                alt=""
-                                className="h-full w-full object-cover"
-                                loading="lazy"
-                                onError={handleProfileImageError}
-                              />
-                            </div>
-                            <div className="min-w-0">
-                              <p className="truncate text-sm font-semibold text-strong">{user.name}</p>
-                              {user.subtitle ? <p className="truncate text-xs text-text-secondary">{user.subtitle}</p> : null}
-                            </div>
-                          </button>
+                  {feedPosts.length > 0 ? (
+                    <div className="space-y-2">
+                      <div className="divide-y divide-border/70 bg-bg">
+                        {feedPosts.map((post) => (
+                          <PostCard key={post.id} post={post} />
                         ))}
                       </div>
+                      {feedError ? <p className="text-sm text-text-secondary">{feedError}</p> : null}
+                      {feedNextCursor ? (
+                        <button
+                          type="button"
+                          onClick={() => void handleLoadMoreFeedPosts()}
+                          disabled={feedStatus === "loading-more"}
+                          className="w-full rounded-full border border-border/70 bg-bg px-4 py-2 text-sm font-semibold text-text-secondary transition hover:text-strong disabled:opacity-60"
+                        >
+                          {feedStatus === "loading-more" ? "Loading…" : "Load more"}
+                        </button>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </section>
+              ) : (
+                <>
+                  {!query.trim() ? (
+                    <section className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <h2 className="text-base font-semibold text-strong">Recent searches</h2>
+                        {recentSearches.length ? (
+                          <button
+                            type="button"
+                            onClick={clearRecentSearches}
+                            className="text-sm font-semibold text-brand transition hover:text-brand-hover"
+                          >
+                            Clear
+                          </button>
+                        ) : null}
+                      </div>
+
+                      {recentSearches.length ? (
+                        <ul className="divide-y divide-border/70 bg-bg">
+                          {recentSearches.map((entry) => (
+                            <li key={entry} className="flex items-center justify-between gap-3 px-4 py-3">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setQuery(entry);
+                                }}
+                                className="flex-1 text-left text-sm text-text-primary transition hover:text-strong"
+                              >
+                                {entry}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => removeRecentSearch(entry)}
+                                className="text-xs font-semibold text-text-light transition hover:text-strong"
+                              >
+                                Remove
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="text-sm text-text-secondary">No recent searches.</p>
+                      )}
                     </section>
                   ) : null}
 
-                  {searchResults.communities.length > 0 ? (
-                    <section className="space-y-2">
-                      <h3 className="text-sm font-semibold text-strong">Communities</h3>
-                      <div className="divide-y divide-border/60 rounded-2xl border border-border/60 bg-bg">
-                        {searchResults.communities.map((community) => (
-                          <button
-                            key={community.id}
-                            type="button"
-                            onClick={() => {
-                              saveRecentSearch(query.trim());
-                              handleCommunityTap(community);
-                            }}
-                            className="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-bg-muted/35"
-                          >
-                            <IconBadge icon={community.icon} imageUrl={community.imageUrl} label={community.label} />
-                            <div className="min-w-0">
-                              <p className="truncate text-sm font-semibold text-strong">{community.label}</p>
-                              <p className="truncate text-xs text-text-secondary">
-                                {community.subtitle ?? community.kind ?? community.membersLabel ?? ""}
-                              </p>
-                            </div>
-                          </button>
-                        ))}
-                      </div>
-                    </section>
+                  {query.trim() && searchStatus === "loading" ? (
+                    <div className="space-y-2">
+                      {Array.from({ length: 4 }, (_, index) => (
+                        <div key={`search-skeleton-${index}`} className="animate-pulse rounded-2xl border border-border/60 bg-bg px-4 py-3">
+                          <div className="h-3 w-1/3 rounded-full bg-bg-muted" />
+                          <div className="mt-2 h-3 w-2/3 rounded-full bg-bg-muted" />
+                        </div>
+                      ))}
+                    </div>
                   ) : null}
 
-                  {searchResults.hashtags.length > 0 ? (
-                    <section className="space-y-2">
-                      <h3 className="text-sm font-semibold text-strong">Hashtags</h3>
-                      <div className="flex flex-wrap gap-2">
-                        {searchResults.hashtags.map((hashtag) => (
-                          <button
-                            key={hashtag.tag}
-                            type="button"
-                            onClick={() => {
-                              saveRecentSearch(`#${hashtag.tag}`);
-                              setQuery(`#${hashtag.tag}`);
-                              showToast({
-                                title: "Hashtag feed",
-                                message: "Full hashtag feed page is coming next.",
-                              });
-                            }}
-                            className="rounded-full border border-border/70 bg-bg px-3 py-1.5 text-sm font-semibold text-text-secondary transition hover:text-strong"
-                          >
-                            #{hashtag.tag}
-                          </button>
-                        ))}
-                      </div>
-                    </section>
+                  {query.trim() && searchStatus === "error" ? (
+                    <div className="space-y-2 rounded-2xl border border-border/70 bg-bg px-4 py-3">
+                      <p className="text-sm font-semibold text-strong">Unable to search right now.</p>
+                      <p className="text-sm text-text-secondary">{searchError}</p>
+                    </div>
                   ) : null}
 
-                  {searchResults.posts.length > 0 ? (
-                    <section className="space-y-2">
-                      <h3 className="text-sm font-semibold text-strong">Posts</h3>
-                      <div className="divide-y divide-border/60 rounded-2xl border border-border/60 bg-bg">
-                        {searchResults.posts.map((post) => (
-                          <button
-                            key={post.id}
-                            type="button"
-                            onClick={() => {
-                              saveRecentSearch(query.trim());
-                              void handlePostTap(post);
-                            }}
-                            className="w-full px-4 py-3 text-left transition hover:bg-bg-muted/35"
-                          >
-                            <p className="text-sm font-semibold text-strong">{post.authorName}</p>
-                            {post.subtitle ? <p className="mt-0.5 text-xs text-text-secondary">{post.subtitle}</p> : null}
-                            <p className="mt-2 line-clamp-2 text-sm text-text-primary">{post.content}</p>
-                            <p className="mt-2 text-xs text-text-light">{post.timeLabel}</p>
-                          </button>
-                        ))}
-                      </div>
-                    </section>
+                  {query.trim() && searchStatus === "ready" && !hasAnyResults ? (
+                    <p className="text-sm text-text-secondary">No results found.</p>
                   ) : null}
-                </div>
-              ) : null}
+
+                  {query.trim() && searchStatus === "ready" && hasAnyResults ? (
+                    <div className="space-y-5">
+                      {searchResults.hashtags.length > 0 ? (
+                        <section className="space-y-2">
+                          <h3 className="text-sm font-semibold text-strong">Hashtags</h3>
+                          <div className="flex flex-wrap gap-2">
+                            {searchResults.hashtags.map((hashtag) => (
+                              <button
+                                key={hashtag.tag}
+                                type="button"
+                                onClick={() => {
+                                  const hashtagQuery = `#${hashtag.tag}`;
+                                  saveRecentSearch(hashtagQuery);
+                                  setQuery(hashtagQuery);
+                                  void openHashtagFeed(hashtag.tag);
+                                }}
+                                className="rounded-full border border-border/70 bg-bg px-3 py-1.5 text-sm font-semibold text-text-secondary transition hover:text-strong"
+                              >
+                                #{hashtag.tag}
+                              </button>
+                            ))}
+                          </div>
+                        </section>
+                      ) : null}
+
+                      {searchResults.users.length > 0 ? (
+                        <section className="space-y-2">
+                          <h3 className="text-sm font-semibold text-strong">Users</h3>
+                          <div className="divide-y divide-border/70 bg-bg">
+                            {searchResults.users.map((user) => (
+                              <button
+                                key={user.id}
+                                type="button"
+                                onClick={() => {
+                                  saveRecentSearch(query.trim());
+                                  navigate(`/app/profile/${user.id}`);
+                                }}
+                                className="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-bg-muted/35"
+                              >
+                                <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-bg-muted text-sm font-semibold text-text-secondary">
+                                  <img
+                                    src={user.avatarUrl ?? DEFAULT_PROFILE_IMAGE_SRC}
+                                    alt=""
+                                    className="h-full w-full object-cover"
+                                    loading="lazy"
+                                    onError={handleProfileImageError}
+                                  />
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="truncate text-sm font-semibold text-strong">{user.name}</p>
+                                  {user.subtitle ? <p className="truncate text-xs text-text-secondary">{user.subtitle}</p> : null}
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        </section>
+                      ) : null}
+
+                      {searchResults.communities.length > 0 ? (
+                        <section className="space-y-2">
+                          <h3 className="text-sm font-semibold text-strong">Communities</h3>
+                          <div className="divide-y divide-border/70 bg-bg">
+                            {searchResults.communities.map((community) => (
+                              <button
+                                key={community.id}
+                                type="button"
+                                onClick={() => {
+                                  saveRecentSearch(query.trim());
+                                  handleCommunityTap(community);
+                                }}
+                                className="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-bg-muted/35"
+                              >
+                                <IconBadge icon={community.icon} imageUrl={community.imageUrl} label={community.label} />
+                                <div className="min-w-0">
+                                  <p className="truncate text-sm font-semibold text-strong">{community.label}</p>
+                                  <p className="truncate text-xs text-text-secondary">
+                                    {community.subtitle ?? community.kind ?? community.membersLabel ?? ""}
+                                  </p>
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        </section>
+                      ) : null}
+
+                      {searchResults.posts.length > 0 ? (
+                        <section className="space-y-2">
+                          <h3 className="text-sm font-semibold text-strong">Posts</h3>
+                          <div className="divide-y divide-border/70 bg-bg">
+                            {searchResults.posts.map((post) => (
+                              <button
+                                key={post.id}
+                                type="button"
+                                onClick={() => {
+                                  saveRecentSearch(query.trim());
+                                  void handlePostTap(post);
+                                }}
+                                className="w-full px-4 py-3 text-left transition hover:bg-bg-muted/35"
+                              >
+                                <p className="text-sm font-semibold text-strong">{post.authorName}</p>
+                                {post.subtitle ? <p className="mt-0.5 text-xs text-text-secondary">{post.subtitle}</p> : null}
+                                <p className="mt-2 line-clamp-2 text-sm text-text-primary">{post.content}</p>
+                                <p className="mt-2 text-xs text-text-light">{post.timeLabel}</p>
+                              </button>
+                            ))}
+                          </div>
+                        </section>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </>
+              )}
             </div>
           </div>
         )}
