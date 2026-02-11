@@ -1102,7 +1102,7 @@ export function AppProfilePage({ profileUserId }: AppProfilePageProps) {
               {isCurrentUser ? (
                 <button
                   type="button"
-                  className="min-w-[150px] rounded-full bg-bg-muted px-6 py-2.5 text-center text-[1.02rem] font-semibold text-text-secondary transition hover:text-strong"
+                  className="min-w-[150px] cursor-pointer rounded-full bg-bg-muted px-6 py-2.5 text-center text-[1.02rem] font-semibold text-text-secondary transition hover:text-strong"
                   onClick={handleEditProfileNavigation}
                 >
                   Edit profile

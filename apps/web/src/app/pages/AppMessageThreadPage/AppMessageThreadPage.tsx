@@ -2,8 +2,12 @@ import { type ChangeEvent, type CSSProperties, type SyntheticEvent, useCallback,
 import { useNavigate } from "react-router";
 
 import { AppLayout, AppMobileHeader } from "@/app/components/AppLayout/AppLayout";
+import { CameraIcon } from "@/app/components/AppIcons/AppIcons";
+import { AvatarCropModal } from "@/app/components/AvatarCropModal/AvatarCropModal";
 import { useToast } from "@/app/components/AppToast/AppToast";
 import {
+  addChannelMembers,
+  deleteChannel,
   fetchChannelMembers,
   fetchChannelMessages,
   fetchChannels,
@@ -11,15 +15,20 @@ import {
   fetchConversations,
   fetchViewerState,
   MessagingApiError,
+  patchChannel,
   type MessageAttachmentPayload,
   presignMessageMedia,
+  removeChannelMember,
   resolveMessageMedia,
+  searchUsersForMessages,
   setChannelMuted,
   setConversationMuted,
   sendChannelMessage,
   sendConversationMessage,
   type CursorEnvelope,
 } from "@/lib/messagingApi";
+import { uploadProfilePhoto } from "@/lib/profileEditApi";
+import { blockUser } from "@/lib/userApi";
 
 type ThreadType = "conversation" | "channel";
 type BlockState = "pending" | "rejected" | null;
@@ -28,6 +37,33 @@ type MemberPreview = {
   id: string;
   name: string;
   avatarUrl?: string;
+};
+
+type ChannelMember = {
+  userId: string;
+  displayName: string;
+  handle?: string;
+  avatarUrl?: string;
+  canManageMembers: boolean;
+  isOwner: boolean;
+};
+
+type UserSearchRow = {
+  userId: string;
+  displayName: string;
+  handle?: string;
+  avatarUrl?: string;
+};
+
+type ConversationMeta = {
+  otherUserId?: string;
+  otherUserHandle?: string;
+};
+
+type ChannelMeta = {
+  ownerUserId?: string;
+  viewerCanManageMembers: boolean;
+  memberCount: number;
 };
 
 type MessageAttachment = {
@@ -346,6 +382,57 @@ function normalizeMemberPreview(item: unknown): MemberPreview | null {
   };
 }
 
+function normalizeChannelMember(item: unknown): ChannelMember | null {
+  if (!isRecord(item)) return null;
+  const profile =
+    (isRecord(item.user_profile) ? item.user_profile : null) ??
+    (isRecord(item.userProfile) ? item.userProfile : null) ??
+    (isRecord(item.user) ? item.user : null) ??
+    item;
+  const userId = pickString(item, ["user_id", "userId"]) ?? pickString(profile, ["id", "user_id", "userId"]);
+  if (!userId) return null;
+
+  const handle = normalizeOptional(pickString(profile, ["handle", "username"]));
+  const displayName = normalizeProfileName(profile, handle ? `@${handle.replace(/^@/, "")}` : "Looped User");
+  const avatarUrl = normalizeOptional(
+    pickString(profile, ["profile_image_url", "profileImageUrl", "avatar_url", "avatarUrl", "image_url", "imageUrl"])
+  );
+
+  return {
+    userId,
+    displayName,
+    handle: handle ? handle.replace(/^@/, "") : undefined,
+    avatarUrl: avatarUrl ?? undefined,
+    canManageMembers: getBoolean(item.can_manage_members ?? item.canManageMembers) ?? false,
+    isOwner: getBoolean(item.is_owner ?? item.isOwner) ?? false,
+  };
+}
+
+function normalizeUserSearchRow(item: unknown): UserSearchRow | null {
+  if (!isRecord(item)) return null;
+  const userId = pickString(item, ["id", "user_id", "userId"]);
+  if (!userId) return null;
+
+  const handle = normalizeOptional(pickString(item, ["handle", "username"]));
+  const firstName = normalizeOptional(pickString(item, ["first_name", "firstName"]));
+  const lastName = normalizeOptional(pickString(item, ["last_name", "lastName"]));
+  const fullName = [firstName, lastName].filter((entry): entry is string => Boolean(entry)).join(" ").trim();
+  const displayName =
+    fullName ||
+    normalizeOptional(pickString(item, ["display_name", "displayName", "name"])) ||
+    (handle ? `@${handle.replace(/^@/, "")}` : "Looped User");
+  const avatarUrl = normalizeOptional(
+    pickString(item, ["profile_image_url", "profileImageUrl", "avatar_url", "avatarUrl", "image_url", "imageUrl"])
+  );
+
+  return {
+    userId,
+    displayName,
+    handle: handle ? handle.replace(/^@/, "") : undefined,
+    avatarUrl: avatarUrl ?? undefined,
+  };
+}
+
 function normalizeThreadMessage({
   item,
   viewerId,
@@ -547,12 +634,40 @@ export function AppMessageThreadPage({ threadType, threadId }: AppMessageThreadP
   const [isMuted, setIsMuted] = useState(false);
   const [isMuteSaving, setIsMuteSaving] = useState(false);
   const [mediaPreview, setMediaPreview] = useState<MediaPreviewState | null>(null);
+  const [isDetailsOpen, setIsDetailsOpen] = useState(false);
+  const [isBlockPromptOpen, setIsBlockPromptOpen] = useState(false);
+  const [isBlockingUser, setIsBlockingUser] = useState(false);
+
+  const [conversationMeta, setConversationMeta] = useState<ConversationMeta>({});
+  const [channelMeta, setChannelMeta] = useState<ChannelMeta>({
+    viewerCanManageMembers: false,
+    memberCount: 0,
+  });
+  const [channelMembers, setChannelMembers] = useState<ChannelMember[]>([]);
+  const [channelMembersNextCursor, setChannelMembersNextCursor] = useState<string>();
+  const [isMembersLoadingMore, setIsMembersLoadingMore] = useState(false);
+  const [busyMemberId, setBusyMemberId] = useState<string>();
+  const [isGroupNameSaving, setIsGroupNameSaving] = useState(false);
+  const [groupNameDraft, setGroupNameDraft] = useState("");
+  const [isGroupPhotoSaving, setIsGroupPhotoSaving] = useState(false);
+  const [groupPhotoCropSourceUrl, setGroupPhotoCropSourceUrl] = useState<string | null>(null);
+  const [isApplyingGroupPhotoCrop, setIsApplyingGroupPhotoCrop] = useState(false);
+  const [isAddMembersOpen, setIsAddMembersOpen] = useState(false);
+  const [addMembersQuery, setAddMembersQuery] = useState("");
+  const [addMembersResults, setAddMembersResults] = useState<UserSearchRow[]>([]);
+  const [addMembersNextCursor, setAddMembersNextCursor] = useState<string>();
+  const [isAddMembersSearching, setIsAddMembersSearching] = useState(false);
+  const [isAddMembersLoadingMore, setIsAddMembersLoadingMore] = useState(false);
+  const [selectedAddMemberIds, setSelectedAddMemberIds] = useState<string[]>([]);
+  const [isAddMembersSubmitting, setIsAddMembersSubmitting] = useState(false);
+  const [isDangerActionLoading, setIsDangerActionLoading] = useState(false);
 
   const seenMessageIdsRef = useRef<Set<string>>(new Set());
   const resolvedMediaCacheRef = useRef<Record<string, { downloadUrl: string; mimeType?: string; expiresAtMs: number }>>({});
   const membersByIdRef = useRef<Record<string, MemberPreview>>({});
   const didScrollToBottomRef = useRef(false);
   const pollInFlightRef = useRef(false);
+  const addMembersSearchTimeoutRef = useRef<number | undefined>(undefined);
 
   const isGroup = threadType === "channel";
 
@@ -579,7 +694,44 @@ export function AppMessageThreadPage({ threadType, threadId }: AppMessageThreadP
     didScrollToBottomRef.current = false;
     setThreadAvatarUrl(undefined);
     membersByIdRef.current = {};
+    setIsDetailsOpen(false);
+    setIsBlockPromptOpen(false);
+    setIsBlockingUser(false);
+    setConversationMeta({});
+    setChannelMeta({ viewerCanManageMembers: false, memberCount: 0 });
+    setChannelMembers([]);
+    setChannelMembersNextCursor(undefined);
+    setIsMembersLoadingMore(false);
+    setBusyMemberId(undefined);
+    setGroupNameDraft("");
+    setIsGroupNameSaving(false);
+    setIsGroupPhotoSaving(false);
+    setGroupPhotoCropSourceUrl((previous) => {
+      if (previous) URL.revokeObjectURL(previous);
+      return null;
+    });
+    setIsApplyingGroupPhotoCrop(false);
+    setIsAddMembersOpen(false);
+    setAddMembersQuery("");
+    setAddMembersResults([]);
+    setAddMembersNextCursor(undefined);
+    setIsAddMembersSearching(false);
+    setIsAddMembersLoadingMore(false);
+    setSelectedAddMemberIds([]);
+    setIsAddMembersSubmitting(false);
+    setIsDangerActionLoading(false);
   }, [threadId, threadType]);
+
+  useEffect(() => {
+    return () => {
+      if (addMembersSearchTimeoutRef.current) {
+        window.clearTimeout(addMembersSearchTimeoutRef.current);
+      }
+      if (groupPhotoCropSourceUrl) {
+        URL.revokeObjectURL(groupPhotoCropSourceUrl);
+      }
+    };
+  }, [groupPhotoCropSourceUrl]);
 
   const fetchThreadMessagesPage = useCallback(
     async (cursor?: string): Promise<CursorEnvelope<unknown>> => {
@@ -701,7 +853,7 @@ export function AppMessageThreadPage({ threadType, threadId }: AppMessageThreadP
 
   const loadThreadMeta = useCallback(async () => {
     if (threadType === "channel") {
-      const channelResponse = await fetchChannels({ limit: 50 });
+      const channelResponse = await fetchChannels({ limit: 100 });
       const channel = extractItemsArray(channelResponse).find((entry) => {
         if (!isRecord(entry)) return false;
         return pickString(entry, ["id", "channel_id", "channelId"]) === threadId;
@@ -709,16 +861,23 @@ export function AppMessageThreadPage({ threadType, threadId }: AppMessageThreadP
       if (isRecord(channel)) {
         const title = normalizeOptional(pickString(channel, ["name", "title", "display_name", "displayName"]));
         if (title) setThreadTitle(title);
+        setGroupNameDraft(title ?? "");
         const avatar = normalizeOptional(
           pickString(channel, ["photo_url", "photoUrl", "image_url", "imageUrl", "profile_image_url", "profileImageUrl"])
         );
         setThreadAvatarUrl(avatar ?? undefined);
-        setIsMuted(getBoolean(channel.muted) ?? false);
+        const muted = getBoolean(channel.muted) ?? false;
+        setIsMuted(muted);
+        setChannelMeta({
+          ownerUserId: pickString(channel, ["owner_user_id", "ownerUserId"]),
+          viewerCanManageMembers: getBoolean(channel.viewer_can_manage_members ?? channel.viewerCanManageMembers) ?? false,
+          memberCount: pickNumber(channel, ["member_count", "memberCount"]) ?? 0,
+        });
       }
       return;
     }
 
-    const conversationResponse = await fetchConversations({ limit: 50 });
+    const conversationResponse = await fetchConversations({ limit: 100 });
     const conversation = extractItemsArray(conversationResponse).find((entry) => {
       if (!isRecord(entry)) return false;
       return pickString(entry, ["id", "conversation_id", "conversationId"]) === threadId;
@@ -741,18 +900,32 @@ export function AppMessageThreadPage({ threadType, threadId }: AppMessageThreadP
           : normalizeOptional(pickString(conversation, ["other_user_profile_image_url", "otherUserProfileImageUrl"]));
       setThreadAvatarUrl(avatar ?? undefined);
       setIsMuted(getBoolean(conversation.muted) ?? false);
+      setConversationMeta({
+        otherUserId:
+          pickString(conversation, ["other_user_id", "otherUserId", "participant_user_id", "participantUserId"]) ??
+          (otherProfile ? pickString(otherProfile, ["id", "user_id", "userId"]) : undefined),
+        otherUserHandle:
+          (otherProfile ? normalizeOptional(pickString(otherProfile, ["handle", "username"])) : undefined) ??
+          normalizeOptional(pickString(conversation, ["other_user_handle", "otherUserHandle"])),
+      });
     }
   }, [threadId, threadType]);
 
   const loadChannelMembers = useCallback(async () => {
     if (threadType !== "channel") return {};
     const response = await fetchChannelMembers({ channelId: threadId, limit: 50 });
-    const normalized = extractItemsArray(response)
-      .map(normalizeMemberPreview)
-      .filter((entry): entry is MemberPreview => Boolean(entry));
+    const items = extractItemsArray(response);
+    const previewMembers = items.map(normalizeMemberPreview).filter((entry): entry is MemberPreview => Boolean(entry));
+    const normalizedMembers = items.map(normalizeChannelMember).filter((entry): entry is ChannelMember => Boolean(entry));
     const map: Record<string, MemberPreview> = {};
-    for (const member of normalized) map[member.id] = member;
+    for (const member of previewMembers) map[member.id] = member;
     membersByIdRef.current = map;
+    setChannelMembers(normalizedMembers);
+    setChannelMembersNextCursor(readNextCursor(response));
+    setChannelMeta((previous) => ({
+      ...previous,
+      memberCount: previous.memberCount || normalizedMembers.length,
+    }));
     return map;
   }, [threadId, threadType]);
 
@@ -1084,6 +1257,383 @@ export function AppMessageThreadPage({ threadType, threadId }: AppMessageThreadP
     }
   }, [isMuted, isMuteSaving, showToast, threadId, threadType]);
 
+  const upsertChannelMembers = useCallback((incoming: ChannelMember[], append: boolean) => {
+    setChannelMembers((previous) => {
+      const next = append ? [...previous] : [];
+      const seen = new Set(next.map((member) => member.userId));
+      for (const member of incoming) {
+        if (seen.has(member.userId)) {
+          const index = next.findIndex((entry) => entry.userId === member.userId);
+          if (index >= 0) next[index] = member;
+          continue;
+        }
+        seen.add(member.userId);
+        next.push(member);
+      }
+      return next;
+    });
+
+    membersByIdRef.current = {
+      ...membersByIdRef.current,
+      ...Object.fromEntries(
+        incoming.map((member) => [
+          member.userId,
+          {
+            id: member.userId,
+            name: member.displayName,
+            avatarUrl: member.avatarUrl,
+          } satisfies MemberPreview,
+        ])
+      ),
+    };
+  }, []);
+
+  const loadMoreChannelMembers = useCallback(async () => {
+    if (threadType !== "channel") return;
+    if (!channelMembersNextCursor || isMembersLoadingMore) return;
+    setIsMembersLoadingMore(true);
+    try {
+      const response = await fetchChannelMembers({
+        channelId: threadId,
+        limit: 50,
+        cursor: channelMembersNextCursor,
+      });
+      const members = extractItemsArray(response)
+        .map(normalizeChannelMember)
+        .filter((entry): entry is ChannelMember => Boolean(entry));
+      upsertChannelMembers(members, true);
+      setChannelMembersNextCursor(readNextCursor(response));
+      setChannelMeta((previous) => ({
+        ...previous,
+        memberCount: Math.max(previous.memberCount, channelMembers.length + members.length),
+      }));
+    } catch (error) {
+      showToast({
+        kind: "error",
+        title: "Couldn’t load members",
+        text: parseApiErrorMessage(error),
+      });
+    } finally {
+      setIsMembersLoadingMore(false);
+    }
+  }, [channelMembers.length, channelMembersNextCursor, isMembersLoadingMore, showToast, threadId, threadType, upsertChannelMembers]);
+
+  const closeDetails = useCallback(() => {
+    setIsDetailsOpen(false);
+    setIsBlockPromptOpen(false);
+    setIsAddMembersOpen(false);
+    setSelectedAddMemberIds([]);
+  }, []);
+
+  const handleOpenDetails = useCallback(() => {
+    if (threadType === "channel" && !groupNameDraft.trim()) {
+      setGroupNameDraft(threadTitle);
+    }
+    setIsDetailsOpen(true);
+  }, [groupNameDraft, threadTitle, threadType]);
+
+  const handleSaveGroupName = useCallback(async () => {
+    if (threadType !== "channel") return;
+    if (!channelMeta.viewerCanManageMembers || isGroupNameSaving) return;
+    const normalizedName = groupNameDraft.trim();
+    if (!normalizedName) {
+      showToast({
+        kind: "error",
+        title: "Invalid name",
+        text: "Group name cannot be empty.",
+      });
+      return;
+    }
+    if (normalizedName === threadTitle) return;
+
+    setIsGroupNameSaving(true);
+    try {
+      await patchChannel(threadId, { name: normalizedName });
+      setThreadTitle(normalizedName);
+      showToast({
+        kind: "success",
+        title: "Group updated",
+        text: "Group name was saved.",
+      });
+    } catch (error) {
+      showToast({
+        kind: "error",
+        title: "Couldn’t update group",
+        text: parseApiErrorMessage(error),
+      });
+    } finally {
+      setIsGroupNameSaving(false);
+    }
+  }, [channelMeta.viewerCanManageMembers, groupNameDraft, isGroupNameSaving, showToast, threadId, threadTitle, threadType]);
+
+  const handleSelectGroupPhoto = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      event.target.value = "";
+      if (!file) return;
+      if (threadType !== "channel" || !channelMeta.viewerCanManageMembers) return;
+      if (!file.type.startsWith("image/")) {
+        showToast({
+          kind: "error",
+          title: "Unsupported file",
+          text: "Please choose an image for group photo.",
+        });
+        return;
+      }
+      if (isGroupPhotoSaving || isApplyingGroupPhotoCrop) return;
+      setGroupPhotoCropSourceUrl((previous) => {
+        if (previous) URL.revokeObjectURL(previous);
+        return URL.createObjectURL(file);
+      });
+    },
+    [channelMeta.viewerCanManageMembers, isApplyingGroupPhotoCrop, isGroupPhotoSaving, showToast, threadType]
+  );
+
+  const handleCancelGroupPhotoCrop = useCallback(() => {
+    if (isGroupPhotoSaving || isApplyingGroupPhotoCrop) return;
+    setGroupPhotoCropSourceUrl((previous) => {
+      if (previous) URL.revokeObjectURL(previous);
+      return null;
+    });
+  }, [isApplyingGroupPhotoCrop, isGroupPhotoSaving]);
+
+  const handleApplyGroupPhotoCrop = useCallback(
+    async (file: File, previewUrl: string) => {
+      setIsApplyingGroupPhotoCrop(true);
+      setIsGroupPhotoSaving(true);
+      try {
+        const mediaAssetId = await uploadProfilePhoto(file);
+        await patchChannel(threadId, { photoMediaAssetId: mediaAssetId });
+        setThreadAvatarUrl(previewUrl);
+        setGroupPhotoCropSourceUrl((previous) => {
+          if (previous) URL.revokeObjectURL(previous);
+          return null;
+        });
+        showToast({
+          kind: "success",
+          title: "Group photo updated",
+        });
+      } catch (error) {
+        URL.revokeObjectURL(previewUrl);
+        showToast({
+          kind: "error",
+          title: "Couldn’t update photo",
+          text: parseApiErrorMessage(error),
+        });
+      } finally {
+        setIsApplyingGroupPhotoCrop(false);
+        setIsGroupPhotoSaving(false);
+      }
+    },
+    [showToast, threadId]
+  );
+
+  const handleRemoveGroupMember = useCallback(
+    async (userId: string) => {
+      if (threadType !== "channel") return;
+      if (!channelMeta.viewerCanManageMembers || busyMemberId) return;
+      setBusyMemberId(userId);
+      try {
+        await removeChannelMember(threadId, userId);
+        setChannelMembers((previous) => previous.filter((member) => member.userId !== userId));
+        setChannelMeta((previous) => ({
+          ...previous,
+          memberCount: Math.max(0, previous.memberCount - 1),
+        }));
+        showToast({
+          kind: "success",
+          title: "Member removed",
+        });
+      } catch (error) {
+        showToast({
+          kind: "error",
+          title: "Couldn’t remove member",
+          text: parseApiErrorMessage(error),
+        });
+      } finally {
+        setBusyMemberId(undefined);
+      }
+    },
+    [busyMemberId, channelMeta.viewerCanManageMembers, showToast, threadId, threadType]
+  );
+
+  const runAddMembersSearch = useCallback(
+    async (query: string, cursor?: string) => {
+      if (query.trim().length < 2) {
+        setAddMembersResults([]);
+        setAddMembersNextCursor(undefined);
+        return;
+      }
+
+      if (cursor) {
+        setIsAddMembersLoadingMore(true);
+      } else {
+        setIsAddMembersSearching(true);
+      }
+
+      try {
+        const response = await searchUsersForMessages({ query, limit: 20, cursor });
+        const items = extractItemsArray(response)
+          .map(normalizeUserSearchRow)
+          .filter((entry): entry is UserSearchRow => Boolean(entry));
+        const memberIds = new Set(channelMembers.map((member) => member.userId));
+        const filtered = items.filter((item) => !memberIds.has(item.userId));
+
+        if (cursor) {
+          setAddMembersResults((previous) => {
+            const next = [...previous];
+            const seen = new Set(next.map((entry) => entry.userId));
+            for (const item of filtered) {
+              if (seen.has(item.userId)) continue;
+              seen.add(item.userId);
+              next.push(item);
+            }
+            return next;
+          });
+        } else {
+          setAddMembersResults(filtered);
+        }
+
+        setAddMembersNextCursor(readNextCursor(response));
+      } catch (error) {
+        showToast({
+          kind: "error",
+          title: "Couldn’t search people",
+          text: parseApiErrorMessage(error),
+        });
+      } finally {
+        setIsAddMembersSearching(false);
+        setIsAddMembersLoadingMore(false);
+      }
+    },
+    [channelMembers, showToast]
+  );
+
+  useEffect(() => {
+    if (!isAddMembersOpen) return;
+    if (addMembersSearchTimeoutRef.current) window.clearTimeout(addMembersSearchTimeoutRef.current);
+    const query = addMembersQuery.trim();
+    addMembersSearchTimeoutRef.current = window.setTimeout(() => {
+      void runAddMembersSearch(query);
+    }, 300);
+    return () => {
+      if (addMembersSearchTimeoutRef.current) {
+        window.clearTimeout(addMembersSearchTimeoutRef.current);
+      }
+    };
+  }, [addMembersQuery, isAddMembersOpen, runAddMembersSearch]);
+
+  const handleToggleAddMemberSelection = useCallback((userId: string) => {
+    setSelectedAddMemberIds((previous) =>
+      previous.includes(userId) ? previous.filter((value) => value !== userId) : [...previous, userId]
+    );
+  }, []);
+
+  const handleSubmitAddMembers = useCallback(async () => {
+    if (threadType !== "channel") return;
+    if (selectedAddMemberIds.length === 0 || isAddMembersSubmitting) return;
+    setIsAddMembersSubmitting(true);
+    try {
+      await addChannelMembers(threadId, selectedAddMemberIds);
+      const selected = addMembersResults
+        .filter((row) => selectedAddMemberIds.includes(row.userId))
+        .map<ChannelMember>((row) => ({
+          userId: row.userId,
+          displayName: row.displayName,
+          handle: row.handle,
+          avatarUrl: row.avatarUrl,
+          canManageMembers: false,
+          isOwner: false,
+        }));
+      upsertChannelMembers(selected, true);
+      setChannelMeta((previous) => ({
+        ...previous,
+        memberCount: previous.memberCount + selected.length,
+      }));
+      setSelectedAddMemberIds([]);
+      setIsAddMembersOpen(false);
+      showToast({
+        kind: "success",
+        title: selected.length === 1 ? "Member added" : "Members added",
+      });
+    } catch (error) {
+      showToast({
+        kind: "error",
+        title: "Couldn’t add members",
+        text: parseApiErrorMessage(error),
+      });
+    } finally {
+      setIsAddMembersSubmitting(false);
+    }
+  }, [addMembersResults, isAddMembersSubmitting, selectedAddMemberIds, showToast, threadId, threadType, upsertChannelMembers]);
+
+  const closeThreadAfterDestructiveAction = useCallback(() => {
+    closeDetails();
+    navigate("/app/messages", { replace: true });
+  }, [closeDetails, navigate]);
+
+  const handleBlockDirectUser = useCallback(async () => {
+    if (threadType !== "conversation") return;
+    if (!conversationMeta.otherUserId || isBlockingUser) return;
+    setIsBlockingUser(true);
+    try {
+      await blockUser(conversationMeta.otherUserId);
+      showToast({
+        kind: "success",
+        title: "User blocked",
+      });
+      closeThreadAfterDestructiveAction();
+    } catch (error) {
+      showToast({
+        kind: "error",
+        title: "Couldn’t block user",
+        text: parseApiErrorMessage(error),
+      });
+    } finally {
+      setIsBlockingUser(false);
+      setIsBlockPromptOpen(false);
+    }
+  }, [closeThreadAfterDestructiveAction, conversationMeta.otherUserId, isBlockingUser, showToast, threadType]);
+
+  const handleDangerAction = useCallback(async () => {
+    if (threadType !== "channel") return;
+    if (isDangerActionLoading || !viewerId) return;
+    setIsDangerActionLoading(true);
+    const isOwner = channelMeta.ownerUserId
+      ? viewerId === channelMeta.ownerUserId
+      : channelMembers.some((member) => member.userId === viewerId && member.isOwner);
+    try {
+      if (isOwner) {
+        await deleteChannel(threadId);
+        showToast({
+          kind: "success",
+          title: "Group deleted",
+        });
+      } else {
+        await removeChannelMember(threadId, viewerId);
+        showToast({
+          kind: "success",
+          title: "Left group",
+        });
+      }
+      closeThreadAfterDestructiveAction();
+    } catch (error) {
+      showToast({
+        kind: "error",
+        title: isOwner ? "Couldn’t delete group" : "Couldn’t leave group",
+        text: parseApiErrorMessage(error),
+      });
+    } finally {
+      setIsDangerActionLoading(false);
+    }
+  }, [channelMembers, channelMeta.ownerUserId, closeThreadAfterDestructiveAction, isDangerActionLoading, showToast, threadId, threadType, viewerId]);
+
+  const handleOpenContactProfile = useCallback(() => {
+    if (!conversationMeta.otherUserId) return;
+    closeDetails();
+    navigate(`/app/profile/${conversationMeta.otherUserId}`);
+  }, [closeDetails, conversationMeta.otherUserId, navigate]);
+
   const handleSelectFiles = useCallback(
     (event: ChangeEvent<HTMLInputElement>) => {
       const picked = Array.from(event.target.files ?? []);
@@ -1133,6 +1683,16 @@ export function AppMessageThreadPage({ threadType, threadId }: AppMessageThreadP
       : blockState === "rejected"
         ? "Request rejected. Messaging is unavailable for this thread."
         : null;
+  const directProfileHandleLabel = conversationMeta.otherUserHandle
+    ? `@${conversationMeta.otherUserHandle.replace(/^@/, "")}`
+    : "this user";
+  const isGroupOwner = Boolean(
+    viewerId &&
+      (channelMeta.ownerUserId
+        ? viewerId === channelMeta.ownerUserId
+        : channelMembers.some((member) => member.userId === viewerId && member.isOwner))
+  );
+  const canManageMembers = threadType === "channel" && channelMeta.viewerCanManageMembers;
   const hasDraft = composerText.trim().length > 0 || selectedFiles.length > 0;
   const closeMediaPreview = useCallback(() => setMediaPreview(null), []);
 
@@ -1150,7 +1710,12 @@ export function AppMessageThreadPage({ threadType, threadId }: AppMessageThreadP
           <BackIcon className="h-4 w-4" />
           <span>Back to messages</span>
         </button>
-        <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={handleOpenDetails}
+          className="flex w-full cursor-pointer items-center gap-2 rounded-lg text-left"
+          aria-label="Open chat details"
+        >
           <div className="h-9 w-9 shrink-0 overflow-hidden rounded-full bg-bg-muted">
             <img
               src={threadAvatarUrl ?? DEFAULT_PROFILE_IMAGE_SRC}
@@ -1161,7 +1726,7 @@ export function AppMessageThreadPage({ threadType, threadId }: AppMessageThreadP
             />
           </div>
           <h1 className="truncate text-xl font-semibold text-strong">{threadTitle}</h1>
-        </div>
+        </button>
         <div className="mt-1 flex items-center justify-between gap-3">
           <p className="text-sm text-text-secondary">{isGroup ? "Group thread" : "Direct message"}</p>
           <button
@@ -1380,6 +1945,401 @@ export function AppMessageThreadPage({ threadType, threadId }: AppMessageThreadP
           </div>
         ) : null}
       </section>
+
+      {isDetailsOpen ? (
+        <div className="fixed inset-0 z-40">
+          <button
+            type="button"
+            onClick={closeDetails}
+            className="absolute inset-0 bg-black/35"
+            aria-label="Close chat details"
+          />
+
+          <aside className="absolute inset-y-0 right-0 flex w-full max-w-md flex-col border-l border-border/70 bg-bg shadow-xl">
+            <div className="flex items-center justify-between border-b border-border/70 px-4 py-3">
+              <h2 className="text-lg font-semibold text-strong">{isGroup ? "Group Info" : "Contact Info"}</h2>
+              <button
+                type="button"
+                onClick={closeDetails}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-full text-text-secondary transition hover:bg-bg-muted hover:text-strong"
+                aria-label="Close details"
+              >
+                <XIcon className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-4 py-4">
+              <div className="flex items-center gap-3">
+                <div className="relative h-14 w-14 shrink-0 overflow-visible rounded-full">
+                  <span className="block h-14 w-14 overflow-hidden rounded-full bg-bg-muted">
+                    <img
+                      src={threadAvatarUrl ?? DEFAULT_PROFILE_IMAGE_SRC}
+                      alt=""
+                      className="h-full w-full object-cover"
+                      loading="lazy"
+                      onError={handleProfileImageError}
+                    />
+                  </span>
+                  {canManageMembers ? (
+                    <label className="absolute -bottom-1 -right-1 inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-full bg-brand text-white shadow-sm">
+                      <CameraIcon className="h-[18px] w-[18px]" />
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(event) => void handleSelectGroupPhoto(event)}
+                        disabled={isGroupPhotoSaving || isApplyingGroupPhotoCrop}
+                      />
+                    </label>
+                  ) : null}
+                </div>
+                <div className="min-w-0">
+                  <p className="truncate text-[1.15rem] font-semibold text-strong">{threadTitle}</p>
+                  <p className="text-sm text-text-secondary">
+                    {isGroup
+                      ? `${channelMeta.memberCount || channelMembers.length} ${channelMeta.memberCount === 1 ? "member" : "members"}`
+                      : "Direct message"}
+                  </p>
+                </div>
+              </div>
+
+              {!isGroup ? (
+                <div className="mt-5 space-y-2">
+                  {conversationMeta.otherUserId ? (
+                    <button
+                      type="button"
+                      onClick={handleOpenContactProfile}
+                      className="flex w-full items-center justify-between rounded-xl border border-border/70 px-3 py-3 text-left transition hover:bg-bg-muted"
+                    >
+                      <span className="text-sm font-semibold text-strong">View profile</span>
+                      <span className="text-sm text-text-light">{">"}</span>
+                    </button>
+                  ) : null}
+
+                  <div className="flex items-center justify-between rounded-xl border border-border/70 px-3 py-3">
+                    <span className="text-sm font-semibold text-strong">Mute notifications</span>
+                    <button
+                      type="button"
+                      onClick={() => void handleToggleMuted()}
+                      disabled={isMuteSaving}
+                      className="inline-flex items-center disabled:cursor-not-allowed disabled:opacity-60"
+                      aria-label={isMuted ? "Unmute notifications" : "Mute notifications"}
+                    >
+                      <span
+                        className={`relative inline-flex h-6 w-11 rounded-full transition ${
+                          isMuted ? "bg-brand/80" : "bg-border"
+                        }`}
+                      >
+                        <span
+                          className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition ${
+                            isMuted ? "left-[22px]" : "left-0.5"
+                          }`}
+                        />
+                      </span>
+                    </button>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setIsBlockPromptOpen(true)}
+                    disabled={!conversationMeta.otherUserId || isBlockingUser}
+                    className="w-full rounded-xl border border-red-200 px-3 py-3 text-left text-sm font-semibold text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    Block User
+                  </button>
+                </div>
+              ) : (
+                <div className="mt-5 space-y-4">
+                  {canManageMembers ? (
+                    <div className="rounded-xl border border-border/70 p-3">
+                      <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-text-light">Group name</label>
+                      <div className="flex gap-2">
+                        <input
+                          value={groupNameDraft}
+                          onChange={(event) => setGroupNameDraft(event.target.value)}
+                          className="h-10 flex-1 rounded-lg border border-border/70 bg-bg px-3 text-[15px] text-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/35"
+                          placeholder="Group name"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => void handleSaveGroupName()}
+                          disabled={isGroupNameSaving}
+                          className="rounded-lg bg-brand px-3 py-2 text-sm font-semibold text-white transition hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {isGroupNameSaving ? "Saving..." : "Save"}
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  <div className="rounded-xl border border-border/70 p-3">
+                    <div className="mb-2 flex items-center justify-between">
+                      <p className="text-sm font-semibold text-strong">Members</p>
+                      {canManageMembers ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setAddMembersQuery("");
+                            setAddMembersResults([]);
+                            setAddMembersNextCursor(undefined);
+                            setSelectedAddMemberIds([]);
+                            setIsAddMembersOpen(true);
+                          }}
+                          className="rounded-full border border-border/70 px-3 py-1 text-xs font-semibold text-text-secondary transition hover:text-strong"
+                        >
+                          Add members
+                        </button>
+                      ) : null}
+                    </div>
+
+                    <div className="space-y-2">
+                      {channelMembers.map((member) => {
+                        const tags = [
+                          member.isOwner ? "Owner" : undefined,
+                          !member.isOwner && member.canManageMembers ? "Admin" : undefined,
+                          viewerId && member.userId === viewerId ? "You" : undefined,
+                        ].filter((entry): entry is string => Boolean(entry));
+                        const canRemove =
+                          canManageMembers &&
+                          Boolean(viewerId) &&
+                          member.userId !== viewerId &&
+                          !member.isOwner;
+                        return (
+                          <div key={member.userId} className="flex items-center justify-between gap-2 rounded-lg px-1 py-1">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                closeDetails();
+                                navigate(`/app/profile/${member.userId}`);
+                              }}
+                              className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                            >
+                              <div className="h-8 w-8 shrink-0 overflow-hidden rounded-full bg-bg-muted">
+                                <img
+                                  src={member.avatarUrl ?? DEFAULT_PROFILE_IMAGE_SRC}
+                                  alt=""
+                                  className="h-full w-full object-cover"
+                                  loading="lazy"
+                                  onError={handleProfileImageError}
+                                />
+                              </div>
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-semibold text-strong">{member.displayName}</p>
+                                <p className="truncate text-xs text-text-secondary">
+                                  {member.handle ? `@${member.handle}` : ""}
+                                  {tags.length > 0 ? `${member.handle ? " · " : ""}${tags.join(" · ")}` : ""}
+                                </p>
+                              </div>
+                            </button>
+                            {canRemove ? (
+                              <button
+                                type="button"
+                                onClick={() => void handleRemoveGroupMember(member.userId)}
+                                disabled={busyMemberId === member.userId}
+                                className="rounded-lg px-2 py-1 text-xs font-semibold text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                {busyMemberId === member.userId ? "Removing..." : "Remove"}
+                              </button>
+                            ) : null}
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {channelMembersNextCursor ? (
+                      <div className="mt-2">
+                        <button
+                          type="button"
+                          onClick={() => void loadMoreChannelMembers()}
+                          disabled={isMembersLoadingMore}
+                          className="w-full rounded-lg border border-border/70 px-3 py-2 text-xs font-semibold text-text-secondary transition hover:text-strong disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {isMembersLoadingMore ? "Loading..." : "Load more members"}
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <div className="flex items-center justify-between rounded-xl border border-border/70 px-3 py-3">
+                    <span className="text-sm font-semibold text-strong">Mute notifications</span>
+                    <button
+                      type="button"
+                      onClick={() => void handleToggleMuted()}
+                      disabled={isMuteSaving}
+                      className="inline-flex items-center disabled:cursor-not-allowed disabled:opacity-60"
+                      aria-label={isMuted ? "Unmute notifications" : "Mute notifications"}
+                    >
+                      <span
+                        className={`relative inline-flex h-6 w-11 rounded-full transition ${
+                          isMuted ? "bg-brand/80" : "bg-border"
+                        }`}
+                      >
+                        <span
+                          className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition ${
+                            isMuted ? "left-[22px]" : "left-0.5"
+                          }`}
+                        />
+                      </span>
+                    </button>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => void handleDangerAction()}
+                    disabled={isDangerActionLoading}
+                    className="w-full rounded-xl border border-red-200 px-3 py-3 text-left text-sm font-semibold text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {isDangerActionLoading
+                      ? isGroupOwner
+                        ? "Deleting..."
+                        : "Leaving..."
+                      : isGroupOwner
+                        ? "Delete Group"
+                        : "Leave Group"}
+                  </button>
+                </div>
+              )}
+            </div>
+          </aside>
+        </div>
+      ) : null}
+
+      {isDetailsOpen && isBlockPromptOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div
+            className="w-full max-w-sm rounded-2xl border border-border/70 bg-bg p-4 shadow-xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h3 className="text-lg font-semibold text-strong">Block user?</h3>
+            <p className="mt-2 text-sm text-text-secondary">
+              You won&apos;t see posts from {directProfileHandleLabel} anymore.
+            </p>
+            <div className="mt-4 flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={() => void handleBlockDirectUser()}
+                disabled={isBlockingUser}
+                className="w-full rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isBlockingUser ? "Blocking..." : "Block User"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsBlockPromptOpen(false)}
+                disabled={isBlockingUser}
+                className="w-full rounded-xl border border-border/70 bg-bg px-4 py-2.5 text-sm font-semibold text-text-secondary transition hover:text-strong disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {isDetailsOpen && isAddMembersOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div
+            className="flex max-h-[80vh] w-full max-w-md flex-col rounded-2xl border border-border/70 bg-bg p-4 shadow-xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-strong">Add Members</h3>
+              <button
+                type="button"
+                onClick={() => setIsAddMembersOpen(false)}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-full text-text-secondary transition hover:bg-bg-muted hover:text-strong"
+                aria-label="Close add members"
+              >
+                <XIcon className="h-4 w-4" />
+              </button>
+            </div>
+
+            <input
+              value={addMembersQuery}
+              onChange={(event) => setAddMembersQuery(event.target.value)}
+              placeholder="Search people"
+              className="h-10 rounded-lg border border-border/70 bg-bg px-3 text-[15px] text-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/35"
+            />
+
+            <div className="mt-3 min-h-0 flex-1 overflow-y-auto">
+              {isAddMembersSearching ? <p className="text-sm text-text-secondary">Searching...</p> : null}
+              {!isAddMembersSearching && addMembersQuery.trim().length >= 2 && addMembersResults.length === 0 ? (
+                <p className="text-sm text-text-secondary">No people found.</p>
+              ) : null}
+              <div className="space-y-1">
+                {addMembersResults.map((result) => {
+                  const selected = selectedAddMemberIds.includes(result.userId);
+                  return (
+                    <button
+                      key={result.userId}
+                      type="button"
+                      onClick={() => handleToggleAddMemberSelection(result.userId)}
+                      className={`flex w-full items-center gap-2 rounded-lg border px-2 py-2 text-left transition ${
+                        selected ? "border-brand/50 bg-brand/5" : "border-transparent hover:bg-bg-muted"
+                      }`}
+                    >
+                      <div className="h-9 w-9 shrink-0 overflow-hidden rounded-full bg-bg-muted">
+                        <img
+                          src={result.avatarUrl ?? DEFAULT_PROFILE_IMAGE_SRC}
+                          alt=""
+                          className="h-full w-full object-cover"
+                          loading="lazy"
+                          onError={handleProfileImageError}
+                        />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-semibold text-strong">{result.displayName}</p>
+                        {result.handle ? <p className="truncate text-xs text-text-secondary">@{result.handle}</p> : null}
+                      </div>
+                      <div
+                        className={`h-4 w-4 rounded-full border ${
+                          selected ? "border-brand bg-brand" : "border-border"
+                        }`}
+                        aria-hidden="true"
+                      />
+                    </button>
+                  );
+                })}
+              </div>
+
+              {addMembersNextCursor && addMembersQuery.trim().length >= 2 ? (
+                <button
+                  type="button"
+                  onClick={() => void runAddMembersSearch(addMembersQuery.trim(), addMembersNextCursor)}
+                  disabled={isAddMembersLoadingMore}
+                  className="mt-2 w-full rounded-lg border border-border/70 px-3 py-2 text-xs font-semibold text-text-secondary transition hover:text-strong disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isAddMembersLoadingMore ? "Loading..." : "Load more"}
+                </button>
+              ) : null}
+            </div>
+
+            <div className="mt-3">
+              <button
+                type="button"
+                onClick={() => void handleSubmitAddMembers()}
+                disabled={selectedAddMemberIds.length === 0 || isAddMembersSubmitting}
+                className="w-full rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isAddMembersSubmitting
+                  ? "Adding..."
+                  : selectedAddMemberIds.length > 0
+                    ? `Add ${selectedAddMemberIds.length}`
+                    : "Add members"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      <AvatarCropModal
+        open={Boolean(groupPhotoCropSourceUrl)}
+        imageSrc={groupPhotoCropSourceUrl}
+        title="Adjust group photo"
+        isApplying={isApplyingGroupPhotoCrop || isGroupPhotoSaving}
+        onCancel={handleCancelGroupPhotoCrop}
+        onApply={handleApplyGroupPhotoCrop}
+      />
 
       {mediaPreview ? (
         <div className="fixed inset-0 z-50 bg-black/80 p-3" onClick={closeMediaPreview}>

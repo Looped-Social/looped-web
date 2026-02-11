@@ -1001,12 +1001,14 @@ export function AppMessagesPage() {
             aria-label="Search messages"
           />
         </div>
-        <div className="mt-4 grid grid-cols-2 gap-2 rounded-full border border-border/70 bg-bg p-1">
+        <div className="mt-4 grid grid-cols-2 gap-2 rounded-full bg-bg">
           <button
             type="button"
             onClick={() => setActiveTabId("messages")}
-            className={`h-10 rounded-full text-base font-semibold transition ${
-              activeTabId === "messages" ? "bg-brand text-white" : "text-text-secondary hover:text-strong"
+            className={`h-10 cursor-pointer rounded-full text-[1.03rem] font-semibold transition ${
+              activeTabId === "messages"
+                ? "bg-brand text-white shadow-[0_1px_1px_rgba(0,0,0,0.06)]"
+                : "border border-border/80 bg-bg text-text-secondary hover:text-strong"
             }`}
           >
             Messages
@@ -1014,8 +1016,10 @@ export function AppMessagesPage() {
           <button
             type="button"
             onClick={() => setActiveTabId("requests")}
-            className={`h-10 rounded-full text-base font-semibold transition ${
-              activeTabId === "requests" ? "bg-brand text-white" : "text-text-secondary hover:text-strong"
+            className={`h-10 cursor-pointer rounded-full text-[1.03rem] font-semibold transition ${
+              activeTabId === "requests"
+                ? "bg-brand text-white shadow-[0_1px_1px_rgba(0,0,0,0.06)]"
+                : "border border-border/80 bg-bg text-text-secondary hover:text-strong"
             }`}
           >
             Requests

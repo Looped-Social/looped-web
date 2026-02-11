@@ -2,6 +2,8 @@ import { type ChangeEvent, type SyntheticEvent, useCallback, useEffect, useMemo,
 import { useBlocker, useNavigate } from "react-router";
 
 import { AppLayout, AppMobileHeader } from "@/app/components/AppLayout/AppLayout";
+import { CameraIcon } from "@/app/components/AppIcons/AppIcons";
+import { AvatarCropModal } from "@/app/components/AvatarCropModal/AvatarCropModal";
 import { useToast } from "@/app/components/AppToast/AppToast";
 import {
   ProfileEditApiError,
@@ -340,15 +342,6 @@ function BackIcon({ className }: { className?: string }) {
   );
 }
 
-function CameraIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className} aria-hidden="true">
-      <path d="M4 7h3l1.2-2h7.6L17 7h3a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2z" />
-      <circle cx="12" cy="13" r="3.5" />
-    </svg>
-  );
-}
-
 export function AppEditProfilePage() {
   const navigate = useNavigate();
   const { showToast } = useToast();
@@ -362,6 +355,8 @@ export function AppEditProfilePage() {
   const [avatarUrl, setAvatarUrl] = useState<string | undefined>();
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreviewUrl, setPhotoPreviewUrl] = useState<string | null>(null);
+  const [cropSourceUrl, setCropSourceUrl] = useState<string | null>(null);
+  const [isApplyingCrop, setIsApplyingCrop] = useState(false);
 
   const [communities, setCommunities] = useState<SelectOption[]>([]);
   const [specializations, setSpecializations] = useState<SelectOption[]>([]);
@@ -484,6 +479,10 @@ export function AppEditProfilePage() {
       setUsernameMessage(null);
       setPhotoFile(null);
       setPhotoPreviewUrl(null);
+      setCropSourceUrl((previous) => {
+        if (previous) URL.revokeObjectURL(previous);
+        return null;
+      });
       setStatus("idle");
     } catch (error) {
       const parsed = parseApiError(error);
@@ -501,8 +500,11 @@ export function AppEditProfilePage() {
       if (photoPreviewUrl) {
         URL.revokeObjectURL(photoPreviewUrl);
       }
+      if (cropSourceUrl) {
+        URL.revokeObjectURL(cropSourceUrl);
+      }
     };
-  }, [photoPreviewUrl]);
+  }, [cropSourceUrl, photoPreviewUrl]);
 
   const normalizedUsername = form.username.trim().toLowerCase();
 
@@ -616,6 +618,7 @@ export function AppEditProfilePage() {
   const handlePhotoPicked = useCallback(
     (event: ChangeEvent<HTMLInputElement>) => {
       const file = event.currentTarget.files?.[0] ?? null;
+      event.currentTarget.value = "";
       if (!file) return;
 
       if (!file.type.startsWith("image/")) {
@@ -627,14 +630,37 @@ export function AppEditProfilePage() {
         return;
       }
 
-      setPhotoFile(file);
-      setPhotoPreviewUrl((previous) => {
+      setCropSourceUrl((previous) => {
         if (previous) URL.revokeObjectURL(previous);
         return URL.createObjectURL(file);
       });
     },
     [showToast]
   );
+
+  const handleCancelCrop = useCallback(() => {
+    setCropSourceUrl((previous) => {
+      if (previous) URL.revokeObjectURL(previous);
+      return null;
+    });
+  }, []);
+
+  const handleApplyCrop = useCallback(async (file: File, previewUrl: string) => {
+    setIsApplyingCrop(true);
+    try {
+      setPhotoFile(file);
+      setPhotoPreviewUrl((previous) => {
+        if (previous) URL.revokeObjectURL(previous);
+        return previewUrl;
+      });
+      setCropSourceUrl((previous) => {
+        if (previous) URL.revokeObjectURL(previous);
+        return null;
+      });
+    } finally {
+      setIsApplyingCrop(false);
+    }
+  }, []);
 
   const saveProfile = useCallback(async (): Promise<boolean> => {
     if (!canSave || !initialForm) return false;
@@ -771,18 +797,20 @@ export function AppEditProfilePage() {
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="relative h-24 w-24 overflow-hidden rounded-full bg-bg-muted"
+                className="relative h-24 w-24 overflow-visible rounded-full"
                 aria-label="Change profile photo"
               >
-                <img
-                  src={effectiveAvatarSrc}
-                  alt=""
-                  className="h-full w-full object-cover"
-                  loading="lazy"
-                  onError={handleAvatarImageError}
-                />
-                <span className="absolute bottom-1 right-1 inline-flex h-7 w-7 items-center justify-center rounded-full bg-brand text-white shadow">
-                  <CameraIcon className="h-4 w-4" />
+                <span className="block h-24 w-24 overflow-hidden rounded-full bg-bg-muted">
+                  <img
+                    src={effectiveAvatarSrc}
+                    alt=""
+                    className="h-full w-full object-cover"
+                    loading="lazy"
+                    onError={handleAvatarImageError}
+                  />
+                </span>
+                <span className="absolute -bottom-1 -right-1 inline-flex h-8 w-8 items-center justify-center rounded-full bg-brand text-white shadow">
+                  <CameraIcon className="h-[18px] w-[18px]" />
                 </span>
               </button>
               <button
@@ -903,6 +931,15 @@ export function AppEditProfilePage() {
           </div>
         </div>
       ) : null}
+
+      <AvatarCropModal
+        open={Boolean(cropSourceUrl)}
+        imageSrc={cropSourceUrl}
+        title="Adjust profile photo"
+        isApplying={isApplyingCrop}
+        onCancel={handleCancelCrop}
+        onApply={handleApplyCrop}
+      />
 
       {showExitPrompt ? (
         <div
