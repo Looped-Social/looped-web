@@ -4,6 +4,8 @@ import { useNavigate } from "react-router";
 import { AppLayout } from "@/app/components/AppLayout/AppLayout";
 import { useToast } from "@/app/components/AppToast/AppToast";
 import { PostCard, type PostData } from "@/app/components/PostCard/PostCard";
+import { resolveCommunityLabel, usePreferCommunityShortNames } from "@/lib/communityDisplayPreference";
+import { useContentPreferences } from "@/lib/contentPreferences";
 import { fetchPostDetail } from "@/lib/commentsApi";
 import { fetchFollowedCommunities } from "@/lib/feedApi";
 import { extractMediaAssetIds } from "@/lib/postMediaIds";
@@ -496,12 +498,15 @@ function normalizeCommunityKind(item: unknown): string | undefined {
   return normalizedOptional(pickString(item, ["kind", "community_kind", "communityKind", "type"]));
 }
 
-function normalizeCommunityCard(item: unknown): CommunityCard | null {
+function normalizeCommunityCard(item: unknown, preferCommunityShortNames: boolean): CommunityCard | null {
   if (!isRecord(item)) return null;
   const id = pickString(item, ["id", "community_id", "communityId", "loop_id", "loopId"]);
-  const label =
-    pickString(item, ["name", "display_name", "displayName", "title", "short_name", "shortName"]) ??
-    pickString(item, ["handle", "username"]);
+  const label = resolveCommunityLabel({
+    name: pickString(item, ["name", "display_name", "displayName", "title"]),
+    shortName: pickString(item, ["short_name", "shortName"]),
+    fallback: pickString(item, ["handle", "username"]) ?? "Community",
+    preferShortNames: preferCommunityShortNames,
+  });
   if (!id || !label) return null;
 
   const membersLabel = formatMembersLabel(
@@ -519,7 +524,13 @@ function normalizeCommunityCard(item: unknown): CommunityCard | null {
   const imageUrl = pickString(item, ["image_url", "imageUrl"]);
   const description = normalizedOptional(pickString(item, ["description", "bio", "summary"]));
   const shortName = normalizedOptional(pickString(item, ["short_name", "shortName"]));
-  const subtitle = shortName && shortName !== label ? shortName : undefined;
+  const fullName = normalizedOptional(pickString(item, ["name", "display_name", "displayName", "title"]));
+  const subtitle =
+    preferCommunityShortNames && fullName && fullName !== label
+      ? fullName
+      : !preferCommunityShortNames && shortName && shortName !== label
+        ? shortName
+        : undefined;
 
   return {
     id,
@@ -605,7 +616,13 @@ function normalizeUserResult(item: unknown): UserResult | null {
   };
 }
 
-function normalizePostResult(item: unknown): PostResult | null {
+function normalizePostResult(
+  item: unknown,
+  options: {
+    preferCommunityShortNames: boolean;
+    hideAnonymousPosts: boolean;
+  }
+): PostResult | null {
   if (!isRecord(item)) return null;
   const post = isRecord(item.post) ? item.post : item;
 
@@ -615,6 +632,7 @@ function normalizePostResult(item: unknown): PostResult | null {
   const content = pickString(post, ["content", "text", "body", "message"]) ?? "";
   const isAnonymous =
     pickBoolean(post, ["author_is_anonymous", "authorIsAnonymous", "is_anonymous", "isAnonymous"]) ?? false;
+  if (options.hideAnonymousPosts && isAnonymous) return null;
   const firstName = pickString(post, ["author_first_name", "authorFirstName"]);
   const lastName = pickString(post, ["author_last_name", "authorLastName"]);
   const fullName = [normalizedOptional(firstName), normalizedOptional(lastName)]
@@ -628,8 +646,12 @@ function normalizePostResult(item: unknown): PostResult | null {
       pickString(post, ["author_display_name", "authorDisplayName", "author_name", "authorName", "author_handle", "authorHandle"]) ||
       "User";
 
-  const communityLabel =
-    pickString(post, ["community_short_name", "communityShortName", "community_name", "communityName"]) ?? undefined;
+  const communityLabel = resolveCommunityLabel({
+    name: pickString(post, ["community_name", "communityName"]),
+    shortName: pickString(post, ["community_short_name", "communityShortName"]),
+    fallback: undefined,
+    preferShortNames: options.preferCommunityShortNames,
+  });
 
   const authorId = pickString(post, ["author_id", "authorId"]);
   const anonProfileId = pickString(post, ["anon_profile_id", "anonProfileId", "author_anon_profile_id", "authorAnonProfileId"]);
@@ -646,8 +668,16 @@ function normalizePostResult(item: unknown): PostResult | null {
   };
 }
 
-function normalizePostResults(payload: unknown): PostResult[] {
-  return extractItemsArray(payload).map(normalizePostResult).filter((item): item is PostResult => Boolean(item));
+function normalizePostResults(
+  payload: unknown,
+  options: {
+    preferCommunityShortNames: boolean;
+    hideAnonymousPosts: boolean;
+  }
+): PostResult[] {
+  return extractItemsArray(payload)
+    .map((item) => normalizePostResult(item, options))
+    .filter((item): item is PostResult => Boolean(item));
 }
 
 function capitalize(value: string): string {
@@ -670,16 +700,22 @@ function preferredName({
   return normalizedName ?? normalizedShort;
 }
 
-function displayCommunityPreferredName(value: unknown): string | undefined {
+function displayCommunityPreferredName(value: unknown, preferCommunityShortNames: boolean): string | undefined {
   if (!isRecord(value)) return undefined;
   return preferredName({
     name: pickString(value, ["name"]),
     shortName: pickString(value, ["short_name", "shortName"]),
-    preferShortNames: true,
+    preferShortNames: preferCommunityShortNames,
   });
 }
 
-function normalizeFeedPost(item: unknown): PostData | null {
+function normalizeFeedPost(
+  item: unknown,
+  options: {
+    preferCommunityShortNames: boolean;
+    hideAnonymousPosts: boolean;
+  }
+): PostData | null {
   if (!isRecord(item)) return null;
   const post = isRecord(item.post) ? item.post : item;
 
@@ -690,19 +726,24 @@ function normalizeFeedPost(item: unknown): PostData | null {
     pickBoolean(post, ["author_is_anonymous", "authorIsAnonymous", "is_anonymous", "isAnonymous", "is_anon", "isAnon"]) ??
     pickBoolean(post, ["anon", "anonymous"]) ??
     false;
+  if (options.hideAnonymousPosts && isAnonymous) return null;
 
   const communityId = pickString(post, ["community_id", "communityId"]);
   const postedCommunityName = preferredName({
     name: pickString(post, ["community_name", "communityName"]),
     shortName: pickString(post, ["community_short_name", "communityShortName"]),
-    preferShortNames: true,
+    preferShortNames: options.preferCommunityShortNames,
   });
   const communityKind = pickString(post, ["community_kind", "communityKind"]);
 
   const displaySpecializationName = displayCommunityPreferredName(
-    post.author_display_specialization ?? post.authorDisplaySpecialization
+    post.author_display_specialization ?? post.authorDisplaySpecialization,
+    options.preferCommunityShortNames
   );
-  const displayCommunityName = displayCommunityPreferredName(post.author_display_community ?? post.authorDisplayCommunity);
+  const displayCommunityName = displayCommunityPreferredName(
+    post.author_display_community ?? post.authorDisplayCommunity,
+    options.preferCommunityShortNames
+  );
 
   const subtitle = isAnonymous
     ? ""
@@ -810,8 +851,16 @@ function normalizeFeedPost(item: unknown): PostData | null {
   };
 }
 
-function normalizeFeedPosts(payload: unknown): PostData[] {
-  return extractItemsArray(payload).map(normalizeFeedPost).filter((item): item is PostData => Boolean(item));
+function normalizeFeedPosts(
+  payload: unknown,
+  options: {
+    preferCommunityShortNames: boolean;
+    hideAnonymousPosts: boolean;
+  }
+): PostData[] {
+  return extractItemsArray(payload)
+    .map((item) => normalizeFeedPost(item, options))
+    .filter((item): item is PostData => Boolean(item));
 }
 
 function normalizeHashtagResult(item: unknown): HashtagResult | null {
@@ -916,6 +965,8 @@ function IconBadge({ icon, imageUrl, label }: { icon?: string; imageUrl?: string
 export function AppSearchPage() {
   const navigate = useNavigate();
   const { showToast } = useToast();
+  const { hideAnonymousPosts } = useContentPreferences();
+  const preferCommunityShortNames = usePreferCommunityShortNames();
 
   const [isResultsOpen, setIsResultsOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -1038,7 +1089,7 @@ export function AppSearchPage() {
 
       const nextTrending = extractItemsArray(trendingResponse).map(normalizeTrendingPost).filter((item): item is TrendingPost => Boolean(item));
       const nextCommunities = extractItemsArray(communitiesResponse)
-        .map(normalizeCommunityCard)
+        .map((item) => normalizeCommunityCard(item, preferCommunityShortNames))
         .filter((item): item is CommunityCard => Boolean(item));
       const nextMajors = extractItemsArray(majorsBrowseResponse)
         .map((item) => normalizeSpecializationCard(item, combinedIcons))
@@ -1095,7 +1146,7 @@ export function AppSearchPage() {
       setLandingError(parseApiErrorMessage(error));
       setLandingStatus("error");
     }
-  }, []);
+  }, [preferCommunityShortNames]);
 
   useEffect(() => {
     void loadLanding();
@@ -1111,7 +1162,7 @@ export function AppSearchPage() {
         cursor: communitiesNextCursor,
       });
       const nextItems = extractItemsArray(response)
-        .map(normalizeCommunityCard)
+        .map((item) => normalizeCommunityCard(item, preferCommunityShortNames))
         .filter((item): item is CommunityCard => Boolean(item));
       setRecommendedCommunities((current) => mergeUniqueById(current, nextItems));
       setCommunitiesNextCursor(extractNextCursor(response));
@@ -1120,7 +1171,7 @@ export function AppSearchPage() {
     } finally {
       setIsLoadingMoreCommunities(false);
     }
-  }, [communitiesNextCursor, isLoadingMoreCommunities, landingStatus]);
+  }, [communitiesNextCursor, isLoadingMoreCommunities, landingStatus, preferCommunityShortNames]);
 
   const loadMoreMajors = useCallback(async () => {
     if (landingStatus !== "ready" || !majorsNextCursor || isLoadingMoreMajors) return;
@@ -1336,7 +1387,7 @@ export function AppSearchPage() {
             const communities =
               communitiesResult.status === "fulfilled"
                 ? extractItemsArray(communitiesResult.value)
-                    .map(normalizeCommunityCard)
+                    .map((item) => normalizeCommunityCard(item, preferCommunityShortNames))
                     .filter((item): item is CommunityCard => Boolean(item))
                     .map((item) => ({
                       id: item.id,
@@ -1355,7 +1406,13 @@ export function AppSearchPage() {
                     .map(normalizeHashtagResult)
                     .filter((item): item is HashtagResult => Boolean(item))
                 : [];
-            const posts = postsResult.status === "fulfilled" ? normalizePostResults(postsResult.value) : [];
+            const posts =
+              postsResult.status === "fulfilled"
+                ? normalizePostResults(postsResult.value, {
+                    preferCommunityShortNames,
+                    hideAnonymousPosts,
+                  })
+                : [];
 
             const everythingEmpty = users.length === 0 && communities.length === 0 && hashtags.length === 0 && posts.length === 0;
             const coreFailed =
@@ -1385,7 +1442,10 @@ export function AppSearchPage() {
             nextUsers = extractItemsArray(response).map(normalizeUserResult).filter((item): item is UserResult => Boolean(item));
           } else if (activeFilter === "posts") {
             const response = await searchPosts({ query: trimmed, limit: 20 });
-            nextPosts = normalizePostResults(response);
+            nextPosts = normalizePostResults(response, {
+              preferCommunityShortNames,
+              hideAnonymousPosts,
+            });
           } else {
             const kindByFilter: Partial<Record<SearchFilterId, CommunitySearchKind>> = {
               companies: "company",
@@ -1399,7 +1459,7 @@ export function AppSearchPage() {
               limit: 20,
             });
             nextCommunities = extractItemsArray(response)
-              .map(normalizeCommunityCard)
+              .map((item) => normalizeCommunityCard(item, preferCommunityShortNames))
               .filter((item): item is CommunityCard => Boolean(item))
               .map((item) => ({
                 id: item.id,
@@ -1433,7 +1493,7 @@ export function AppSearchPage() {
     return () => {
       window.clearTimeout(timer);
     };
-  }, [activeFilter, isResultsOpen, query, resultsMode]);
+  }, [activeFilter, hideAnonymousPosts, isResultsOpen, preferCommunityShortNames, query, resultsMode]);
 
   const hasAnyResults = useMemo(() => {
     return (
@@ -1528,7 +1588,12 @@ export function AppSearchPage() {
     try {
       const response = await searchPosts({ query: trimmed, limit: 20 });
       if (feedRequestRef.current !== requestId) return;
-      setFeedPosts(normalizeFeedPosts(response));
+      setFeedPosts(
+        normalizeFeedPosts(response, {
+          preferCommunityShortNames,
+          hideAnonymousPosts,
+        })
+      );
       setFeedNextCursor(extractNextCursor(response));
       setFeedStatus("ready");
     } catch (error) {
@@ -1538,7 +1603,7 @@ export function AppSearchPage() {
       setFeedStatus("error");
       setFeedError(parseApiErrorMessage(error));
     }
-  }, []);
+  }, [hideAnonymousPosts, preferCommunityShortNames]);
 
   const openHashtagFeed = useCallback(async (value: string) => {
     const normalized = value.trim().replace(/^#/, "").trim();
@@ -1558,7 +1623,12 @@ export function AppSearchPage() {
     try {
       const response = await fetchHashtagPosts({ name: normalized, limit: 20 });
       if (feedRequestRef.current !== requestId) return;
-      setFeedPosts(normalizeFeedPosts(response));
+      setFeedPosts(
+        normalizeFeedPosts(response, {
+          preferCommunityShortNames,
+          hideAnonymousPosts,
+        })
+      );
       setFeedNextCursor(extractNextCursor(response));
       setFeedStatus("ready");
     } catch (error) {
@@ -1568,7 +1638,27 @@ export function AppSearchPage() {
       setFeedStatus("error");
       setFeedError(parseApiErrorMessage(error));
     }
-  }, []);
+  }, [hideAnonymousPosts, preferCommunityShortNames]);
+
+  useEffect(() => {
+    if (!isResultsOpen) return;
+    if (resultsMode === "post-search-feed" && feedQuery.trim()) {
+      void openPostSearchFeed(feedQuery.trim());
+      return;
+    }
+    if (resultsMode === "hashtag-feed" && feedHashtag.trim()) {
+      void openHashtagFeed(feedHashtag.trim());
+    }
+  }, [
+    feedHashtag,
+    feedQuery,
+    hideAnonymousPosts,
+    isResultsOpen,
+    openHashtagFeed,
+    openPostSearchFeed,
+    preferCommunityShortNames,
+    resultsMode,
+  ]);
 
   const handleLoadMoreFeedPosts = useCallback(async () => {
     if (!feedNextCursor || (resultsMode !== "post-search-feed" && resultsMode !== "hashtag-feed")) return;
@@ -1590,7 +1680,15 @@ export function AppSearchPage() {
 
       if (feedRequestRef.current !== requestId) return;
 
-      setFeedPosts((current) => mergeUniqueById(current, normalizeFeedPosts(response)));
+      setFeedPosts((current) =>
+        mergeUniqueById(
+          current,
+          normalizeFeedPosts(response, {
+            preferCommunityShortNames,
+            hideAnonymousPosts,
+          })
+        )
+      );
       setFeedNextCursor(extractNextCursor(response));
       setFeedStatus("ready");
     } catch (error) {
@@ -1598,7 +1696,7 @@ export function AppSearchPage() {
       setFeedStatus("ready");
       setFeedError(parseApiErrorMessage(error));
     }
-  }, [feedHashtag, feedNextCursor, feedQuery, feedStatus, resultsMode]);
+  }, [feedHashtag, feedNextCursor, feedQuery, feedStatus, hideAnonymousPosts, preferCommunityShortNames, resultsMode]);
 
   const feedTitle = useMemo(() => {
     if (resultsMode === "post-search-feed") return `Posts for "${feedQuery}"`;

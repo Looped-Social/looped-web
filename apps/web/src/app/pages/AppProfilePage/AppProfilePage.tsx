@@ -4,6 +4,7 @@ import { Link, useNavigate } from "react-router";
 import { AppLayout, AppMobileHeader } from "@/app/components/AppLayout/AppLayout";
 import { MenuDots } from "@/app/components/AppIcons/AppIcons";
 import { useToast } from "@/app/components/AppToast/AppToast";
+import { createConversation, fetchConversations, MessagingApiError } from "@/lib/messagingApi";
 import { PostCard, type PostData } from "@/app/components/PostCard/PostCard";
 import { fetchMyReposts, fetchPostsReposted, fetchPostsSaved } from "@/lib/postReadApi";
 import { extractMediaAssetIds } from "@/lib/postMediaIds";
@@ -348,12 +349,16 @@ function normalizePostFeedItem(item: unknown, keySuffix: string): ProfileFeedIte
 }
 
 function parseApiErrorMessage(error: unknown): string {
-  if (error instanceof UserApiError) {
+  if (error instanceof UserApiError || error instanceof MessagingApiError) {
     const raw = error.details?.trim();
     if (!raw) return error.message;
     try {
       const parsed: unknown = JSON.parse(raw);
       if (isRecord(parsed)) {
+        const code = normalizeOptional(parsed.error)?.toLowerCase();
+        if (code === "anonymous_not_allowed") return "Messaging is unavailable in anonymous mode.";
+        if (code === "message_request_pending") return "Message request is still pending.";
+        if (code === "message_request_rejected") return "Message request was rejected.";
         const message = normalizeOptional(parsed.message);
         if (message) return message;
       }
@@ -364,6 +369,33 @@ function parseApiErrorMessage(error: unknown): string {
   }
   if (error instanceof Error) return error.message;
   return "Something went wrong.";
+}
+
+function extractConversationId(payload: unknown): string | undefined {
+  if (!isRecord(payload)) return undefined;
+
+  const directId = pickString(payload, ["conversation_id", "conversationId", "id"]);
+  if (directId) return directId;
+
+  const nestedRecord =
+    (isRecord(payload.conversation) ? payload.conversation : null) ??
+    (isRecord(payload.data) ? payload.data : null) ??
+    (isRecord(payload.item) ? payload.item : null);
+  if (!nestedRecord) return undefined;
+  return pickString(nestedRecord, ["conversation_id", "conversationId", "id"]);
+}
+
+function extractConversationParticipantId(item: Record<string, unknown>): string | undefined {
+  const directId = pickString(item, ["other_user_id", "otherUserId", "participant_user_id", "participantUserId"]);
+  if (directId) return directId;
+
+  const otherProfile =
+    (isRecord(item.other_user_profile) ? item.other_user_profile : null) ??
+    (isRecord(item.otherUserProfile) ? item.otherUserProfile : null) ??
+    (isRecord(item.participant) ? item.participant : null) ??
+    (isRecord(item.user) ? item.user : null);
+  if (!otherProfile) return undefined;
+  return pickString(otherProfile, ["id", "user_id", "userId"]);
 }
 
 function resolveCurrentUserId(payload: unknown): string | undefined {
@@ -581,6 +613,7 @@ export function AppProfilePage({ profileUserId }: AppProfilePageProps) {
 
   const [isFollowing, setIsFollowing] = useState(false);
   const [isFollowLoading, setIsFollowLoading] = useState(false);
+  const [isMessageLoading, setIsMessageLoading] = useState(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const [showBlockPrompt, setShowBlockPrompt] = useState(false);
   const [isBlockingUser, setIsBlockingUser] = useState(false);
@@ -836,6 +869,73 @@ export function AppProfilePage({ profileUserId }: AppProfilePageProps) {
       setIsFollowLoading(false);
     }
   }, [isCurrentUser, isFollowLoading, isFollowing, showToast, targetUserId]);
+
+  const resolveConversationIdForTargetUser = useCallback(async (resolvedTargetUserId: string): Promise<string | undefined> => {
+    const normalizedTargetUserId = String(resolvedTargetUserId);
+    let cursor: string | undefined;
+
+    for (let page = 0; page < 8; page += 1) {
+      const response = await fetchConversations({ limit: 50, cursor });
+      const items = Array.isArray(response.items) ? response.items : [];
+
+      for (const item of items) {
+        if (!isRecord(item)) continue;
+        const participantId = extractConversationParticipantId(item);
+        if (!participantId || String(participantId) !== normalizedTargetUserId) continue;
+        const conversationId = pickString(item, ["id", "conversation_id", "conversationId"]);
+        if (conversationId) return conversationId;
+      }
+
+      const nextCursor = response.next_cursor ?? response.nextCursor ?? undefined;
+      if (!nextCursor || nextCursor === cursor) break;
+      cursor = nextCursor;
+    }
+
+    return undefined;
+  }, []);
+
+  const handleMessageNavigation = useCallback(async () => {
+    if (!targetUserId || isCurrentUser || isMessageLoading) return;
+
+    setIsMessageLoading(true);
+    try {
+      const response = await createConversation(targetUserId);
+      let conversationId = extractConversationId(response);
+
+      if (!conversationId) {
+        conversationId = await resolveConversationIdForTargetUser(targetUserId);
+      }
+
+      if (conversationId) {
+        navigate(`/app/messages/conversation/${conversationId}`);
+        return;
+      }
+
+      navigate("/app/messages");
+      showToast({
+        title: "Messages",
+        message: "Opened your inbox. Start a message from the thread list.",
+      });
+    } catch (error) {
+      try {
+        const existingConversationId = await resolveConversationIdForTargetUser(targetUserId);
+        if (existingConversationId) {
+          navigate(`/app/messages/conversation/${existingConversationId}`);
+          return;
+        }
+      } catch {
+        // Ignore fallback lookup errors and show original create-conversation failure.
+      }
+
+      showToast({
+        title: "Couldn't open messages",
+        message: parseApiErrorMessage(error),
+        tone: "error",
+      });
+    } finally {
+      setIsMessageLoading(false);
+    }
+  }, [isCurrentUser, isMessageLoading, navigate, resolveConversationIdForTargetUser, showToast, targetUserId]);
 
   const handleBackNavigation = useCallback(() => {
     if (typeof window !== "undefined" && window.history.length > 1) {
@@ -1123,15 +1223,11 @@ export function AppProfilePage({ profileUserId }: AppProfilePageProps) {
                   </button>
                   <button
                     type="button"
-                    className="min-w-[150px] rounded-full bg-bg-muted px-6 py-2.5 text-center text-[1.02rem] font-semibold text-text-secondary transition hover:text-strong"
-                    onClick={() =>
-                      showToast({
-                        title: "Messaging",
-                        message: "Direct messaging from profile is coming soon on web.",
-                      })
-                    }
+                    className="min-w-[150px] rounded-full bg-bg-muted px-6 py-2.5 text-center text-[1.02rem] font-semibold text-text-secondary transition hover:text-strong disabled:cursor-not-allowed disabled:opacity-70"
+                    onClick={() => void handleMessageNavigation()}
+                    disabled={isMessageLoading}
                   >
-                    Message
+                    {isMessageLoading ? "Opening..." : "Message"}
                   </button>
                 </>
               )}

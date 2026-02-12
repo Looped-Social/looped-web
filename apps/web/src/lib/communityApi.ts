@@ -2,9 +2,9 @@ import { ApiError, getApiBase } from "./apiBase";
 import { getFirebaseIdToken } from "./firebaseClient";
 
 export type CommunityRequestPayload = {
-  type: "company" | "school" | "sector" | "profession";
+  type: "company" | "school";
   name: string;
-  about?: string;
+  about: string;
   imageKey?: string;
 };
 
@@ -88,11 +88,13 @@ async function uploadWithPresign(presign: MediaPresignResponse, file: File) {
 }
 
 export async function uploadCommunityImage(file: File): Promise<string> {
+  const normalizedFile = await normalizeCommunityRequestImage(file);
+
   const presign = await authFetch<MediaPresignResponse>("/v1/media/presign", {
     method: "POST",
     body: JSON.stringify({
-      contentType: file.type,
-      sizeBytes: file.size,
+      contentType: normalizedFile.type || file.type,
+      sizeBytes: normalizedFile.size,
     }),
   });
 
@@ -101,9 +103,9 @@ export async function uploadCommunityImage(file: File): Promise<string> {
     throw new Error("Upload failed. Missing media key.");
   }
 
-  await uploadWithPresign(presign, file);
+  await uploadWithPresign(presign, normalizedFile);
 
-  const dimensions = await getImageDimensions(file);
+  const dimensions = await getImageDimensions(normalizedFile);
   await authFetch("/v1/media/callback", {
     method: "POST",
     headers: {
@@ -111,7 +113,7 @@ export async function uploadCommunityImage(file: File): Promise<string> {
     },
     body: JSON.stringify({
       key,
-      mimeType: file.type,
+      mimeType: normalizedFile.type || file.type,
       width: dimensions.width,
       height: dimensions.height,
       durationSeconds: null,
@@ -119,6 +121,50 @@ export async function uploadCommunityImage(file: File): Promise<string> {
   });
 
   return key;
+}
+
+async function normalizeCommunityRequestImage(file: File): Promise<File> {
+  if (!file.type.startsWith("image/")) return file;
+
+  const bitmap = await createImageBitmap(file);
+  try {
+    const width = bitmap.width;
+    const height = bitmap.height;
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext("2d", { willReadFrequently: true });
+    if (!context) return file;
+
+    context.drawImage(bitmap, 0, 0, width, height);
+    const hasAlpha = detectAlphaChannel(context, width, height);
+    const targetMime = hasAlpha ? "image/png" : "image/jpeg";
+    const blob = await canvasToBlob(canvas, targetMime, hasAlpha ? undefined : 0.9);
+    if (!blob) return file;
+
+    const extension = hasAlpha ? "png" : "jpg";
+    const baseName = file.name.replace(/\.[^.]+$/, "") || "community-image";
+    return new File([blob], `${baseName}.${extension}`, { type: targetMime });
+  } catch {
+    return file;
+  } finally {
+    bitmap.close();
+  }
+}
+
+function detectAlphaChannel(context: CanvasRenderingContext2D, width: number, height: number): boolean {
+  const imageData = context.getImageData(0, 0, width, height);
+  const data = imageData.data;
+  for (let index = 3; index < data.length; index += 4) {
+    if (data[index] !== 255) return true;
+  }
+  return false;
+}
+
+function canvasToBlob(canvas: HTMLCanvasElement, type: string, quality?: number): Promise<Blob | null> {
+  return new Promise((resolve) => {
+    canvas.toBlob((blob) => resolve(blob), type, quality);
+  });
 }
 
 export async function submitCommunityRequest(

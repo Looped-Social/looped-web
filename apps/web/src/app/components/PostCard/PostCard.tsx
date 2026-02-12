@@ -7,6 +7,7 @@ import { useToast } from "@/app/components/AppToast/AppToast";
 import type { CommunityPermissions } from "@/lib/communityPermissionsApi";
 import { getCommunityPermissions } from "@/lib/communityPermissionsApi";
 import { type ResolvedMediaAsset, resolveMediaAssets } from "@/lib/mediaApi";
+import { emitPostSavedChanged } from "@/lib/postEvents";
 import { type PostPoll, normalizePoll } from "@/lib/postPoll";
 import { PostActionsApiError, setPostLike, setPostReposted, setPostSaved, sharePost, votePoll } from "@/lib/postActionsApi";
 
@@ -520,6 +521,7 @@ export function PostCard({ post }: PostCardProps) {
     try {
       const response = await setPostSaved(post.id, next);
       setIsSaved(response.saved);
+      emitPostSavedChanged({ postId: post.id, saved: response.saved });
     } catch (error) {
       setIsSaved(previous);
 
@@ -725,23 +727,23 @@ export function PostCard({ post }: PostCardProps) {
           <div className="min-w-0 flex flex-1 items-start gap-3">
             {authorAvatar}
             <div className="min-w-0">
-              <div className="flex flex-wrap items-baseline gap-x-1 gap-y-0.5 leading-tight">
+              <div className="flex min-w-0 items-baseline gap-1 leading-tight">
                 {canOpenProfile ? (
                   <Link
                     to={post.authorProfileHref!}
-                    className={`text-[1.12rem] font-semibold transition hover:opacity-90 ${post.isAnonymous ? "text-secondary" : "text-strong"}`}
+                    className={`shrink-0 text-[1.12rem] font-semibold transition hover:opacity-90 ${post.isAnonymous ? "text-secondary" : "text-strong"}`}
                   >
                     {post.author}
                   </Link>
                 ) : (
-                  <p className={`text-[1.12rem] font-semibold ${post.isAnonymous ? "text-secondary" : "text-strong"}`}>
+                  <p className={`shrink-0 text-[1.12rem] font-semibold ${post.isAnonymous ? "text-secondary" : "text-strong"}`}>
                     {post.author}
                   </p>
                 )}
                 {post.subtitle ? (
                   <>
-                    <span className="text-[1.08rem] leading-none text-text-light">·</span>
-                    <p className="text-[1.03rem] text-text-secondary">{post.subtitle}</p>
+                    <span className="shrink-0 text-[1.08rem] leading-none text-text-light">·</span>
+                    <p className="min-w-0 flex-1 truncate text-[1.03rem] text-text-secondary">{post.subtitle}</p>
                   </>
                 ) : null}
               </div>

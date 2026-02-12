@@ -1,9 +1,12 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router';
 
 import { Logo, ThemeToggle } from '@looped/ui';
 
 import { MenuDots, ProfileIcon } from '@/app/components/AppIcons/AppIcons';
+import { useCurrentUserStore } from '@/stores/currentUserStore';
+
+const DEFAULT_PROFILE_IMAGE_SRC = '/ios-icons/pfp2.svg';
 
 type NavItem = {
   id: string;
@@ -99,7 +102,30 @@ function BackIcon({ className }: { className?: string }) {
   );
 }
 
+function ProfileNavAvatar({
+  src,
+  className,
+}: {
+  src: string;
+  className?: string;
+}) {
+  const [fallback, setFallback] = useState(false);
+
+  return (
+    <img
+      src={fallback ? DEFAULT_PROFILE_IMAGE_SRC : src}
+      alt=""
+      className={className}
+      loading="lazy"
+      onError={() => setFallback(true)}
+    />
+  );
+}
+
 export function AppLayout({ activeNavId = 'home', children, rightRail }: AppLayoutProps) {
+  const { user } = useCurrentUserStore({ autoLoad: true });
+  const profileImageUrl = user?.profileImageUrl;
+
   return (
     <div className="min-h-screen bg-shell-bg">
       <div className="mx-auto w-full">
@@ -128,11 +154,17 @@ export function AppLayout({ activeNavId = 'home', children, rightRail }: AppLayo
                     }`;
 
                     const iconSrc = isActive ? (item.activeIconSrc ?? item.iconSrc) : item.iconSrc;
-                    const icon = iconSrc ? (
-                      <img src={iconSrc} alt="" className="h-6 w-6 shrink-0" aria-hidden="true" />
-                    ) : (
-                      <MenuDots className="h-6 w-6 shrink-0 text-shell-text-muted" />
-                    );
+                    const icon =
+                      item.id === 'profile' && profileImageUrl ? (
+                        <ProfileNavAvatar
+                          src={profileImageUrl}
+                          className="h-6 w-6 shrink-0 rounded-full object-cover"
+                        />
+                      ) : iconSrc ? (
+                        <img src={iconSrc} alt="" className="h-6 w-6 shrink-0" aria-hidden="true" />
+                      ) : (
+                        <MenuDots className="h-6 w-6 shrink-0 text-shell-text-muted" />
+                      );
 
                     if (item.href) {
                       return (
@@ -193,6 +225,8 @@ export function AppMobileHeader({
   backHref = '/app',
 }: AppMobileHeaderProps) {
   const navigate = useNavigate();
+  const { user } = useCurrentUserStore({ autoLoad: true });
+  const profileImageUrl = user?.profileImageUrl;
 
   const handleBack = () => {
     if (typeof window !== 'undefined' && window.history.length > 1) {
@@ -223,11 +257,15 @@ export function AppMobileHeader({
         <ThemeToggle className="flex h-10 w-10 items-center justify-center text-text-secondary transition hover:text-strong" />
         {showAction ? (
           <Link
-            className="flex h-9 w-9 items-center justify-center rounded-full bg-brand text-white"
+            className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-brand text-white"
             to={actionHref}
             aria-label="Profile"
           >
-            <ProfileIcon className="h-4 w-4" />
+            {profileImageUrl ? (
+              <ProfileNavAvatar src={profileImageUrl} className="h-full w-full object-cover" />
+            ) : (
+              <ProfileIcon className="h-4 w-4" />
+            )}
           </Link>
         ) : null}
       </div>

@@ -1,4 +1,14 @@
-import { type ChangeEvent, type CSSProperties, type SyntheticEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type ChangeEvent,
+  type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type SyntheticEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useNavigate } from "react-router";
 
 import { AppLayout, AppMobileHeader } from "@/app/components/AppLayout/AppLayout";
@@ -102,7 +112,7 @@ type MediaPreviewState = {
   poster?: string;
 };
 
-const POLL_INTERVAL_MS = 10_000;
+const POLL_INTERVAL_MS = 2_500;
 const MAX_IMAGE_ATTACHMENTS = 4;
 const ZERO_WIDTH_SPACE = "\u200B";
 const DEFAULT_PROFILE_IMAGE_SRC = "/ios-icons/pfp2.svg";
@@ -667,6 +677,8 @@ export function AppMessageThreadPage({ threadType, threadId }: AppMessageThreadP
   const membersByIdRef = useRef<Record<string, MemberPreview>>({});
   const didScrollToBottomRef = useRef(false);
   const pollInFlightRef = useRef(false);
+  const pollAbortControllerRef = useRef<AbortController | null>(null);
+  const nextCursorRef = useRef<string | undefined>(undefined);
   const addMembersSearchTimeoutRef = useRef<number | undefined>(undefined);
 
   const isGroup = threadType === "channel";
@@ -692,6 +704,10 @@ export function AppMessageThreadPage({ threadType, threadId }: AppMessageThreadP
 
   useEffect(() => {
     didScrollToBottomRef.current = false;
+    pollInFlightRef.current = false;
+    pollAbortControllerRef.current?.abort();
+    pollAbortControllerRef.current = null;
+    nextCursorRef.current = undefined;
     setThreadAvatarUrl(undefined);
     membersByIdRef.current = {};
     setIsDetailsOpen(false);
@@ -724,6 +740,8 @@ export function AppMessageThreadPage({ threadType, threadId }: AppMessageThreadP
 
   useEffect(() => {
     return () => {
+      pollAbortControllerRef.current?.abort();
+      pollAbortControllerRef.current = null;
       if (addMembersSearchTimeoutRef.current) {
         window.clearTimeout(addMembersSearchTimeoutRef.current);
       }
@@ -734,36 +752,14 @@ export function AppMessageThreadPage({ threadType, threadId }: AppMessageThreadP
   }, [groupPhotoCropSourceUrl]);
 
   const fetchThreadMessagesPage = useCallback(
-    async (cursor?: string): Promise<CursorEnvelope<unknown>> => {
+    async (cursor?: string, signal?: AbortSignal): Promise<CursorEnvelope<unknown>> => {
       if (threadType === "channel") {
-        return fetchChannelMessages({ channelId: threadId, limit: 50, cursor });
+        return fetchChannelMessages({ channelId: threadId, limit: 50, cursor, signal });
       }
-      return fetchConversationMessages({ conversationId: threadId, limit: 50, cursor });
+      return fetchConversationMessages({ conversationId: threadId, limit: 50, cursor, signal });
     },
     [threadId, threadType]
   );
-
-  const fetchLatestThreadWindow = useCallback(async (): Promise<{ items: unknown[]; nextCursor?: string }> => {
-    const MAX_PAGES = 8;
-    const MAX_ITEMS = 400;
-
-    const firstPage = await fetchThreadMessagesPage();
-    const firstItems = extractItemsArray(firstPage);
-    const combinedItems = [...firstItems];
-
-    let nextCursor = readNextCursor(firstPage);
-    let pageCount = 1;
-    while (nextCursor && pageCount < MAX_PAGES && combinedItems.length < MAX_ITEMS) {
-      const page = await fetchThreadMessagesPage(nextCursor);
-      const items = extractItemsArray(page);
-      if (items.length === 0) break;
-      combinedItems.push(...items);
-      nextCursor = readNextCursor(page);
-      pageCount += 1;
-    }
-
-    return { items: combinedItems, nextCursor };
-  }, [fetchThreadMessagesPage]);
 
   const hydrateAttachmentUrls = useCallback(async (items: ThreadMessage[]): Promise<ThreadMessage[]> => {
     const now = Date.now();
@@ -933,6 +929,8 @@ export function AppMessageThreadPage({ threadType, threadId }: AppMessageThreadP
     setIsLoading(true);
     setLoadError(null);
     setBlockState(null);
+    nextCursorRef.current = undefined;
+    seenMessageIdsRef.current = new Set();
 
     try {
       const viewer = await fetchViewerState();
@@ -945,9 +943,9 @@ export function AppMessageThreadPage({ threadType, threadId }: AppMessageThreadP
           ? membersResult.value
           : {};
 
-      const page = await fetchLatestThreadWindow();
+      const page = await fetchThreadMessagesPage();
       const normalizedMessages = await normalizeMessages(
-        page.items,
+        extractItemsArray(page),
         normalizedViewerId,
         Object.keys(memberMap).length > 0 ? memberMap : undefined
       );
@@ -955,6 +953,7 @@ export function AppMessageThreadPage({ threadType, threadId }: AppMessageThreadP
       const ids = new Set(normalizedMessages.map((message) => message.id));
       seenMessageIdsRef.current = ids;
       setMessages(normalizedMessages);
+      nextCursorRef.current = readNextCursor(page);
       setIsLoading(false);
     } catch (error) {
       const code = parseApiErrorCode(error);
@@ -966,7 +965,7 @@ export function AppMessageThreadPage({ threadType, threadId }: AppMessageThreadP
       setLoadError(parseApiErrorMessage(error));
       setIsLoading(false);
     }
-  }, [fetchLatestThreadWindow, loadChannelMembers, loadThreadMeta, normalizeMessages]);
+  }, [fetchThreadMessagesPage, loadChannelMembers, loadThreadMeta, normalizeMessages]);
 
   useEffect(() => {
     void loadInitial();
@@ -974,11 +973,14 @@ export function AppMessageThreadPage({ threadType, threadId }: AppMessageThreadP
 
   const pollForMessages = useCallback(async () => {
     if (blockState) return;
+    if (isLoading) return;
     if (pollInFlightRef.current) return;
     pollInFlightRef.current = true;
+    const controller = new AbortController();
+    pollAbortControllerRef.current = controller;
 
     try {
-      const page = await fetchThreadMessagesPage();
+      const page = await fetchThreadMessagesPage(nextCursorRef.current, controller.signal);
       const normalizedMessages = await normalizeMessages(extractItemsArray(page), viewerId);
       if (normalizedMessages.length > 0) {
         setMessages((previous) => {
@@ -991,7 +993,14 @@ export function AppMessageThreadPage({ threadType, threadId }: AppMessageThreadP
           return next.sort((left, right) => left.createdAtMs - right.createdAtMs);
         });
       }
+      const nextCursor = readNextCursor(page);
+      if (nextCursor) {
+        nextCursorRef.current = nextCursor;
+      }
     } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        return;
+      }
       const code = parseApiErrorCode(error);
       if (code === "message_request_pending") {
         setBlockState("pending");
@@ -999,9 +1008,12 @@ export function AppMessageThreadPage({ threadType, threadId }: AppMessageThreadP
         setBlockState("rejected");
       }
     } finally {
+      if (pollAbortControllerRef.current === controller) {
+        pollAbortControllerRef.current = null;
+      }
       pollInFlightRef.current = false;
     }
-  }, [blockState, fetchThreadMessagesPage, normalizeMessages, viewerId]);
+  }, [blockState, fetchThreadMessagesPage, isLoading, normalizeMessages, viewerId]);
 
   useEffect(() => {
     if (isLoading || loadError || blockState) return;
@@ -1011,6 +1023,8 @@ export function AppMessageThreadPage({ threadType, threadId }: AppMessageThreadP
 
     return () => {
       window.clearInterval(timer);
+      pollAbortControllerRef.current?.abort();
+      pollAbortControllerRef.current = null;
     };
   }, [blockState, isLoading, loadError, pollForMessages]);
 
@@ -1197,6 +1211,11 @@ export function AppMessageThreadPage({ threadType, threadId }: AppMessageThreadP
         void pollForMessages();
       }
 
+      const nextCursor = readNextCursor(payload);
+      if (nextCursor) {
+        nextCursorRef.current = nextCursor;
+      }
+
       setComposerText("");
       setSelectedFiles([]);
       scrollToBottom();
@@ -1233,6 +1252,17 @@ export function AppMessageThreadPage({ threadType, threadId }: AppMessageThreadP
     viewerId,
     scrollToBottom,
   ]);
+
+  const handleComposerKeyDown = useCallback(
+    (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
+      if (event.key !== "Enter") return;
+      if (event.shiftKey) return;
+      if (event.nativeEvent.isComposing) return;
+      event.preventDefault();
+      void handleSend();
+    },
+    [handleSend]
+  );
 
   const handleToggleMuted = useCallback(async () => {
     if (isMuteSaving) return;
@@ -2410,6 +2440,7 @@ export function AppMessageThreadPage({ threadType, threadId }: AppMessageThreadP
           <textarea
             value={composerText}
             onChange={(event) => setComposerText(event.target.value)}
+            onKeyDown={handleComposerKeyDown}
             className="min-h-8 max-h-32 w-full resize-none bg-transparent px-0 py-0 text-[16px] font-normal text-strong placeholder:text-text-light focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-70"
             placeholder={blockState ? "Messaging unavailable for this thread." : "Type a message"}
             disabled={Boolean(blockState) || isSending}

@@ -4,6 +4,10 @@ import { useNavigate } from "react-router";
 import { AppLayout, AppMobileHeader } from "@/app/components/AppLayout/AppLayout";
 import { useToast } from "@/app/components/AppToast/AppToast";
 import {
+  MessageRecipientComposer,
+  type MessageRecipientComposerSuccess,
+} from "@/app/components/MessageRecipientComposer/MessageRecipientComposer";
+import {
   approveMessageRequest,
   createConversation,
   fetchChannels,
@@ -49,7 +53,6 @@ type MessageRequestRow = {
 };
 
 const SEARCH_DEBOUNCE_MS = 250;
-const INBOX_POLL_MS = 30_000;
 const DEFAULT_PROFILE_IMAGE_SRC = "/ios-icons/pfp2.svg";
 
 function handleProfileImageError(event: SyntheticEvent<HTMLImageElement>) {
@@ -282,6 +285,14 @@ function parseApiErrorMessage(error: unknown): string {
 function extractConversationId(payload: unknown): string | undefined {
   if (!isRecord(payload)) return undefined;
   return pickString(payload, ["conversation_id", "conversationId", "id"]);
+}
+
+function extractUserId(payload: unknown): string | undefined {
+  if (!isRecord(payload)) return undefined;
+  if (isRecord(payload.user)) {
+    return pickString(payload.user, ["id", "user_id", "userId"]);
+  }
+  return pickString(payload, ["id", "user_id", "userId"]);
 }
 
 function isViewerAnonymous(payload: unknown): boolean {
@@ -742,6 +753,8 @@ export function AppMessagesPage() {
   const [activeTabId, setActiveTabId] = useState<InboxTabId>("messages");
   const [query, setQuery] = useState("");
   const [isAnonymousViewer, setIsAnonymousViewer] = useState(false);
+  const [viewerUserId, setViewerUserId] = useState<string | null>(null);
+  const [isComposerOpen, setIsComposerOpen] = useState(false);
 
   const [conversationRows, setConversationRows] = useState<ThreadRow[]>([]);
   const [channelRows, setChannelRows] = useState<ThreadRow[]>([]);
@@ -764,8 +777,10 @@ export function AppMessagesPage() {
     try {
       const response = await fetchViewerState();
       setIsAnonymousViewer(isViewerAnonymous(response));
+      setViewerUserId(extractUserId(response) ?? null);
     } catch {
       setIsAnonymousViewer(false);
+      setViewerUserId(null);
     }
   }, []);
 
@@ -843,16 +858,6 @@ export function AppMessagesPage() {
     void loadViewerState();
     void loadInbox();
   }, [loadInbox, loadViewerState]);
-
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      void loadInbox({ silent: true });
-    }, INBOX_POLL_MS);
-
-    return () => {
-      window.clearInterval(timer);
-    };
-  }, [loadInbox]);
 
   useEffect(() => {
     const trimmedQuery = query.trim();
@@ -977,6 +982,33 @@ export function AppMessagesPage() {
     [loadChannels, loadConversations, navigate, requestActionById, showToast]
   );
 
+  const openComposer = useCallback(() => {
+    if (isAnonymousViewer) {
+      showToast({
+        kind: "info",
+        title: "Messaging unavailable",
+        text: "Switch to your named profile to start a new chat.",
+      });
+      return;
+    }
+    setIsComposerOpen(true);
+  }, [isAnonymousViewer, showToast]);
+
+  const handleComposerSuccess = useCallback(
+    (result: MessageRecipientComposerSuccess) => {
+      setIsComposerOpen(false);
+      if (result.kind === "conversation") {
+        navigate(`/app/messages/conversation/${result.conversationId}`);
+        return;
+      }
+      if (result.kind === "channel") {
+        navigate(`/app/messages/channel/${result.channelId}`);
+        return;
+      }
+    },
+    [navigate]
+  );
+
   const isLoadingMessages = (conversationStatus === "loading" || channelStatus === "loading") && !conversationRows.length && !channelRows.length;
   const isLoadingRequests = requestStatus === "loading" && !requestRows.length;
   const hasMessageLoadError = conversationStatus === "error" && channelStatus === "error" && !conversationRows.length && !channelRows.length;
@@ -989,7 +1021,17 @@ export function AppMessagesPage() {
       <AppMobileHeader title="Messages" showAction={false} />
 
       <header className="border-b border-border/70 bg-bg px-4 pb-4 pt-4 sm:px-6">
-        <h1 className="text-4xl leading-none font-semibold text-strong sm:text-5xl lg:text-[2.25rem]">Messages</h1>
+        <div className="flex items-center justify-between gap-3">
+          <h1 className="text-4xl leading-none font-semibold text-strong sm:text-5xl lg:text-[2.25rem]">Messages</h1>
+          <button
+            type="button"
+            onClick={openComposer}
+            disabled={activeTabId !== "messages"}
+            className="hidden h-10 shrink-0 items-center rounded-full bg-brand px-4 text-sm font-semibold text-white transition hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-50 sm:inline-flex"
+          >
+            New Message
+          </button>
+        </div>
         <div className="relative mt-4">
           <SearchIcon className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-text-light" />
           <input
@@ -1091,8 +1133,17 @@ export function AppMessagesPage() {
                   <ThreadRowCard key={row.id} row={row} onOpen={handleOpenThread} />
                 ))}
                 {!isLoadingMessages && !hasMessageLoadError && visibleChannels.length === 0 && visibleConversations.length === 0 ? (
-                  <div className="px-4 py-6 text-sm text-text-secondary sm:px-6">
-                    {normalizedQuery.length > 0 ? "No matching conversations." : "No messages yet."}
+                  <div className="space-y-3 px-4 py-6 text-sm text-text-secondary sm:px-6">
+                    <p>{normalizedQuery.length > 0 ? "No matching conversations." : "No messages yet."}</p>
+                    {normalizedQuery.length === 0 ? (
+                      <button
+                        type="button"
+                        onClick={openComposer}
+                        className="inline-flex items-center rounded-full bg-brand px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-hover"
+                      >
+                        Start a new chat
+                      </button>
+                    ) : null}
                   </div>
                 ) : null}
               </>
@@ -1140,18 +1191,21 @@ export function AppMessagesPage() {
 
       <button
         type="button"
-        onClick={() =>
-          showToast({
-            kind: "info",
-            title: "New message",
-            text: "Message composer is coming next.",
-          })
-        }
-        className="fixed bottom-6 right-5 z-20 inline-flex h-14 w-14 items-center justify-center rounded-full bg-brand text-white shadow-[0_12px_24px_rgba(234,64,74,0.32)] transition hover:bg-brand-hover lg:hidden"
+        onClick={openComposer}
+        className={`fixed bottom-6 right-5 z-20 inline-flex h-14 w-14 items-center justify-center rounded-full bg-brand text-white shadow-[0_12px_24px_rgba(234,64,74,0.32)] transition hover:bg-brand-hover sm:hidden ${
+          activeTabId !== "messages" ? "pointer-events-none opacity-0" : ""
+        }`}
         aria-label="New message"
       >
         <img src="/ios-icons/action-send.svg" alt="" className="h-6 w-6 object-contain" loading="lazy" />
       </button>
+
+      <MessageRecipientComposer
+        open={isComposerOpen}
+        onClose={() => setIsComposerOpen(false)}
+        onSuccess={handleComposerSuccess}
+        currentUserId={viewerUserId}
+      />
     </AppLayout>
   );
 }

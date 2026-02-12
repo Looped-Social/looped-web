@@ -14,8 +14,6 @@ import {
 const requestTypes: Array<{ value: CommunityRequestPayload["type"]; label: string; helper?: string }> = [
   { value: "company", label: "Company" },
   { value: "school", label: "School" },
-  { value: "sector", label: "Field" },
-  { value: "profession", label: "Profession", helper: "Treated as a field" },
 ];
 
 export function CommunityRequestPage() {
@@ -37,6 +35,10 @@ export function CommunityRequestPage() {
       setSubmitError("Enter a community name.");
       return;
     }
+    if (!about.trim()) {
+      setSubmitError("Enter a short description.");
+      return;
+    }
 
     setIsSubmitting(true);
     try {
@@ -48,7 +50,7 @@ export function CommunityRequestPage() {
       const response = await submitCommunityRequest({
         name: name.trim(),
         type,
-        about: about.trim() || undefined,
+        about: about.trim(),
         imageKey,
       });
 
@@ -154,7 +156,7 @@ export function CommunityRequestPage() {
 
               <div className="space-y-2">
                 <label className="text-sm font-semibold text-text-primary" htmlFor="community-about">
-                  Description (optional)
+                  Description
                 </label>
                 <textarea
                   id="community-about"
@@ -162,6 +164,7 @@ export function CommunityRequestPage() {
                   onChange={(event) => setAbout(event.target.value)}
                   className="min-h-[120px] w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-text-primary outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
                   placeholder="Tell us a little about the community."
+                  required
                 />
               </div>
 

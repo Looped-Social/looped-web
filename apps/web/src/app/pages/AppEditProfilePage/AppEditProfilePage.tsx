@@ -19,9 +19,10 @@ import {
   uploadProfilePhoto,
 } from "@/lib/profileEditApi";
 import { fetchUserMe, fetchUserProfile } from "@/lib/userApi";
+import { isValidUsername, normalizeUsername } from "@/lib/settingsValidation";
+import { refreshCurrentUser } from "@/stores/currentUserStore";
 
 const DEFAULT_PROFILE_IMAGE_SRC = "/ios-icons/pfp2.svg";
-const USERNAME_REGEX = /^[a-z0-9_]{3,30}$/;
 
 type SelectOption = {
   id: string;
@@ -506,7 +507,7 @@ export function AppEditProfilePage() {
     };
   }, [cropSourceUrl, photoPreviewUrl]);
 
-  const normalizedUsername = form.username.trim().toLowerCase();
+  const normalizedUsername = normalizeUsername(form.username);
 
   useEffect(() => {
     if (!initialForm || status !== "idle") return;
@@ -517,7 +518,7 @@ export function AppEditProfilePage() {
       return;
     }
 
-    if (!USERNAME_REGEX.test(normalizedUsername)) {
+    if (!isValidUsername(normalizedUsername)) {
       setUsernameStatus("invalid");
       setUsernameMessage("Use 3-30 lowercase letters, numbers, or underscores.");
       return;
@@ -600,7 +601,7 @@ export function AppEditProfilePage() {
     hasUnsavedChanges &&
     form.firstName.trim().length > 0 &&
     form.lastName.trim().length > 0 &&
-    USERNAME_REGEX.test(normalizedUsername) &&
+    isValidUsername(normalizedUsername) &&
     (usernameStatus === "available" || usernameStatus === "owned") &&
     !isSaving;
 
@@ -698,6 +699,11 @@ export function AppEditProfilePage() {
       }
 
       await fetchUserMe();
+      try {
+        await refreshCurrentUser();
+      } catch {
+        // Keep save success state even if store revalidation fails.
+      }
 
       showToast({
         title: "Profile updated",

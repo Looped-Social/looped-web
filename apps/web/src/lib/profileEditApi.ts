@@ -1,5 +1,6 @@
 import { ApiError, getApiBase } from "./apiBase";
 import { getFirebaseIdToken } from "./firebaseClient";
+import { completeMediaUpload, presignMediaUpload, uploadFileWithPresign } from "./mediaApi";
 
 export class ProfileEditApiError extends ApiError {}
 
@@ -7,16 +8,6 @@ type CursorEnvelope<T> = {
   items: T[];
   next_cursor?: string | null;
   nextCursor?: string | null;
-};
-
-type MediaPresignResponse = {
-  key?: string;
-  uploadUrl?: string;
-  headers?: Record<string, string>;
-  callbackSignature?: string;
-  url?: string;
-  fields?: Record<string, string>;
-  method?: string;
 };
 
 type UsernameAvailabilityResponse = {
@@ -95,39 +86,6 @@ async function authFetch<T>(path: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-async function uploadWithPresign(presign: MediaPresignResponse, file: File) {
-  if (presign.url && presign.fields) {
-    const formData = new FormData();
-    Object.entries(presign.fields).forEach(([key, value]) => {
-      formData.append(key, value);
-    });
-    formData.append("file", file);
-
-    const uploadResponse = await fetch(presign.url, {
-      method: "POST",
-      body: formData,
-    });
-    if (!uploadResponse.ok) {
-      throw new Error("Unable to upload profile image.");
-    }
-    return;
-  }
-
-  if (presign.uploadUrl) {
-    const uploadResponse = await fetch(presign.uploadUrl, {
-      method: presign.method ?? "PUT",
-      headers: presign.headers ?? { "Content-Type": file.type || "application/octet-stream" },
-      body: file,
-    });
-    if (!uploadResponse.ok) {
-      throw new Error("Unable to upload profile image.");
-    }
-    return;
-  }
-
-  throw new Error("Unable to upload profile image.");
-}
-
 async function getImageDimensions(file: File): Promise<{ width: number; height: number }> {
   const objectUrl = URL.createObjectURL(file);
 
@@ -153,25 +111,6 @@ function loadImage(src: string): Promise<HTMLImageElement> {
     img.onerror = () => reject(new Error("Unable to read image dimensions."));
     img.src = src;
   });
-}
-
-function extractMediaAssetId(payload: unknown): string | number | undefined {
-  if (!isRecord(payload)) return undefined;
-  const direct =
-    getNumber(payload.media_asset_id ?? payload.mediaAssetId ?? payload.asset_id ?? payload.assetId ?? payload.id) ??
-    normalizeOptional(payload.media_asset_id ?? payload.mediaAssetId ?? payload.asset_id ?? payload.assetId ?? payload.id);
-  if (direct !== undefined) return direct;
-
-  const nestedAsset =
-    (isRecord(payload.asset) ? payload.asset : null) ??
-    (isRecord(payload.mediaAsset) ? payload.mediaAsset : null) ??
-    (isRecord(payload.media) ? payload.media : null);
-  if (!nestedAsset) return undefined;
-
-  return (
-    getNumber(nestedAsset.media_asset_id ?? nestedAsset.mediaAssetId ?? nestedAsset.asset_id ?? nestedAsset.assetId ?? nestedAsset.id) ??
-    normalizeOptional(nestedAsset.media_asset_id ?? nestedAsset.mediaAssetId ?? nestedAsset.asset_id ?? nestedAsset.assetId ?? nestedAsset.id)
-  );
 }
 
 function readCachedDefaultProfileImageUrl(): string | null | undefined {
@@ -291,12 +230,9 @@ export async function fetchJoinedSpecializations({
 }
 
 export async function uploadProfilePhoto(file: File): Promise<string | number> {
-  const presign = await authFetch<MediaPresignResponse>("/v1/media/presign", {
-    method: "POST",
-    body: JSON.stringify({
-      contentType: file.type,
-      sizeBytes: file.size,
-    }),
+  const presign = await presignMediaUpload({
+    contentType: file.type,
+    sizeBytes: file.size,
   });
 
   const key = presign.key ?? presign.fields?.key;
@@ -304,27 +240,17 @@ export async function uploadProfilePhoto(file: File): Promise<string | number> {
     throw new Error("Upload failed. Missing media key.");
   }
 
-  await uploadWithPresign(presign, file);
+  await uploadFileWithPresign(presign, file);
 
   const dimensions = await getImageDimensions(file);
-  const callbackResponse = await authFetch<unknown>("/v1/media/callback", {
-    method: "POST",
-    headers: {
-      ...(presign.callbackSignature ? { "X-Media-Signature": presign.callbackSignature } : {}),
-    },
-    body: JSON.stringify({
-      key,
-      mimeType: file.type,
-      width: dimensions.width,
-      height: dimensions.height,
-      durationSeconds: null,
-    }),
+  const mediaAssetId = await completeMediaUpload({
+    key,
+    mimeType: file.type,
+    width: dimensions.width,
+    height: dimensions.height,
+    durationSeconds: null,
+    callbackSignature: presign.callbackSignature ?? presign.callback_signature,
   });
-
-  const mediaAssetId = extractMediaAssetId(callbackResponse);
-  if (mediaAssetId === undefined) {
-    throw new Error("Upload finished but no media asset id was returned.");
-  }
 
   return mediaAssetId;
 }

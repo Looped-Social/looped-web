@@ -185,26 +185,34 @@ export async function fetchConversationMessages({
   conversationId,
   limit = 50,
   cursor,
+  signal,
 }: {
   conversationId: string | number;
   limit?: number;
   cursor?: string;
+  signal?: AbortSignal;
 }): Promise<CursorEnvelope<unknown>> {
   const params = buildCursorParams({ limit, cursor, fallback: 50, min: 1, max: 200 });
-  return authFetch<CursorEnvelope<unknown>>(`/v1/conversations/${conversationId}/messages?${params.toString()}`);
+  return authFetch<CursorEnvelope<unknown>>(`/v1/conversations/${conversationId}/messages?${params.toString()}`, {
+    signal,
+  });
 }
 
 export async function fetchChannelMessages({
   channelId,
   limit = 50,
   cursor,
+  signal,
 }: {
   channelId: string | number;
   limit?: number;
   cursor?: string;
+  signal?: AbortSignal;
 }): Promise<CursorEnvelope<unknown>> {
   const params = buildCursorParams({ limit, cursor, fallback: 50, min: 1, max: 200 });
-  return authFetch<CursorEnvelope<unknown>>(`/v1/channels/${channelId}/messages?${params.toString()}`);
+  return authFetch<CursorEnvelope<unknown>>(`/v1/channels/${channelId}/messages?${params.toString()}`, {
+    signal,
+  });
 }
 
 export async function fetchChannelMembers({

@@ -3,6 +3,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppSearchPanel, type FilterOption } from "@/app/components/AppSearchPanel/AppSearchPanel";
 import { AppLayout, AppMobileHeader } from "@/app/components/AppLayout/AppLayout";
 import { PostCard, type PostData } from "@/app/components/PostCard/PostCard";
+import { resolveCommunityLabel, usePreferCommunityShortNames } from "@/lib/communityDisplayPreference";
+import { useContentPreferences } from "@/lib/contentPreferences";
 import { FeedApiError, fetchFeed, fetchFollowedCommunities, type FeedMode } from "@/lib/feedApi";
 import { extractMediaAssetIds } from "@/lib/postMediaIds";
 import { normalizePostPoll } from "@/lib/postPoll";
@@ -212,21 +214,29 @@ function extractApiErrorMessage(details?: string): string | undefined {
   return trimmed;
 }
 
-function normalizeCommunityToFilterOption(item: unknown): FilterOption | null {
+function normalizeCommunityToFilterOption(item: unknown, preferCommunityShortNames: boolean): FilterOption | null {
   if (!isRecord(item)) return null;
   const id =
     pickString(item, ["id", "community_id", "communityId", "loop_id", "loopId"]) ??
     pickString(item, ["communityId", "community_id"]);
-  const label = preferredName({
-    name: pickString(item, ["name", "display_name", "displayName", "title"]),
-    shortName: pickString(item, ["short_name", "shortName"]),
-    preferShortNames: true,
-  }) ?? pickString(item, ["handle", "username"]);
+  const label =
+    resolveCommunityLabel({
+      name: pickString(item, ["name", "display_name", "displayName", "title"]),
+      shortName: pickString(item, ["short_name", "shortName"]),
+      fallback: pickString(item, ["handle", "username"]) ?? "Community",
+      preferShortNames: preferCommunityShortNames,
+    }) ?? pickString(item, ["handle", "username"]);
   if (!id || !label) return null;
   return { id, label };
 }
 
-function normalizeFeedItemToPostData(item: unknown): PostData | null {
+function normalizeFeedItemToPostData(
+  item: unknown,
+  options: {
+    preferCommunityShortNames: boolean;
+    hideAnonymousPosts: boolean;
+  }
+): PostData | null {
   if (!isRecord(item)) return null;
 
   const post =
@@ -242,24 +252,25 @@ function normalizeFeedItemToPostData(item: unknown): PostData | null {
     pickBoolean(post, ["author_is_anonymous", "authorIsAnonymous", "is_anonymous", "isAnonymous", "is_anon", "isAnon"]) ??
     pickBoolean(post, ["anon", "anonymous"]) ??
     false;
+  if (options.hideAnonymousPosts && isAnonymous) return null;
 
   const communityId = pickString(post, ["community_id", "communityId"]);
 
   const postedCommunityName = preferredName({
     name: pickString(post, ["community_name", "communityName"]),
     shortName: pickString(post, ["community_short_name", "communityShortName"]),
-    preferShortNames: true,
+    preferShortNames: options.preferCommunityShortNames,
   });
 
   const communityKind = pickString(post, ["community_kind", "communityKind"]);
 
   const displaySpecializationName = displayCommunityPreferredName(
     post.author_display_specialization ?? post.authorDisplaySpecialization,
-    true
+    options.preferCommunityShortNames
   );
   const displayCommunityName = displayCommunityPreferredName(
     post.author_display_community ?? post.authorDisplayCommunity,
-    true
+    options.preferCommunityShortNames
   );
 
   const subtitle = isAnonymous
@@ -394,6 +405,9 @@ function normalizeFeedItemToPostData(item: unknown): PostData | null {
 }
 
 export function AppFeedPage() {
+  const { hideAnonymousPosts } = useContentPreferences();
+  const preferCommunityShortNames = usePreferCommunityShortNames();
+
   const [activeTabId, setActiveTabId] = useState<(typeof feedTabs)[number]["id"]>("for-you");
   const activeMode = useMemo(() => {
     const found = feedTabs.find((tab) => tab.id === activeTabId);
@@ -428,7 +442,7 @@ export function AppFeedPage() {
         const response = await fetchFollowedCommunities({ limit: 60, order: "relevant" });
         if (!active) return;
         const options = (response.items ?? [])
-          .map(normalizeCommunityToFilterOption)
+          .map((item) => normalizeCommunityToFilterOption(item, preferCommunityShortNames))
           .filter((option): option is FilterOption => Boolean(option));
 
         setCommunityFilters([{ id: "all", label: "All Loops" }, ...options]);
@@ -441,7 +455,7 @@ export function AppFeedPage() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [preferCommunityShortNames]);
 
   const loadFeed = useCallback(async ({ cursor, replace }: { cursor?: string; replace: boolean }) => {
     setFeedError(null);
@@ -455,7 +469,12 @@ export function AppFeedPage() {
       });
 
       const normalized = (response.items ?? [])
-        .map(normalizeFeedItemToPostData)
+        .map((item) =>
+          normalizeFeedItemToPostData(item, {
+            preferCommunityShortNames,
+            hideAnonymousPosts,
+          })
+        )
         .filter((post): post is PostData => Boolean(post));
 
       setPosts((prev) => (replace ? normalized : [...prev, ...normalized]));
@@ -466,7 +485,7 @@ export function AppFeedPage() {
       setFeedError(message ?? "Unable to load feed.");
       setFeedStatus("error");
     }
-  }, [activeCommunityId, activeMode]);
+  }, [activeCommunityId, activeMode, hideAnonymousPosts, preferCommunityShortNames]);
 
   useEffect(() => {
     feedStatusRef.current = feedStatus;
@@ -477,7 +496,21 @@ export function AppFeedPage() {
     setNextCursor(null);
     lastAutoLoadCursorRef.current = null;
     void loadFeed({ replace: true });
-  }, [activeMode, activeCommunityId, loadFeed]);
+  }, [activeMode, activeCommunityId, hideAnonymousPosts, loadFeed, preferCommunityShortNames]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const refresh = () => {
+      setPosts([]);
+      setNextCursor(null);
+      lastAutoLoadCursorRef.current = null;
+      void loadFeed({ replace: true });
+    };
+    window.addEventListener("looped:content-refresh", refresh);
+    return () => {
+      window.removeEventListener("looped:content-refresh", refresh);
+    };
+  }, [loadFeed]);
 
   useEffect(() => {
     const node = infiniteSentinelRef.current;

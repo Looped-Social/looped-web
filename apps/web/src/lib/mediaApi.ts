@@ -1,7 +1,7 @@
-import { ApiError, getApiBase } from "./apiBase";
-import { getFirebaseIdToken } from "./firebaseClient";
+import { normalizeOptional } from "./settingsAdapters";
+import { SettingsApiError, settingsAuthFetch } from "./settingsHttp";
 
-export class MediaApiError extends ApiError {}
+export { SettingsApiError as MediaApiError };
 
 export type ResolvedMediaAsset = {
   id: string;
@@ -17,16 +17,20 @@ export type ResolvedMediaAsset = {
   ttlSeconds?: number;
 };
 
+export type MediaPresignResponse = {
+  key?: string;
+  uploadUrl?: string;
+  upload_url?: string;
+  headers?: Record<string, string>;
+  fields?: Record<string, string>;
+  callbackSignature?: string;
+  callback_signature?: string;
+};
+
 const mediaCache = new Map<string, ResolvedMediaAsset>();
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
-}
-
-function getString(value: unknown): string | undefined {
-  if (typeof value === "string") return value;
-  if (typeof value === "number" && Number.isFinite(value)) return String(value);
-  return undefined;
 }
 
 function getNumber(value: unknown): number | undefined {
@@ -38,15 +42,8 @@ function getNumber(value: unknown): number | undefined {
   return undefined;
 }
 
-function normalizeOptionalString(value: unknown): string | undefined {
-  const raw = getString(value);
-  if (!raw) return undefined;
-  const trimmed = raw.trim();
-  return trimmed.length > 0 ? trimmed : undefined;
-}
-
 function normalizeMediaId(value: unknown): string | null {
-  const normalized = normalizeOptionalString(value);
+  const normalized = normalizeOptional(value);
   return normalized ?? null;
 }
 
@@ -54,51 +51,28 @@ function normalizeResolvedMediaAsset(payload: unknown): ResolvedMediaAsset | nul
   if (!isRecord(payload)) return null;
   const id = normalizeMediaId(payload.id ?? payload.media_asset_id ?? payload.mediaAssetId);
   const cdnUrl =
-    normalizeOptionalString(payload.cdn_url ?? payload.cdnUrl ?? payload.url ?? payload.download_url ?? payload.downloadUrl) ??
+    normalizeOptional(payload.cdn_url ?? payload.cdnUrl ?? payload.url ?? payload.download_url ?? payload.downloadUrl) ??
     undefined;
   if (!id || !cdnUrl) return null;
 
   return {
     id,
-    key: normalizeOptionalString(payload.key),
-    mimeType: normalizeOptionalString(payload.mime_type ?? payload.mimeType ?? payload.content_type ?? payload.contentType),
+    key: normalizeOptional(payload.key),
+    mimeType: normalizeOptional(payload.mime_type ?? payload.mimeType ?? payload.content_type ?? payload.contentType),
     cdnUrl,
     width: getNumber(payload.width),
     height: getNumber(payload.height),
     durationSeconds: getNumber(payload.duration_seconds ?? payload.durationSeconds),
-    thumbnailUrl: normalizeOptionalString(payload.thumbnail_url ?? payload.thumbnailUrl),
-    thumbnailMediaAssetId: normalizeOptionalString(payload.thumbnail_media_asset_id ?? payload.thumbnailMediaAssetId),
-    expiresAt: normalizeOptionalString(payload.expires_at ?? payload.expiresAt),
+    thumbnailUrl: normalizeOptional(payload.thumbnail_url ?? payload.thumbnailUrl),
+    thumbnailMediaAssetId: normalizeOptional(payload.thumbnail_media_asset_id ?? payload.thumbnailMediaAssetId),
+    expiresAt: normalizeOptional(payload.expires_at ?? payload.expiresAt),
     ttlSeconds: getNumber(payload.ttl_seconds ?? payload.ttlSeconds),
   };
 }
 
-async function authFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const token = await getFirebaseIdToken();
-  const base = getApiBase();
-  const headers = new Headers(init?.headers ?? undefined);
-  headers.set("Authorization", `Bearer ${token}`);
-  if (init?.body !== undefined && init.body !== null && !headers.has("Content-Type")) {
-    headers.set("Content-Type", "application/json");
-  }
-
-  const response = await fetch(`${base}${path}`, {
-    ...init,
-    headers,
-  });
-
-  if (!response.ok) {
-    const details = await response.text();
-    throw new MediaApiError(response.status, details || "Request failed.", details);
-  }
-
-  if (response.status === 204) return {} as T;
-  return response.json() as Promise<T>;
-}
-
 async function resolveMissingIds(ids: string[]): Promise<void> {
   if (ids.length === 0) return;
-  const response = await authFetch<unknown>("/v1/media/resolve", {
+  const response = await settingsAuthFetch<unknown>("/v1/media/resolve", {
     method: "POST",
     body: JSON.stringify({
       ids: ids.map((id) => {
@@ -160,5 +134,97 @@ export async function resolveMediaAssets(ids: Array<string | number>): Promise<R
 
     resolvedOrdered.push(cached);
   }
+
   return resolvedOrdered;
+}
+
+export async function presignMediaUpload(payload: {
+  contentType: string;
+  sizeBytes: number;
+}): Promise<MediaPresignResponse> {
+  return settingsAuthFetch<MediaPresignResponse>("/v1/media/presign", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+function getPresignUploadUrl(presign: MediaPresignResponse): string {
+  const uploadUrl = normalizeOptional(presign.uploadUrl ?? presign.upload_url);
+  if (!uploadUrl) throw new Error("Upload failed. Missing upload URL.");
+  return uploadUrl;
+}
+
+export async function uploadFileWithPresign(presign: MediaPresignResponse, file: File): Promise<void> {
+  const uploadUrl = getPresignUploadUrl(presign);
+  const fields = presign.fields;
+
+  if (fields && Object.keys(fields).length > 0) {
+    const formData = new FormData();
+    for (const [key, value] of Object.entries(fields)) {
+      formData.append(key, value);
+    }
+    formData.append("file", file);
+    const response = await fetch(uploadUrl, {
+      method: "POST",
+      body: formData,
+    });
+    if (!response.ok) throw new Error("Upload failed.");
+    return;
+  }
+
+  const headers = new Headers(presign.headers ?? {});
+  if (file.type && !headers.has("Content-Type")) {
+    headers.set("Content-Type", file.type);
+  }
+  const response = await fetch(uploadUrl, {
+    method: "PUT",
+    headers,
+    body: file,
+  });
+  if (!response.ok) throw new Error("Upload failed.");
+}
+
+export async function completeMediaUpload(payload: {
+  key: string;
+  mimeType: string;
+  width: number | null;
+  height: number | null;
+  durationSeconds?: number | null;
+  thumbnailMediaAssetId?: string | number | null;
+  callbackSignature?: string;
+}): Promise<string | number> {
+  const response = await settingsAuthFetch<unknown>("/v1/media/callback", {
+    method: "POST",
+    headers: payload.callbackSignature ? { "X-Media-Signature": payload.callbackSignature } : undefined,
+    body: JSON.stringify({
+      key: payload.key,
+      mimeType: payload.mimeType,
+      width: payload.width,
+      height: payload.height,
+      durationSeconds: payload.durationSeconds ?? null,
+      thumbnailMediaAssetId: payload.thumbnailMediaAssetId ?? null,
+    }),
+  });
+
+  if (typeof response === "number" || typeof response === "string") return response;
+
+  if (isRecord(response)) {
+    const media = isRecord(response.media) ? response.media : null;
+    const asset = isRecord(response.asset) ? response.asset : null;
+    const candidates = [
+      response.mediaAssetId,
+      response.media_asset_id,
+      response.id,
+      media?.id,
+      asset?.id,
+    ];
+
+    for (const candidate of candidates) {
+      if (typeof candidate === "string" || typeof candidate === "number") {
+        return candidate;
+      }
+    }
+  }
+
+  throw new Error("Upload finished but no media asset id was returned.");
 }
