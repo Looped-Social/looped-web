@@ -25,6 +25,15 @@ function resolvePostSignInDestination(rawSearch: string): string {
   return next;
 }
 
+function resolveStatusMessage(rawSearch: string): string | null {
+  const params = new URLSearchParams(rawSearch);
+  const status = params.get("status");
+  if (status === "delete-pending") {
+    return "Your account deletion is in progress. You have been signed out.";
+  }
+  return null;
+}
+
 export function LoginPage() {
   const { status, user, error, signIn, signInWithGoogle, signInWithApple, signOut } = useUserSession();
   const navigate = useNavigate();
@@ -36,6 +45,7 @@ export function LoginPage() {
     () => resolvePostSignInDestination(location.search),
     [location.search]
   );
+  const statusMessage = useMemo(() => resolveStatusMessage(location.search), [location.search]);
 
   useEffect(() => {
     if (status === "authenticated") {
@@ -117,17 +127,24 @@ export function LoginPage() {
               </div>
             </AuthCard>
           ) : (
-            <LoginCard
-              onSubmit={signIn}
-              onGoogle={signInWithGoogle}
-              onApple={signInWithApple}
-              onForgotPassword={handleForgotPassword}
-              error={error}
-              resetMessage={resetMessage}
-              resetTone={resetTone}
-              note="No web sign-up. Create your account in the Looped iOS app first, then sign in here."
-              isBusy={isBusy || status === "loading"}
-            />
+            <div className="w-full max-w-[430px] space-y-3">
+              {statusMessage ? (
+                <div className="rounded-lg border border-border bg-bg-muted px-4 py-3 text-sm text-text-secondary">
+                  {statusMessage}
+                </div>
+              ) : null}
+              <LoginCard
+                onSubmit={signIn}
+                onGoogle={signInWithGoogle}
+                onApple={signInWithApple}
+                onForgotPassword={handleForgotPassword}
+                error={error}
+                resetMessage={resetMessage}
+                resetTone={resetTone}
+                note="No web sign-up. Create your account in the Looped iOS app first, then sign in here."
+                isBusy={isBusy || status === "loading"}
+              />
+            </div>
           )}
         </div>
       </div>

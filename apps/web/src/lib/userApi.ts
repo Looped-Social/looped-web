@@ -216,8 +216,86 @@ export type DeleteUserResponse = {
   status?: string;
   firebase_status?: "ok" | "skipped" | "failed" | "not_requested";
   firebase_deleted?: boolean;
+  delete_pending?: boolean;
 };
 
 export async function deleteUser(): Promise<DeleteUserResponse> {
   return userFetch<DeleteUserResponse>("/v1/users/me/delete", { method: "POST" });
+}
+
+export async function unlinkGoogleProvider(): Promise<void> {
+  await userFetch("/v1/me/providers/google", { method: "DELETE" });
+}
+
+export async function unlinkAppleProvider(): Promise<void> {
+  await userFetch("/v1/me/providers/apple", { method: "DELETE" });
+}
+
+type ParsedUserApiError = {
+  status: number | null;
+  code: string | null;
+  reason: string | null;
+  message: string;
+};
+
+function normalizeString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+export function parseUserApiError(error: unknown): ParsedUserApiError {
+  if (error instanceof UserApiError) {
+    const fallbackMessage = error.message || "Request failed.";
+    const details = (error.details ?? "").trim();
+    if (!details) {
+      return {
+        status: error.status,
+        code: null,
+        reason: null,
+        message: fallbackMessage,
+      };
+    }
+
+    try {
+      const parsed = JSON.parse(details) as unknown;
+      if (typeof parsed === "object" && parsed !== null) {
+        const payload = parsed as Record<string, unknown>;
+        const code = normalizeString(payload.error ?? payload.code);
+        const reason = normalizeString(payload.reason ?? payload.cause ?? payload.detailCode ?? payload.detail_code);
+        const message = normalizeString(payload.message) ?? fallbackMessage;
+        return {
+          status: error.status,
+          code,
+          reason,
+          message,
+        };
+      }
+    } catch {
+      // ignore JSON parsing errors and fall back to raw details
+    }
+
+    return {
+      status: error.status,
+      code: null,
+      reason: null,
+      message: details || fallbackMessage,
+    };
+  }
+
+  if (error instanceof Error) {
+    return {
+      status: null,
+      code: null,
+      reason: null,
+      message: error.message,
+    };
+  }
+
+  return {
+    status: null,
+    code: null,
+    reason: null,
+    message: "Request failed.",
+  };
 }

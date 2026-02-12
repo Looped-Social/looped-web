@@ -11,7 +11,7 @@ import { signOutUser } from "@/lib/firebaseClient";
 import { type MessagePermission, updateMySafetySettings } from "@/lib/settingsApi";
 import { normalizeSettingsError } from "@/lib/settingsHttp";
 import { isMatchingConfirmationPhrase } from "@/lib/settingsValidation";
-import { deactivateUser, deleteUser } from "@/lib/userApi";
+import { deactivateUser, deleteUser, parseUserApiError } from "@/lib/userApi";
 import {
   clearCurrentUserStore,
   loadCurrentUser,
@@ -560,20 +560,30 @@ export function AppSettingsPage() {
         return;
       }
 
-      await deleteUser();
-      await signOutUser();
+      const response = await deleteUser();
+      const deletePending = response.delete_pending === true;
+      try {
+        await signOutUser();
+      } catch {
+        // account is already terminal; continue local sign-out cleanup
+      }
       clearCurrentUserStore();
       showToast({
         kind: "success",
-        title: "Account deleted",
-        message: "Your account has been deleted.",
+        title: deletePending ? "Delete in progress" : "Account deleted",
+        message: deletePending
+          ? "Your account deletion is in progress. You have been signed out."
+          : "Your account has been deleted.",
       });
       setActionState("success");
       success = true;
-      navigate("/login", { replace: true });
+      navigate(deletePending ? "/login?status=delete-pending" : "/login", { replace: true });
     } catch (error) {
       setActionState("error");
-      const message = parseApiErrorMessage(error);
+      const message =
+        pendingAction === "delete"
+          ? parseUserApiError(error).message
+          : parseApiErrorMessage(error);
       setModalError(message);
       showToast({
         kind: "error",

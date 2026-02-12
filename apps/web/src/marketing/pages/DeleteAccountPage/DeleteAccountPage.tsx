@@ -4,7 +4,7 @@ import { Link } from "react-router";
 import { PageShell } from "@/marketing/components/PageShell/PageShell";
 import { AuthCard } from "@/marketing/components/Auth/AuthCard";
 import { useUserSession } from "@/hooks/useUserSession";
-import { deactivateUser, deleteUser, UserApiError } from "@/lib/userApi";
+import { deactivateUser, deleteUser, parseUserApiError, UserApiError } from "@/lib/userApi";
 
 type CompletionState = {
   title: string;
@@ -59,13 +59,18 @@ export function DeleteAccountPage() {
 
     try {
       const response = await deleteUser();
-      const firebaseStatus = response.firebase_status;
-      const firebaseNote = firebaseStatus ? ` Firebase status: ${firebaseStatus}.` : "";
+      const isDeletePending = response.delete_pending === true;
       setCompletion({
-        title: "Account deleted",
-        message: `Your account and data have been deleted. You have been signed out.${firebaseNote}`,
+        title: isDeletePending ? "Delete in progress" : "Account deleted",
+        message: isDeletePending
+          ? "Your account deletion is in progress. You have been signed out."
+          : "Your account and data have been deleted. You have been signed out.",
       });
-      await signOut();
+      try {
+        await signOut();
+      } catch {
+        // delete is terminal; keep completion state and do not retry sign-out here
+      }
     } catch (err) {
       const message = getDeleteErrorMessage(err);
       setActionError(message);
@@ -271,9 +276,31 @@ export function DeleteAccountPage() {
 
 function getDeleteErrorMessage(error: unknown): string {
   if (error instanceof UserApiError) {
-    const detail = error.details ?? error.message;
-    const code = parseErrorCode(detail);
+    const parsed = parseUserApiError(error);
+    const code = (parsed.code ?? "").toLowerCase();
+    const reason = (parsed.reason ?? "").toLowerCase();
 
+    if (code === "account_not_actionable") {
+      if (reason === "backend_user_missing") {
+        return "This account is missing in backend and cannot be deleted from web.";
+      }
+      if (reason === "account_deleted") {
+        return "This account has already been deleted.";
+      }
+      if (reason === "firebase_user_not_found") {
+        return "The linked Firebase user was not found.";
+      }
+      return "This account cannot be changed right now.";
+    }
+    if (code === "account_disabled" || parsed.status === 403) {
+      return "This account is disabled and cannot be changed.";
+    }
+    if (code === "firebase_admin_error" || parsed.status === 502) {
+      return "Account deletion is temporarily unavailable. Please try again.";
+    }
+    if (code === "firebase_admin_not_configured" || parsed.status === 503) {
+      return "Account deletion is temporarily unavailable.";
+    }
     if (code === "firebase_delete_failed") {
       return "We deleted your account, but Firebase cleanup failed. Contact support if you need help signing out everywhere.";
     }
@@ -281,7 +308,7 @@ function getDeleteErrorMessage(error: unknown): string {
       return "We deleted your account, but Firebase cleanup is not configured yet.";
     }
 
-    return detail || "Unable to delete your account.";
+    return parsed.message || "Unable to delete your account.";
   }
 
   if (error instanceof Error) {
@@ -289,16 +316,4 @@ function getDeleteErrorMessage(error: unknown): string {
   }
 
   return "Unable to delete your account.";
-}
-
-function parseErrorCode(detail?: string): string | null {
-  if (!detail) return null;
-  try {
-    const parsed = JSON.parse(detail) as { code?: string; error?: string; message?: string };
-    return parsed.code ?? parsed.error ?? parsed.message ?? null;
-  } catch {
-    return detail.includes("firebase_delete_failed") || detail.includes("firebase_admin_not_configured")
-      ? detail
-      : null;
-  }
 }
