@@ -449,6 +449,12 @@ export function AppFeedPage() {
     const trimmed = value.trim();
     return trimmed.length > 0 ? trimmed : null;
   }, [location.search]);
+  const openedFromSharePreviewRedirect = useMemo(() => {
+    const raw = new URLSearchParams(location.search).get("fromSharePreviewRedirect");
+    if (!raw) return false;
+    const normalized = raw.trim().toLowerCase();
+    return normalized === "1" || normalized === "true";
+  }, [location.search]);
   const { hideAnonymousPosts } = useContentPreferences();
   const preferCommunityShortNames = usePreferCommunityShortNames();
   const initialSnapshot = feedRouteSnapshots.get(location.key) ?? latestFeedRouteSnapshot;
@@ -599,12 +605,17 @@ export function AppFeedPage() {
   );
 
   const closeCommentsOverlay = useCallback(() => {
+    if (openedFromSharePreviewRedirect) {
+      navigate("/app", { replace: true });
+      return;
+    }
+
     if (typeof window !== "undefined" && window.history.length > 1) {
       navigate(-1);
       return;
     }
     navigate("/app", { replace: true });
-  }, [navigate]);
+  }, [navigate, openedFromSharePreviewRedirect]);
 
   useEffect(() => {
     if (!commentsOverlayPostId || typeof document === "undefined") return;

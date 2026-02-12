@@ -454,6 +454,10 @@ export function PostSharePage({ postId }: PostSharePageProps) {
   const [commentMediaById, setCommentMediaById] = useState<Record<string, ResolvedMediaAsset>>({});
 
   const sharePath = useMemo(() => `/p/${encodeURIComponent(postId)}`, [postId]);
+  const authenticatedCommentsDestination = useMemo(
+    () => `/app?comments=${encodeURIComponent(postId)}&fromSharePreviewRedirect=1`,
+    [postId]
+  );
 
   const navigateToLogin = useCallback(
     (intent: "comment" | "like") => {
@@ -469,18 +473,17 @@ export function PostSharePage({ postId }: PostSharePageProps) {
         navigateToLogin(intent);
         return;
       }
-      navigate(`/app/post/${postId}/comments`, { state: { fromSharePreviewRedirect: true } });
+      navigate(authenticatedCommentsDestination);
     },
-    [navigate, navigateToLogin, postId, sessionStatus]
+    [authenticatedCommentsDestination, navigate, navigateToLogin, sessionStatus]
   );
 
   useEffect(() => {
     if (sessionStatus !== "authenticated" || !postId) return;
-    navigate(`/app/post/${postId}/comments`, {
+    navigate(authenticatedCommentsDestination, {
       replace: true,
-      state: { fromSharePreviewRedirect: true },
     });
-  }, [navigate, postId, sessionStatus]);
+  }, [authenticatedCommentsDestination, navigate, postId, sessionStatus]);
 
   useEffect(() => {
     if (!postId) {
@@ -705,7 +708,7 @@ export function PostSharePage({ postId }: PostSharePageProps) {
           <Link
             to={
               sessionStatus === "authenticated"
-                ? `/app/post/${postId}/comments`
+                ? authenticatedCommentsDestination
                 : `/login?next=${encodeURIComponent(`${sharePath}?intent=comment`)}`
             }
             className="whitespace-nowrap text-[0.95rem] text-text-secondary underline-offset-2 transition hover:text-strong hover:underline"

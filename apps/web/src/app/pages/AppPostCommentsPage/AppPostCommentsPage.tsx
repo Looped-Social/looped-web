@@ -1327,7 +1327,7 @@ export function AppPostCommentsPage({ postId, overlayMode = false, onRequestClos
                     value={composerText}
                     onChange={(event) => setComposerText(event.target.value)}
                     placeholder={replyTarget ? `Reply to ${replyTarget.authorName}...` : "Add a comment..."}
-                    className="h-8 min-w-0 flex-1 bg-transparent text-[2rem] text-strong placeholder:text-text-light focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-70"
+                    className="h-8 min-w-0 flex-1 bg-transparent text-[1.2rem] text-strong placeholder:text-text-light focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-70"
                     disabled={isSubmitting}
                     maxLength={2000}
                   />

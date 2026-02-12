@@ -185,7 +185,9 @@ export function AppLayout({ activeNavId = 'home', children, rightRail }: AppLayo
                         />
                       ) : item.id === 'create' ? (
                         <span
-                          className="h-7 w-7 shrink-0 bg-current [mask-image:url('/ios-icons/create-action.svg')] [mask-repeat:no-repeat] [mask-position:center] [mask-size:contain] [-webkit-mask-image:url('/ios-icons/create-action.svg')] [-webkit-mask-repeat:no-repeat] [-webkit-mask-position:center] [-webkit-mask-size:contain]"
+                          className={`h-7 w-7 shrink-0 ${
+                            isActive ? 'bg-current' : 'bg-shell-text-muted'
+                          } [mask-image:url('/ios-icons/create-action.svg')] [mask-repeat:no-repeat] [mask-position:center] [mask-size:contain] [-webkit-mask-image:url('/ios-icons/create-action.svg')] [-webkit-mask-repeat:no-repeat] [-webkit-mask-position:center] [-webkit-mask-size:contain]`}
                           aria-hidden="true"
                         />
                       ) : iconSrc ? (
