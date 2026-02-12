@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { Link, useNavigate } from 'react-router';
+import { Link, useLocation, useNavigate } from 'react-router';
 
 import { Logo } from '@looped/ui';
 
@@ -148,9 +148,15 @@ function ProfileNavAvatar({
 }
 
 export function AppLayout({ activeNavId = 'home', children, rightRail }: AppLayoutProps) {
+  const location = useLocation();
   const { user } = useCurrentUserStore({ autoLoad: true });
   const profileImageUrl = user?.profileImageUrl;
   const [expandedRailSectionId, setExpandedRailSectionId] = useState<string | null>(null);
+  const pathname = location.pathname;
+
+  const hideMobileBottomNav =
+    /^\/app\/post\/[^/]+\/comments$/.test(pathname) ||
+    /^\/app\/messages\/(conversation|channel)\/[^/]+$/.test(pathname);
 
   return (
     <div className="min-h-screen bg-shell-bg">
@@ -258,7 +264,11 @@ export function AppLayout({ activeNavId = 'home', children, rightRail }: AppLayo
           </aside>
 
           <main className="min-w-0 lg:col-start-2">
-            <div className="w-full bg-bg lg:min-h-screen lg:border-x lg:border-border/70">
+            <div
+              className={`w-full bg-bg lg:min-h-screen lg:border-x lg:border-border/70 ${
+                hideMobileBottomNav ? '' : 'pb-[calc(4.5rem+env(safe-area-inset-bottom))] lg:pb-0'
+              }`}
+            >
               {children}
             </div>
           </main>
@@ -270,6 +280,49 @@ export function AppLayout({ activeNavId = 'home', children, rightRail }: AppLayo
           ) : null}
         </div>
       </div>
+      {!hideMobileBottomNav ? (
+        <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border/70 bg-bg/95 pb-[max(0.4rem,env(safe-area-inset-bottom))] pt-2 backdrop-blur lg:hidden">
+          <div className="mx-auto flex max-w-xl items-center justify-between gap-1 px-2">
+            {navItems.map((item) => {
+              const isActive = item.id === activeNavId;
+              const iconSrc = isActive ? (item.activeIconSrc ?? item.iconSrc) : item.iconSrc;
+              const baseClass = `inline-flex h-10 w-10 items-center justify-center rounded-full transition ${
+                isActive ? 'text-brand' : 'text-shell-text-muted'
+              }`;
+              const icon =
+                item.id === 'profile' && profileImageUrl ? (
+                  <ProfileNavAvatar
+                    src={profileImageUrl}
+                    className="h-7 w-7 shrink-0 rounded-full object-cover"
+                  />
+                ) : item.id === 'create' ? (
+                  <span
+                    className="h-7 w-7 shrink-0 bg-current [mask-image:url('/ios-icons/create-action.svg')] [mask-repeat:no-repeat] [mask-position:center] [mask-size:contain] [-webkit-mask-image:url('/ios-icons/create-action.svg')] [-webkit-mask-repeat:no-repeat] [-webkit-mask-position:center] [-webkit-mask-size:contain]"
+                    aria-hidden="true"
+                  />
+                ) : iconSrc ? (
+                  <img src={iconSrc} alt="" className="h-7 w-7 shrink-0" aria-hidden="true" />
+                ) : (
+                  <MenuDots className="h-7 w-7 shrink-0 text-shell-text-muted" />
+                );
+
+              if (!item.href) return null;
+
+              return (
+                <Link
+                  key={`mobile-${item.id}`}
+                  to={item.href}
+                  className={baseClass}
+                  aria-label={item.label}
+                  aria-current={isActive ? 'page' : undefined}
+                >
+                  {icon}
+                </Link>
+              );
+            })}
+          </div>
+        </nav>
+      ) : null}
     </div>
   );
 }
@@ -280,6 +333,7 @@ type AppMobileHeaderProps = {
   showAction?: boolean;
   showBack?: boolean;
   backHref?: string;
+  showBorder?: boolean;
 };
 
 export function AppMobileHeader({
@@ -288,6 +342,7 @@ export function AppMobileHeader({
   showAction = true,
   showBack = false,
   backHref = '/app',
+  showBorder = true,
 }: AppMobileHeaderProps) {
   const navigate = useNavigate();
   const { user } = useCurrentUserStore({ autoLoad: true });
@@ -302,7 +357,11 @@ export function AppMobileHeader({
   };
 
   return (
-    <div className="flex items-center justify-between border-b border-border/70 bg-bg px-4 py-3 lg:hidden">
+    <div
+      className={`flex items-center justify-between bg-bg px-4 py-3 lg:hidden ${
+        showBorder ? 'border-b border-border/70' : ''
+      }`}
+    >
       {showBack ? (
         <button
           type="button"
@@ -314,7 +373,7 @@ export function AppMobileHeader({
           <span>{title}</span>
         </button>
       ) : title === 'Looped' ? (
-        <Logo imageClassName="h-7 w-auto" to="/app" />
+        <Logo imageClassName="h-8 w-auto" to="/app" />
       ) : (
         <span className="text-lg font-semibold">{title}</span>
       )}

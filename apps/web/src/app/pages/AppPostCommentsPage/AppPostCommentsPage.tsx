@@ -29,6 +29,8 @@ function handleProfileImageError(event: SyntheticEvent<HTMLImageElement>) {
 
 type AppPostCommentsPageProps = {
   postId: string;
+  overlayMode?: boolean;
+  onRequestClose?: () => void;
 };
 
 type PostSummary = {
@@ -487,7 +489,7 @@ function Avatar({
   );
 }
 
-export function AppPostCommentsPage({ postId }: AppPostCommentsPageProps) {
+export function AppPostCommentsPage({ postId, overlayMode = false, onRequestClose }: AppPostCommentsPageProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const composerInputRef = useRef<HTMLInputElement>(null);
@@ -817,26 +819,26 @@ export function AppPostCommentsPage({ postId }: AppPostCommentsPageProps) {
   );
 
   const handleBack = () => {
+    if (overlayMode) {
+      onRequestClose?.();
+      return;
+    }
+
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      navigate(-1);
+      return;
+    }
+
     const fromSharePreviewRedirect =
       typeof location.state === "object" &&
       location.state !== null &&
       "fromSharePreviewRedirect" in location.state &&
       (location.state as { fromSharePreviewRedirect?: boolean }).fromSharePreviewRedirect === true;
-
     if (fromSharePreviewRedirect) {
       navigate("/app", { replace: true });
       return;
     }
 
-    const historyIndex =
-      typeof window !== "undefined" && typeof window.history.state?.idx === "number"
-        ? window.history.state.idx
-        : 0;
-
-    if (historyIndex > 0) {
-      navigate(-1);
-      return;
-    }
     navigate("/app", { replace: true });
   };
 
@@ -1037,9 +1039,8 @@ export function AppPostCommentsPage({ postId }: AppPostCommentsPageProps) {
   const canShowComposer = !commentBlocker;
   const hasComposerDraft = composerText.trim().length > 0;
 
-  return (
-    <AppLayout activeNavId="home">
-      <div className="flex min-h-screen flex-col bg-bg">
+  const content = (
+    <div className="flex min-h-screen flex-col bg-bg">
         <header className="sticky top-0 z-20 border-b border-border/70 bg-bg">
           <div className="grid grid-cols-[2.5rem_1fr_2.5rem] items-center px-4 py-3">
             <button
@@ -1348,7 +1349,8 @@ export function AppPostCommentsPage({ postId }: AppPostCommentsPageProps) {
             <div className="py-2 text-center text-[1.05rem] text-text-secondary">{lockedMessage}</div>
           )}
         </footer>
-      </div>
-    </AppLayout>
+    </div>
   );
+
+  return <AppLayout activeNavId="home">{content}</AppLayout>;
 }

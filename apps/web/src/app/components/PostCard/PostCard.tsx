@@ -1,5 +1,5 @@
 import { type SyntheticEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { Link } from "react-router";
+import { Link, useLocation } from "react-router";
 
 import { MenuDots } from "@/app/components/AppIcons/AppIcons";
 import { PostMediaGrid } from "@/app/components/PostMediaGrid/PostMediaGrid";
@@ -7,13 +7,34 @@ import { useToast } from "@/app/components/AppToast/AppToast";
 import type { CommunityPermissions } from "@/lib/communityPermissionsApi";
 import { getCommunityPermissions } from "@/lib/communityPermissionsApi";
 import { type ResolvedMediaAsset, resolveMediaAssets } from "@/lib/mediaApi";
-import { emitPostSavedChanged } from "@/lib/postEvents";
+import {
+  emitAuthorBlocked,
+  emitPostDeleted,
+  emitPostSavedChanged,
+  isPostVisibilityChangedEvent,
+  POST_VISIBILITY_CHANGED_EVENT,
+} from "@/lib/postEvents";
 import { type PostPoll, normalizePoll } from "@/lib/postPoll";
+import { captureFeedScrollRestore } from "@/lib/feedScrollRestore";
 import {
   mapLockReasonToErrorCode,
   type ViewerCapabilities,
 } from "@/lib/postViewerCapabilities";
-import { PostActionsApiError, setPostLike, setPostReposted, setPostSaved, sharePost, votePoll } from "@/lib/postActionsApi";
+import { useCurrentUserStore } from "@/stores/currentUserStore";
+import {
+  appealPostRemoval,
+  blockPrincipal,
+  blockUser,
+  deletePost,
+  PostActionsApiError,
+  reportEntity,
+  setPostLike,
+  setPostReposted,
+  setPostSaved,
+  sharePost,
+  updatePostContent,
+  votePoll,
+} from "@/lib/postActionsApi";
 
 const DEFAULT_PROFILE_IMAGE_SRC = "/ios-icons/pfp2.svg";
 
@@ -27,6 +48,8 @@ function handleProfileImageError(event: SyntheticEvent<HTMLImageElement>) {
 export type PostData = {
   id: string;
   communityId?: string | number;
+  authorId?: string | number;
+  authorPrincipalId?: string | number;
   repostedBy?: string;
   author: string;
   subtitle: string;
@@ -55,6 +78,18 @@ type PostCardProps = {
   post: PostData;
 };
 
+type PostMenuMode = null | "menu" | "edit" | "delete" | "reportPost" | "reportUser" | "blockUser" | "appeal";
+
+const REPORT_REASON_OPTIONS = [
+  "Spam",
+  "Bullying or Harassment",
+  "Nudity or Pornography",
+  "Hate Speech",
+  "Self-harm or Suicide",
+  "Violence or Gore",
+  "Something Else",
+] as const;
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
@@ -73,6 +108,26 @@ function parseApiError(details?: string): { error?: string; message?: string } {
     // ignore
   }
   return { message: trimmed };
+}
+
+function normalizeOptional(value: unknown): string | undefined {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : undefined;
+  }
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  return undefined;
+}
+
+function parseUserIdFromProfileHref(href?: string): string | undefined {
+  if (!href) return undefined;
+  const normalized = href.trim();
+  const match = normalized.match(/^\/app\/profile\/([^/?#]+)$/);
+  if (!match) return undefined;
+  const candidate = decodeURIComponent(match[1] ?? "");
+  if (!candidate || candidate === "anonymous" || candidate === "anon") return undefined;
+  if (candidate.startsWith("anon/")) return undefined;
+  return candidate;
 }
 
 function titleForWriteError(code?: string, fallbackTitle = "Action unavailable"): string {
@@ -284,7 +339,9 @@ function clampPercent(value: number): number {
 }
 
 export function PostCard({ post }: PostCardProps) {
+  const location = useLocation();
   const { showToast } = useToast();
+  const { user: currentUser } = useCurrentUserStore({ autoLoad: false });
   const [permissions, setPermissions] = useState<CommunityPermissions | null>(null);
 
   const [isLiked, setIsLiked] = useState(post.viewerLiked ?? false);
@@ -301,12 +358,45 @@ export function PostCard({ post }: PostCardProps) {
   const [pollState, setPollState] = useState<PostPoll | undefined>(post.poll);
   const [isPollVoting, setIsPollVoting] = useState(false);
   const [resolvedMedia, setResolvedMedia] = useState<ResolvedMediaAsset[]>([]);
+  const [isHidden, setIsHidden] = useState(false);
+
+  const [menuMode, setMenuMode] = useState<PostMenuMode>(null);
+  const [isMenuActionLoading, setIsMenuActionLoading] = useState(false);
+  const [editDraft, setEditDraft] = useState(post.content);
+  const [reportReason, setReportReason] = useState<(typeof REPORT_REASON_OPTIONS)[number]>("Spam");
+  const [reportCustomReason, setReportCustomReason] = useState("");
+  const [appealReason, setAppealReason] = useState("");
 
   const canOpenProfile = Boolean(post.authorProfileHref);
+  const authorId = useMemo(
+    () => normalizeOptional(post.authorId) ?? parseUserIdFromProfileHref(post.authorProfileHref),
+    [post.authorId, post.authorProfileHref]
+  );
+  const authorPrincipalId = useMemo(() => normalizeOptional(post.authorPrincipalId), [post.authorPrincipalId]);
+  const viewerId = useMemo(() => normalizeOptional(currentUser?.id), [currentUser?.id]);
+  const isOwner = Boolean(authorId && viewerId && authorId === viewerId);
+  const canEditPost = Boolean(post.id && isOwner);
+  const canDeletePost = canEditPost;
+  const canReportPost = Boolean(post.id);
+  const canReportUser = Boolean(authorId && viewerId && authorId !== viewerId);
+  const canBlockUser = canReportUser || (!authorId && Boolean(authorPrincipalId));
+  const enableAppealAction = (import.meta.env.VITE_ENABLE_POST_APPEAL_MENU ?? "false").toLowerCase() === "true";
+  const canAppealPostRemoval = Boolean(enableAppealAction && canEditPost);
+
   const communityHref =
     post.communityId !== undefined && post.communityId !== null && String(post.communityId).length > 0
       ? `/app/community/${post.communityId}`
       : undefined;
+  const commentsLinkTo = useMemo(
+    () =>
+      location.pathname === "/app"
+        ? {
+            pathname: "/app",
+            search: `?comments=${encodeURIComponent(post.id)}`,
+          }
+        : `/app/post/${post.id}/comments`,
+    [location.pathname, post.id]
+  );
   const mediaAssetIdsKey = (post.mediaAssetIds ?? []).join(",");
 
   useEffect(() => {
@@ -317,6 +407,13 @@ export function PostCard({ post }: PostCardProps) {
     setShareCount(post.stats.shares ?? 0);
     setPollState(post.poll);
     setIsPollVoting(false);
+    setIsHidden(false);
+    setMenuMode(null);
+    setIsMenuActionLoading(false);
+    setEditDraft(post.content);
+    setReportReason("Spam");
+    setReportCustomReason("");
+    setAppealReason("");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [post.id]);
 
@@ -370,6 +467,34 @@ export function PostCard({ post }: PostCardProps) {
       active = false;
     };
   }, [mediaAssetIdsKey, post.id, post.mediaAssetIds]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const handler = (event: Event) => {
+      if (!isPostVisibilityChangedEvent(event)) return;
+      const detail = event.detail;
+      if (detail.reason === "deleted" && detail.postId && detail.postId === post.id) {
+        setIsHidden(true);
+        return;
+      }
+
+      if (detail.reason === "blocked") {
+        if (detail.authorId && authorId && detail.authorId === authorId) {
+          setIsHidden(true);
+          return;
+        }
+        if (detail.authorPrincipalId && authorPrincipalId && detail.authorPrincipalId === authorPrincipalId) {
+          setIsHidden(true);
+        }
+      }
+    };
+
+    window.addEventListener(POST_VISIBILITY_CHANGED_EVENT, handler);
+    return () => {
+      window.removeEventListener(POST_VISIBILITY_CHANGED_EVENT, handler);
+    };
+  }, [authorId, authorPrincipalId, post.id]);
 
   const fallbackCapabilities = useMemo(() => {
     if (!permissions) return null;
@@ -661,6 +786,269 @@ export function PostCard({ post }: PostCardProps) {
     }
   };
 
+  const closeMenu = useCallback(() => {
+    if (isMenuActionLoading) return;
+    setMenuMode(null);
+  }, [isMenuActionLoading]);
+
+  const resolveReportReason = useCallback((): string | null => {
+    if (reportReason === "Something Else") {
+      const custom = reportCustomReason.trim();
+      return custom.length > 0 ? custom : null;
+    }
+    return reportReason;
+  }, [reportCustomReason, reportReason]);
+
+  const handleEditSubmit = useCallback(async () => {
+    if (isMenuActionLoading) return;
+    const trimmed = editDraft.trim();
+    if (!trimmed) {
+      showToast({
+        title: "Post content required",
+        message: "Post content can't be empty.",
+        tone: "error",
+      });
+      return;
+    }
+    if (trimmed.length > 280) {
+      showToast({
+        title: "Post too long",
+        message: "Post content must be 280 characters or fewer.",
+        tone: "error",
+      });
+      return;
+    }
+
+    setIsMenuActionLoading(true);
+    try {
+      const response = await updatePostContent(post.id, trimmed);
+      const contentFromResponse = isRecord(response)
+        ? normalizeOptional(response.content ?? response.text ?? response.body ?? response.message)
+        : undefined;
+
+      setEditDraft(contentFromResponse ?? trimmed);
+      setMenuMode(null);
+      showToast({
+        title: "Post updated",
+        message: "Your post has been updated.",
+      });
+    } catch (error) {
+      if (error instanceof PostActionsApiError) {
+        const parsed = parseApiError(error.details);
+        showToast({
+          title: titleForWriteError(parsed.error, "Couldn't edit post"),
+          message: parsed.message ?? messageForWriteError(parsed.error),
+          tone: "error",
+        });
+        return;
+      }
+      showToast({
+        title: "Couldn't edit post",
+        message: error instanceof Error ? error.message : "Try again.",
+        tone: "error",
+      });
+    } finally {
+      setIsMenuActionLoading(false);
+    }
+  }, [editDraft, isMenuActionLoading, post.id, showToast]);
+
+  const handleDeleteSubmit = useCallback(async () => {
+    if (isMenuActionLoading) return;
+    setIsMenuActionLoading(true);
+    try {
+      const response = await deletePost(post.id);
+      if (response.deleted) {
+        emitPostDeleted({ postId: post.id });
+        setIsHidden(true);
+        setMenuMode(null);
+        showToast({
+          title: "Post deleted",
+          message: "Your post was removed.",
+        });
+      } else {
+        showToast({
+          title: "Couldn't delete post",
+          message: "Try again.",
+          tone: "error",
+        });
+      }
+    } catch (error) {
+      if (error instanceof PostActionsApiError && error.status === 404) {
+        emitPostDeleted({ postId: post.id });
+        setIsHidden(true);
+        setMenuMode(null);
+        showToast({
+          title: "Post unavailable",
+          message: "This post is no longer available.",
+        });
+        return;
+      }
+
+      if (error instanceof PostActionsApiError) {
+        const parsed = parseApiError(error.details);
+        showToast({
+          title: titleForWriteError(parsed.error, "Couldn't delete post"),
+          message: parsed.message ?? messageForWriteError(parsed.error),
+          tone: "error",
+        });
+        return;
+      }
+
+      showToast({
+        title: "Couldn't delete post",
+        message: error instanceof Error ? error.message : "Try again.",
+        tone: "error",
+      });
+    } finally {
+      setIsMenuActionLoading(false);
+    }
+  }, [isMenuActionLoading, post.id, showToast]);
+
+  const handleReportSubmit = useCallback(async (target: "post" | "user") => {
+    if (isMenuActionLoading) return;
+    const reason = resolveReportReason();
+    if (!reason) {
+      showToast({
+        title: "Reason required",
+        message: "Enter a reason before submitting.",
+        tone: "error",
+      });
+      return;
+    }
+
+    const targetId = target === "post" ? post.id : authorId;
+    if (!targetId) {
+      showToast({
+        title: "Action unavailable",
+        message: "Missing target for this report.",
+        tone: "error",
+      });
+      return;
+    }
+
+    setIsMenuActionLoading(true);
+    try {
+      await reportEntity({ targetType: target, targetId, reason });
+      setMenuMode(null);
+      setReportReason("Spam");
+      setReportCustomReason("");
+      showToast({
+        title: target === "post" ? "Post reported" : "User reported",
+        message: "Thanks for your report.",
+      });
+    } catch (error) {
+      if (error instanceof PostActionsApiError) {
+        const parsed = parseApiError(error.details);
+        showToast({
+          title: titleForWriteError(parsed.error, `Couldn't report ${target}`),
+          message: parsed.message ?? messageForWriteError(parsed.error),
+          tone: "error",
+        });
+        return;
+      }
+      showToast({
+        title: `Couldn't report ${target}`,
+        message: error instanceof Error ? error.message : "Try again.",
+        tone: "error",
+      });
+    } finally {
+      setIsMenuActionLoading(false);
+    }
+  }, [authorId, isMenuActionLoading, post.id, resolveReportReason, showToast]);
+
+  const handleBlockSubmit = useCallback(async () => {
+    if (isMenuActionLoading) return;
+    if (!authorId && !authorPrincipalId) {
+      showToast({
+        title: "Action unavailable",
+        message: "Missing block target.",
+        tone: "error",
+      });
+      return;
+    }
+
+    setIsMenuActionLoading(true);
+    try {
+      if (authorId) {
+        await blockUser(authorId);
+      } else if (authorPrincipalId) {
+        await blockPrincipal(authorPrincipalId);
+      }
+
+      emitAuthorBlocked({ authorId, authorPrincipalId });
+      if (post.id) emitPostDeleted({ postId: post.id });
+      setIsHidden(true);
+      setMenuMode(null);
+      showToast({
+        title: "User blocked",
+        message: "Posts from this account have been hidden.",
+      });
+    } catch (error) {
+      if (error instanceof PostActionsApiError) {
+        const parsed = parseApiError(error.details);
+        showToast({
+          title: titleForWriteError(parsed.error, "Couldn't block user"),
+          message: parsed.message ?? messageForWriteError(parsed.error),
+          tone: "error",
+        });
+        return;
+      }
+      showToast({
+        title: "Couldn't block user",
+        message: error instanceof Error ? error.message : "Try again.",
+        tone: "error",
+      });
+    } finally {
+      setIsMenuActionLoading(false);
+    }
+  }, [authorId, authorPrincipalId, isMenuActionLoading, post.id, showToast]);
+
+  const handleAppealSubmit = useCallback(async () => {
+    if (isMenuActionLoading) return;
+    const reason = appealReason.trim();
+    if (!reason) {
+      showToast({
+        title: "Reason required",
+        message: "Enter context for this appeal.",
+        tone: "error",
+      });
+      return;
+    }
+
+    setIsMenuActionLoading(true);
+    try {
+      await appealPostRemoval({
+        postId: post.id,
+        reason,
+      });
+      setAppealReason("");
+      setMenuMode(null);
+      showToast({
+        title: "Appeal submitted",
+        message: "Your appeal has been submitted for review.",
+      });
+    } catch (error) {
+      if (error instanceof PostActionsApiError) {
+        const parsed = parseApiError(error.details);
+        showToast({
+          title: titleForWriteError(parsed.error, "Couldn't submit appeal"),
+          message: parsed.message ?? messageForWriteError(parsed.error),
+          tone: "error",
+        });
+        return;
+      }
+      showToast({
+        title: "Couldn't submit appeal",
+        message: error instanceof Error ? error.message : "Try again.",
+        tone: "error",
+      });
+    } finally {
+      setIsMenuActionLoading(false);
+    }
+  }, [appealReason, isMenuActionLoading, post.id, showToast]);
+
+  if (isHidden) return null;
+
   const mediaViewerHeader = (
     <div className="flex min-w-0 items-center gap-2.5">
       <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-bg-muted text-text-secondary dark:bg-white/10 dark:text-white">
@@ -697,7 +1085,8 @@ export function PostCard({ post }: PostCardProps) {
         </button>
 
         <Link
-          to={`/app/post/${post.id}/comments`}
+          to={commentsLinkTo}
+          onClick={() => captureFeedScrollRestore(location.pathname, window.scrollY, { postId: post.id })}
           className="inline-flex items-center gap-1 rounded-full px-1 py-1 text-[15px] font-medium text-text-secondary transition hover:text-strong dark:text-white/85 dark:hover:text-white"
           aria-label="Comment"
         >
@@ -742,7 +1131,7 @@ export function PostCard({ post }: PostCardProps) {
       </button>
     </div>
   );
-  const trimmedContent = post.content.trim();
+  const trimmedContent = editDraft.trim();
   const shouldHidePostTextForPoll = Boolean(
     pollState &&
       trimmedContent.length > 0 &&
@@ -786,8 +1175,14 @@ export function PostCard({ post }: PostCardProps) {
     )
   ) : null;
 
+  const isEditInvalid = editDraft.trim().length === 0 || editDraft.trim().length > 280;
+  const reportRequiresCustomReason = reportReason === "Something Else";
+  const isReportInvalid = reportRequiresCustomReason && reportCustomReason.trim().length === 0;
+  const reportTargetType = menuMode === "reportUser" ? "user" : "post";
+
   return (
-    <article className="bg-bg px-4 py-5">
+    <>
+    <article className="bg-bg px-4 py-5" data-feed-post-id={post.id}>
       {post.repostedBy ? (
         <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-text-secondary">
           <RepostIcon className="h-4 w-4 opacity-70" />
@@ -837,13 +1232,15 @@ export function PostCard({ post }: PostCardProps) {
             className="text-text-light transition hover:text-strong"
             type="button"
             aria-label="Post options"
+            aria-expanded={menuMode === "menu"}
+            onClick={() => setMenuMode("menu")}
           >
             <MenuDots className="h-5 w-5" />
           </button>
         </div>
 
         {shouldRenderPostText ? (
-          <p className="mt-3 text-[1.08rem] leading-[1.45] text-text-primary">{post.content}</p>
+          <p className="mt-3 text-[1.08rem] leading-[1.45] text-text-primary">{editDraft}</p>
         ) : null}
         {pollState ? (
           <section className="mt-1 pt-1">
@@ -936,7 +1333,8 @@ export function PostCard({ post }: PostCardProps) {
           </button>
 
           <Link
-            to={`/app/post/${post.id}/comments`}
+            to={commentsLinkTo}
+            onClick={() => captureFeedScrollRestore(location.pathname, window.scrollY, { postId: post.id })}
             className="inline-flex items-center gap-1 text-[1rem] font-medium text-text-secondary transition hover:text-strong"
             aria-label="Comment"
           >
@@ -983,5 +1381,258 @@ export function PostCard({ post }: PostCardProps) {
         <p className="mt-2 text-[0.95rem] text-text-light">{post.time}</p>
       </div>
     </article>
+    {menuMode ? (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={closeMenu}>
+        <div
+          className="relative w-full max-w-md rounded-2xl border border-border/70 bg-bg p-4 shadow-lg"
+          onClick={(event) => event.stopPropagation()}
+          role="dialog"
+          aria-modal="true"
+        >
+          <button
+            type="button"
+            onClick={closeMenu}
+            className="absolute right-3 top-3 inline-flex h-8 w-8 items-center justify-center rounded-full text-text-light transition hover:bg-bg-muted hover:text-strong disabled:opacity-50"
+            aria-label="Close"
+            disabled={isMenuActionLoading}
+          >
+            <span className="text-xl leading-none">×</span>
+          </button>
+          {menuMode === "menu" ? (
+            <div className="space-y-1 pr-10">
+              {canEditPost ? (
+                <button
+                  type="button"
+                  onClick={() => setMenuMode("edit")}
+                  className="w-full rounded-lg px-3 py-2 text-left text-sm font-semibold text-strong transition hover:bg-bg-muted"
+                >
+                  Edit Post
+                </button>
+              ) : null}
+              {canDeletePost ? (
+                <button
+                  type="button"
+                  onClick={() => setMenuMode("delete")}
+                  className="w-full rounded-lg px-3 py-2 text-left text-sm font-semibold text-brand transition hover:bg-bg-muted"
+                >
+                  Delete Post
+                </button>
+              ) : null}
+              {canReportPost ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setReportReason("Spam");
+                    setReportCustomReason("");
+                    setMenuMode("reportPost");
+                  }}
+                  className="w-full rounded-lg px-3 py-2 text-left text-sm font-semibold text-strong transition hover:bg-bg-muted"
+                >
+                  Report Post
+                </button>
+              ) : null}
+              {canReportUser ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setReportReason("Spam");
+                    setReportCustomReason("");
+                    setMenuMode("reportUser");
+                  }}
+                  className="w-full rounded-lg px-3 py-2 text-left text-sm font-semibold text-strong transition hover:bg-bg-muted"
+                >
+                  Report User
+                </button>
+              ) : null}
+              {canBlockUser ? (
+                <button
+                  type="button"
+                  onClick={() => setMenuMode("blockUser")}
+                  className="w-full rounded-lg px-3 py-2 text-left text-sm font-semibold text-brand transition hover:bg-bg-muted"
+                >
+                  Block User
+                </button>
+              ) : null}
+              {canAppealPostRemoval ? (
+                <button
+                  type="button"
+                  onClick={() => setMenuMode("appeal")}
+                  className="w-full rounded-lg px-3 py-2 text-left text-sm font-semibold text-strong transition hover:bg-bg-muted"
+                >
+                  Appeal Post Removal
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+
+          {menuMode === "edit" ? (
+            <div className="space-y-3">
+              <h3 className="text-lg font-semibold text-strong">Edit Post</h3>
+              <textarea
+                value={editDraft}
+                onChange={(event) => setEditDraft(event.target.value)}
+                className="h-32 w-full resize-none rounded-xl border border-border/70 bg-bg px-3 py-2 text-[1rem] text-strong focus:border-brand focus:outline-none"
+                maxLength={280}
+              />
+              <div className="flex items-center justify-between">
+                <p className={`text-xs ${editDraft.trim().length > 280 ? "text-brand" : "text-text-light"}`}>
+                  {editDraft.trim().length}/280
+                </p>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setMenuMode("menu")}
+                    className="rounded-full border border-border/70 px-3 py-1.5 text-sm font-semibold text-text-secondary transition hover:text-strong"
+                    disabled={isMenuActionLoading}
+                  >
+                    Back
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleEditSubmit()}
+                    className="rounded-full bg-brand px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-brand-hover disabled:opacity-60"
+                    disabled={isMenuActionLoading || isEditInvalid}
+                  >
+                    {isMenuActionLoading ? "Saving…" : "Save"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {menuMode === "delete" ? (
+            <div className="space-y-3">
+              <h3 className="text-lg font-semibold text-strong">Delete Post</h3>
+              <p className="text-sm text-text-secondary">Are you sure you want to delete this post?</p>
+              <div className="flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setMenuMode("menu")}
+                  className="rounded-full border border-border/70 px-3 py-1.5 text-sm font-semibold text-text-secondary transition hover:text-strong"
+                  disabled={isMenuActionLoading}
+                >
+                  Back
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleDeleteSubmit()}
+                  className="rounded-full bg-brand px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-brand-hover disabled:opacity-60"
+                  disabled={isMenuActionLoading}
+                >
+                  {isMenuActionLoading ? "Deleting…" : "Delete"}
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          {menuMode === "reportPost" || menuMode === "reportUser" ? (
+            <div className="space-y-3">
+              <h3 className="text-lg font-semibold text-strong">
+                {menuMode === "reportUser" ? "Report User" : "Report Post"}
+              </h3>
+              <div className="space-y-1">
+                {REPORT_REASON_OPTIONS.map((reason) => (
+                  <label key={reason} className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-bg-muted">
+                    <input
+                      type="radio"
+                      name={`report-reason-${post.id}`}
+                      checked={reportReason === reason}
+                      onChange={() => setReportReason(reason)}
+                    />
+                    <span className="text-sm text-strong">{reason}</span>
+                  </label>
+                ))}
+              </div>
+
+              {reportRequiresCustomReason ? (
+                <textarea
+                  value={reportCustomReason}
+                  onChange={(event) => setReportCustomReason(event.target.value)}
+                  className="h-24 w-full resize-none rounded-xl border border-border/70 bg-bg px-3 py-2 text-sm text-strong focus:border-brand focus:outline-none"
+                  placeholder="Enter report reason"
+                />
+              ) : null}
+
+              <div className="flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setMenuMode("menu")}
+                  className="rounded-full border border-border/70 px-3 py-1.5 text-sm font-semibold text-text-secondary transition hover:text-strong"
+                  disabled={isMenuActionLoading}
+                >
+                  Back
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleReportSubmit(reportTargetType)}
+                  className="rounded-full bg-brand px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-brand-hover disabled:opacity-60"
+                  disabled={isMenuActionLoading || isReportInvalid}
+                >
+                  {isMenuActionLoading ? "Submitting…" : "Submit report"}
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          {menuMode === "blockUser" ? (
+            <div className="space-y-3">
+              <h3 className="text-lg font-semibold text-strong">Block User</h3>
+              <p className="text-sm text-text-secondary">
+                Block this user and hide their posts from your feed?
+              </p>
+              <div className="flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setMenuMode("menu")}
+                  className="rounded-full border border-border/70 px-3 py-1.5 text-sm font-semibold text-text-secondary transition hover:text-strong"
+                  disabled={isMenuActionLoading}
+                >
+                  Back
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleBlockSubmit()}
+                  className="rounded-full bg-brand px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-brand-hover disabled:opacity-60"
+                  disabled={isMenuActionLoading}
+                >
+                  {isMenuActionLoading ? "Blocking…" : "Block user"}
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          {menuMode === "appeal" ? (
+            <div className="space-y-3">
+              <h3 className="text-lg font-semibold text-strong">Appeal Post Removal</h3>
+              <textarea
+                value={appealReason}
+                onChange={(event) => setAppealReason(event.target.value)}
+                className="h-24 w-full resize-none rounded-xl border border-border/70 bg-bg px-3 py-2 text-sm text-strong focus:border-brand focus:outline-none"
+                placeholder="Add context for appeal"
+              />
+              <div className="flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setMenuMode("menu")}
+                  className="rounded-full border border-border/70 px-3 py-1.5 text-sm font-semibold text-text-secondary transition hover:text-strong"
+                  disabled={isMenuActionLoading}
+                >
+                  Back
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleAppealSubmit()}
+                  className="rounded-full bg-brand px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-brand-hover disabled:opacity-60"
+                  disabled={isMenuActionLoading || appealReason.trim().length === 0}
+                >
+                  {isMenuActionLoading ? "Submitting…" : "Submit appeal"}
+                </button>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </div>
+    ) : null}
+    </>
   );
 }

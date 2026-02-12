@@ -700,16 +700,20 @@ export function PostSharePage({ postId }: PostSharePageProps) {
       <Navbar />
 
       <main className="mx-auto w-full max-w-3xl pb-16 pt-4 sm:pt-6">
-        <section className="overflow-hidden border-y border-border/70 bg-bg sm:rounded-2xl sm:border">
-          <header className="flex items-center justify-between gap-3 border-b border-border/70 px-4 py-3.5">
-            <p className="text-[0.82rem] font-semibold uppercase tracking-[0.08em] text-brand">Shared post</p>
-            <Link
-              to={sessionStatus === "authenticated" ? "/app" : `/login?next=${encodeURIComponent(sharePath)}`}
-              className="inline-flex items-center justify-center rounded-full bg-brand px-4 py-1.5 text-xs font-semibold text-white transition hover:bg-brand-hover"
-            >
-              {sessionStatus === "authenticated" ? "Open app" : "Sign in"}
-            </Link>
-          </header>
+        <div className="flex items-center gap-3 px-4 py-3 sm:px-5">
+          <p className="whitespace-nowrap text-[1.38rem] font-semibold leading-tight text-strong">Shared Post</p>
+          <Link
+            to={
+              sessionStatus === "authenticated"
+                ? `/app/post/${postId}/comments`
+                : `/login?next=${encodeURIComponent(`${sharePath}?intent=comment`)}`
+            }
+            className="whitespace-nowrap text-[0.95rem] text-text-secondary underline-offset-2 transition hover:text-strong hover:underline"
+          >
+            <span className="underline decoration-current underline-offset-2">Sign in</span> to comment, like, repost, and join the discussion.
+          </Link>
+        </div>
+        <section className="overflow-hidden border border-border/70 bg-bg sm:rounded-2xl">
 
           {viewStatus === "loading" ? (
             <div className="px-5 py-5">
@@ -948,28 +952,6 @@ export function PostSharePage({ postId }: PostSharePageProps) {
                 ) : null}
               </section>
 
-              <section className="border-t border-border/70 px-4 py-4 sm:px-5">
-                <p className="text-[0.98rem] text-text-secondary">
-                  {sessionStatus === "authenticated"
-                    ? "Open this discussion in the app to comment and interact."
-                    : "Sign in to comment, like, repost, and join the discussion."}
-                </p>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (sessionStatus === "authenticated") {
-                      navigate(`/app/post/${postId}/comments`, {
-                        state: { fromSharePreviewRedirect: true },
-                      });
-                      return;
-                    }
-                    navigateToLogin("comment");
-                  }}
-                  className="mt-3 inline-flex items-center justify-center rounded-full bg-brand px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-hover"
-                >
-                  {sessionStatus === "authenticated" ? "Open comments" : "Sign in to interact"}
-                </button>
-              </section>
             </>
           ) : null}
         </section>

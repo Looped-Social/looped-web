@@ -70,16 +70,14 @@ export function LoginPage() {
           </div>
           <h1 className="text-4xl font-semibold tracking-tight text-strong md:text-5xl">Sign in to Looped</h1>
           <p className="text-lg leading-8 text-text-secondary">
-            Looped is iOS-first with a limited web experience. Sign in here to access the web feed and{" "}
-            <Link className="font-semibold text-brand hover:text-brand/90" to="/delete-account">
-              deactivate or delete your account
-            </Link>
-            . Android is not available yet.
+            <span className="font-semibold text-brand">Web sign-up is not supported.</span> Create your account in the
+            iOS app first, then sign in here on web using that same account.{" "}
+            <span className="font-semibold text-brand">Web is sign-in only right now.</span> Android is not available yet.
           </p>
           <ul className="space-y-3 text-base text-text-secondary">
-            <li>Jump straight into your main feed.</li>
-            <li>Deactivate your account and stop activity.</li>
-            <li>Delete your account and all associated data.</li>
+            <li>Web sign-up is not supported.</li>
+            <li>Create your account in the Looped iOS app first.</li>
+            <li>After sign-up, use web to sign in and access your account.</li>
           </ul>
           <div className="space-y-3">
             <p className="text-sm font-semibold uppercase tracking-wide text-text-light">Need the app?</p>
@@ -127,7 +125,7 @@ export function LoginPage() {
               error={error}
               resetMessage={resetMessage}
               resetTone={resetTone}
-              note="Accounts can only be created in the Looped iOS app."
+              note="No web sign-up. Create your account in the Looped iOS app first, then sign in here."
               isBusy={isBusy || status === "loading"}
             />
           )}

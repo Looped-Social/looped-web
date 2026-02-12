@@ -16,6 +16,15 @@ function getNumber(value: unknown): number | undefined {
   return undefined;
 }
 
+function getString(value: unknown): string | undefined {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : undefined;
+  }
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  return undefined;
+}
+
 function getBoolean(value: unknown): boolean | undefined {
   if (typeof value === "boolean") return value;
   if (typeof value === "number" && Number.isFinite(value)) return value !== 0;
@@ -25,6 +34,14 @@ function getBoolean(value: unknown): boolean | undefined {
     if (normalized === "false") return false;
     if (normalized === "1") return true;
     if (normalized === "0") return false;
+  }
+  return undefined;
+}
+
+function pickString(obj: Record<string, unknown>, keys: string[]): string | undefined {
+  for (const key of keys) {
+    const value = getString(obj[key]);
+    if (value !== undefined) return value;
   }
   return undefined;
 }
@@ -121,4 +138,120 @@ export async function votePoll(
       }),
     }),
   });
+}
+
+export async function updatePostContent(postId: string | number, content: string): Promise<unknown> {
+  return authFetch<unknown>(`/v1/posts/${postId}`, {
+    method: "PUT",
+    body: JSON.stringify({
+      content,
+    }),
+  });
+}
+
+export async function deletePost(postId: string | number): Promise<{ id?: string; deleted: boolean }> {
+  const response = await authFetch<unknown>(`/v1/posts/${postId}`, {
+    method: "DELETE",
+  });
+
+  if (isRecord(response)) {
+    return {
+      id: pickString(response, ["id", "post_id", "postId"]),
+      deleted: pickBoolean(response, ["deleted"]) ?? true,
+    };
+  }
+
+  return {
+    deleted: true,
+  };
+}
+
+export async function reportEntity({
+  targetType,
+  targetId,
+  reason,
+}: {
+  targetType: "post" | "user";
+  targetId: string | number;
+  reason: string;
+}): Promise<{ id?: string }> {
+  const response = await authFetch<unknown>("/v1/reports", {
+    method: "POST",
+    body: JSON.stringify({
+      targetType,
+      targetId: Number.isFinite(Number(targetId)) ? Number(targetId) : targetId,
+      reason,
+    }),
+  });
+
+  if (isRecord(response)) {
+    return {
+      id: pickString(response, ["id", "report_id", "reportId"]),
+    };
+  }
+
+  return {};
+}
+
+export async function blockUser(userId: string | number): Promise<{ userId: string; blocked: boolean }> {
+  const response = await authFetch<unknown>(`/v1/users/${userId}/block`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+
+  if (isRecord(response)) {
+    return {
+      userId: pickString(response, ["userId", "user_id"]) ?? String(userId),
+      blocked: pickBoolean(response, ["blocked"]) ?? true,
+    };
+  }
+
+  return {
+    userId: String(userId),
+    blocked: true,
+  };
+}
+
+export async function blockPrincipal(principalId: string | number): Promise<{ principalId: string; blocked: boolean }> {
+  const response = await authFetch<unknown>(`/v1/principals/${principalId}/block`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+
+  if (isRecord(response)) {
+    return {
+      principalId: pickString(response, ["principalId", "principal_id"]) ?? String(principalId),
+      blocked: pickBoolean(response, ["blocked"]) ?? true,
+    };
+  }
+
+  return {
+    principalId: String(principalId),
+    blocked: true,
+  };
+}
+
+export async function appealPostRemoval({
+  postId,
+  reason,
+}: {
+  postId: string | number;
+  reason: string;
+}): Promise<{ id?: string }> {
+  const response = await authFetch<unknown>("/v1/appeals", {
+    method: "POST",
+    body: JSON.stringify({
+      targetType: "post_removal",
+      targetId: Number.isFinite(Number(postId)) ? Number(postId) : postId,
+      reason,
+    }),
+  });
+
+  if (isRecord(response)) {
+    return {
+      id: pickString(response, ["id", "appeal_id", "appealId"]),
+    };
+  }
+
+  return {};
 }

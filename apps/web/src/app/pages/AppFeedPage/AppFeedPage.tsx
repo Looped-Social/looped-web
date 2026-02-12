@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useLocation, useNavigate } from "react-router";
 
 import { AppSearchPanel, type FilterOption } from "@/app/components/AppSearchPanel/AppSearchPanel";
 import { AppLayout, AppMobileHeader } from "@/app/components/AppLayout/AppLayout";
 import { PostCard, type PostData } from "@/app/components/PostCard/PostCard";
+import { AppPostCommentsPage } from "@/app/pages/AppPostCommentsPage/AppPostCommentsPage";
 import { resolveCommunityLabel, usePreferCommunityShortNames } from "@/lib/communityDisplayPreference";
 import { useContentPreferences } from "@/lib/contentPreferences";
 import { FeedApiError, fetchFeed, fetchFollowedCommunities, type FeedMode } from "@/lib/feedApi";
+import { captureFeedScrollRestore, consumeFeedScrollRestore } from "@/lib/feedScrollRestore";
 import { extractMediaAssetIds } from "@/lib/postMediaIds";
 import { normalizePostPoll } from "@/lib/postPoll";
 import { extractViewerCapabilitiesFromPost } from "@/lib/postViewerCapabilities";
@@ -15,6 +18,34 @@ const feedTabs = [
   { id: "latest", label: "Latest", mode: "new" },
   { id: "following", label: "Following", mode: "following" },
 ] as const;
+
+type FeedTabId = (typeof feedTabs)[number]["id"];
+
+type FeedRouteSnapshot = {
+  activeTabId: FeedTabId;
+  activeCommunityId: string;
+  communityFilters: FilterOption[];
+  posts: PostData[];
+  nextCursor: string | null;
+  lastAutoLoadCursor: string | null;
+  hideAnonymousPosts: boolean;
+  preferCommunityShortNames: boolean;
+  scrollY: number;
+};
+
+const defaultCommunityFilters: FilterOption[] = [{ id: "all", label: "All Loops" }];
+const feedRouteSnapshots = new Map<string, FeedRouteSnapshot>();
+let latestFeedRouteSnapshot: FeedRouteSnapshot | null = null;
+
+function saveFeedRouteSnapshot(locationKey: string, snapshot: FeedRouteSnapshot) {
+  feedRouteSnapshots.set(locationKey, snapshot);
+  latestFeedRouteSnapshot = snapshot;
+
+  // Keep this bounded so repeated navigation does not grow memory unbounded.
+  if (feedRouteSnapshots.size <= 12) return;
+  const oldestKey = feedRouteSnapshots.keys().next().value;
+  if (typeof oldestKey === "string") feedRouteSnapshots.delete(oldestKey);
+}
 
 function FeedPostSkeleton() {
   return (
@@ -311,6 +342,7 @@ function normalizeFeedItemToPostData(
         return "User";
       })();
   const authorId = pickString(post, ["author_id", "authorId"]);
+  const authorPrincipalId = pickString(post, ["author_principal_id", "authorPrincipalId", "principal_id", "principalId"]);
   const anonProfileId =
     pickString(post, ["anon_profile_id", "anonProfileId", "author_anon_profile_id", "authorAnonProfileId"]) ??
     (() => {
@@ -381,6 +413,8 @@ function normalizeFeedItemToPostData(
   return {
     id,
     communityId,
+    authorId,
+    authorPrincipalId,
     repostedBy,
     author: authorName,
     subtitle,
@@ -407,25 +441,153 @@ function normalizeFeedItemToPostData(
 }
 
 export function AppFeedPage() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const commentsOverlayPostId = useMemo(() => {
+    const value = new URLSearchParams(location.search).get("comments");
+    if (!value) return null;
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }, [location.search]);
   const { hideAnonymousPosts } = useContentPreferences();
   const preferCommunityShortNames = usePreferCommunityShortNames();
+  const initialSnapshot = feedRouteSnapshots.get(location.key) ?? latestFeedRouteSnapshot;
+  const canRestoreSnapshot =
+    initialSnapshot?.hideAnonymousPosts === hideAnonymousPosts &&
+    initialSnapshot?.preferCommunityShortNames === preferCommunityShortNames;
 
-  const [activeTabId, setActiveTabId] = useState<(typeof feedTabs)[number]["id"]>("for-you");
+  const [activeTabId, setActiveTabId] = useState<FeedTabId>(() =>
+    canRestoreSnapshot ? initialSnapshot.activeTabId : "for-you"
+  );
   const activeMode = useMemo(() => {
     const found = feedTabs.find((tab) => tab.id === activeTabId);
     return (found?.mode ?? "for_you") as FeedMode;
   }, [activeTabId]);
 
-  const [activeCommunityId, setActiveCommunityId] = useState<string>("all");
-  const [communityFilters, setCommunityFilters] = useState<FilterOption[]>([{ id: "all", label: "All Loops" }]);
+  const [activeCommunityId, setActiveCommunityId] = useState<string>(() =>
+    canRestoreSnapshot ? initialSnapshot.activeCommunityId : "all"
+  );
+  const [communityFilters, setCommunityFilters] = useState<FilterOption[]>(() =>
+    canRestoreSnapshot ? initialSnapshot.communityFilters : defaultCommunityFilters
+  );
 
-  const [posts, setPosts] = useState<PostData[]>([]);
-  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [posts, setPosts] = useState<PostData[]>(() => (canRestoreSnapshot ? initialSnapshot.posts : []));
+  const [nextCursor, setNextCursor] = useState<string | null>(() => (canRestoreSnapshot ? initialSnapshot.nextCursor : null));
   const [feedStatus, setFeedStatus] = useState<"idle" | "loading" | "loading-more" | "error">("idle");
   const [feedError, setFeedError] = useState<string | null>(null);
   const infiniteSentinelRef = useRef<HTMLDivElement | null>(null);
-  const lastAutoLoadCursorRef = useRef<string | null>(null);
+  const lastAutoLoadCursorRef = useRef<string | null>(canRestoreSnapshot ? initialSnapshot.lastAutoLoadCursor : null);
   const feedStatusRef = useRef(feedStatus);
+  const skipInitialFeedLoadRef = useRef(canRestoreSnapshot);
+  const hasRestoredScrollRef = useRef(false);
+  const lastKnownScrollYRef = useRef(0);
+  const [storedScrollRestoreY, setStoredScrollRestoreY] = useState<number | null>(null);
+  const [storedScrollRestorePostId, setStoredScrollRestorePostId] = useState<string | null>(null);
+  const [hasConsumedStoredScrollRestore, setHasConsumedStoredScrollRestore] = useState(false);
+  const snapshotStateRef = useRef<Omit<FeedRouteSnapshot, "scrollY">>({
+    activeTabId,
+    activeCommunityId,
+    communityFilters,
+    posts,
+    nextCursor,
+    lastAutoLoadCursor: lastAutoLoadCursorRef.current,
+    hideAnonymousPosts,
+    preferCommunityShortNames,
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const captureScroll = () => {
+      const scrollY = window.scrollY;
+      lastKnownScrollYRef.current = scrollY;
+      captureFeedScrollRestore(location.pathname, scrollY);
+      saveFeedRouteSnapshot(location.key, {
+        ...snapshotStateRef.current,
+        lastAutoLoadCursor: lastAutoLoadCursorRef.current,
+        scrollY,
+      });
+    };
+    if (!hasConsumedStoredScrollRestore) return;
+    window.addEventListener("scroll", captureScroll, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", captureScroll);
+    };
+  }, [hasConsumedStoredScrollRestore, location.key, location.pathname]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      setHasConsumedStoredScrollRestore(true);
+      setStoredScrollRestoreY(null);
+      setStoredScrollRestorePostId(null);
+      return;
+    }
+
+    const restore = consumeFeedScrollRestore(location.pathname);
+    setStoredScrollRestoreY(restore?.scrollY ?? null);
+    setStoredScrollRestorePostId(restore?.postId ?? null);
+    setHasConsumedStoredScrollRestore(true);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    snapshotStateRef.current = {
+      activeTabId,
+      activeCommunityId,
+      communityFilters,
+      posts,
+      nextCursor,
+      lastAutoLoadCursor: lastAutoLoadCursorRef.current,
+      hideAnonymousPosts,
+      preferCommunityShortNames,
+    };
+  }, [activeCommunityId, activeTabId, communityFilters, hideAnonymousPosts, nextCursor, posts, preferCommunityShortNames]);
+
+  useEffect(() => {
+    if (hasRestoredScrollRef.current || typeof window === "undefined") return;
+
+    const snapshotScrollY = canRestoreSnapshot ? (initialSnapshot?.scrollY ?? 0) : 0;
+    if (snapshotScrollY <= 0 && !hasConsumedStoredScrollRestore) return;
+
+    const storedScrollY = storedScrollRestoreY ?? 0;
+    const targetScrollY = snapshotScrollY > 0 ? snapshotScrollY : storedScrollY;
+
+    if (targetScrollY <= 0 && storedScrollRestorePostId) {
+      if (posts.length === 0 && feedStatus !== "error") return;
+
+      const targetNode = document.querySelector<HTMLElement>(`[data-feed-post-id="${storedScrollRestorePostId}"]`);
+      if (!targetNode) return;
+
+      hasRestoredScrollRef.current = true;
+      window.requestAnimationFrame(() => {
+        targetNode.scrollIntoView({ block: "start", behavior: "auto" });
+        lastKnownScrollYRef.current = window.scrollY;
+      });
+      return;
+    }
+
+    if (targetScrollY <= 0) {
+      hasRestoredScrollRef.current = true;
+      return;
+    }
+
+    const contentReadyForRestore = canRestoreSnapshot || posts.length > 0 || feedStatus === "error";
+    if (!contentReadyForRestore) return;
+
+    hasRestoredScrollRef.current = true;
+    lastKnownScrollYRef.current = targetScrollY;
+
+    window.requestAnimationFrame(() => {
+      window.scrollTo({ top: targetScrollY, behavior: "auto" });
+      lastKnownScrollYRef.current = window.scrollY;
+    });
+  }, [canRestoreSnapshot, feedStatus, hasConsumedStoredScrollRestore, initialSnapshot, posts.length, storedScrollRestorePostId, storedScrollRestoreY]);
+
+  useEffect(() => {
+    saveFeedRouteSnapshot(location.key, {
+      ...snapshotStateRef.current,
+      lastAutoLoadCursor: lastAutoLoadCursorRef.current,
+      scrollY: lastKnownScrollYRef.current,
+    });
+  }, [activeCommunityId, activeTabId, communityFilters, hideAnonymousPosts, location.key, nextCursor, posts, preferCommunityShortNames]);
 
   const rightRail = (
     <AppSearchPanel
@@ -435,6 +597,23 @@ export function AppFeedPage() {
       filters={communityFilters}
     />
   );
+
+  const closeCommentsOverlay = useCallback(() => {
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      navigate(-1);
+      return;
+    }
+    navigate("/app", { replace: true });
+  }, [navigate]);
+
+  useEffect(() => {
+    if (!commentsOverlayPostId || typeof document === "undefined") return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [commentsOverlayPostId]);
 
   useEffect(() => {
     let active = true;
@@ -447,10 +626,10 @@ export function AppFeedPage() {
           .map((item) => normalizeCommunityToFilterOption(item, preferCommunityShortNames))
           .filter((option): option is FilterOption => Boolean(option));
 
-        setCommunityFilters([{ id: "all", label: "All Loops" }, ...options]);
+        setCommunityFilters([...defaultCommunityFilters, ...options]);
       } catch (_error) {
         if (!active) return;
-        setCommunityFilters([{ id: "all", label: "All Loops" }]);
+        setCommunityFilters(defaultCommunityFilters);
       }
     })();
 
@@ -494,6 +673,11 @@ export function AppFeedPage() {
   }, [feedStatus]);
 
   useEffect(() => {
+    if (skipInitialFeedLoadRef.current) {
+      skipInitialFeedLoadRef.current = false;
+      return;
+    }
+
     setPosts([]);
     setNextCursor(null);
     lastAutoLoadCursorRef.current = null;
@@ -544,7 +728,7 @@ export function AppFeedPage() {
 
   return (
     <AppLayout activeNavId="home" rightRail={rightRail}>
-      <AppMobileHeader />
+      <AppMobileHeader showBorder={false} />
 
       <header className="border-b border-border/70 bg-bg">
         <div className="grid grid-cols-3">
@@ -601,6 +785,12 @@ export function AppFeedPage() {
           <div className="px-4 py-5 text-center text-sm text-text-secondary">Loading more…</div>
         ) : null}
       </div>
+
+      {commentsOverlayPostId ? (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-shell-bg">
+          <AppPostCommentsPage postId={commentsOverlayPostId} overlayMode onRequestClose={closeCommentsOverlay} />
+        </div>
+      ) : null}
     </AppLayout>
   );
 }
