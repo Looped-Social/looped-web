@@ -1105,7 +1105,7 @@ export function AppPostCommentsPage({ postId }: AppPostCommentsPageProps) {
             </section>
           ) : null}
 
-          <section className="divide-y divide-border/50">
+          <section>
             {commentsStatus === "loading" && comments.length === 0 ? (
               <>
                 {Array.from({ length: 4 }, (_, index) => (
