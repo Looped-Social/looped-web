@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router";
+import { useEffect, useMemo, useState } from "react";
+import { Link, useLocation, useNavigate } from "react-router";
 
 import { AppStoreButton } from "@/marketing/components/AppStoreButton/AppStoreButton";
 import { PageShell } from "@/marketing/components/PageShell/PageShell";
@@ -8,18 +8,40 @@ import { AuthCard } from "@/marketing/components/Auth/AuthCard";
 import { useUserSession } from "@/hooks/useUserSession";
 import { getFirebaseErrorMessage, sendPasswordReset } from "@/lib/firebaseClient";
 
+function resolvePostSignInDestination(rawSearch: string): string {
+  const params = new URLSearchParams(rawSearch);
+  const rawNext = params.get("next");
+  if (!rawNext) return "/app";
+
+  let next = rawNext;
+  try {
+    next = decodeURIComponent(rawNext);
+  } catch {
+    next = rawNext;
+  }
+
+  if (!next.startsWith("/") || next.startsWith("//")) return "/app";
+  if (next.startsWith("/login")) return "/app";
+  return next;
+}
+
 export function LoginPage() {
   const { status, user, error, signIn, signInWithGoogle, signInWithApple, signOut } = useUserSession();
   const navigate = useNavigate();
+  const location = useLocation();
   const isBusy = status === "checking";
   const [resetMessage, setResetMessage] = useState<string | null>(null);
   const [resetTone, setResetTone] = useState<"error" | "success">("success");
+  const postSignInDestination = useMemo(
+    () => resolvePostSignInDestination(location.search),
+    [location.search]
+  );
 
   useEffect(() => {
     if (status === "authenticated") {
-      navigate("/app", { replace: true });
+      navigate(postSignInDestination, { replace: true });
     }
-  }, [status, navigate]);
+  }, [navigate, postSignInDestination, status]);
 
   const handleForgotPassword = async (email: string) => {
     if (!email) {
@@ -48,11 +70,11 @@ export function LoginPage() {
           </div>
           <h1 className="text-4xl font-semibold tracking-tight text-strong md:text-5xl">Sign in to Looped</h1>
           <p className="text-lg leading-8 text-text-secondary">
-            Looped is iOS-only today, but you can sign in here to access the web feed and{" "}
+            Looped is iOS-first with a limited web experience. Sign in here to access the web feed and{" "}
             <Link className="font-semibold text-brand hover:text-brand/90" to="/delete-account">
               deactivate or delete your account
             </Link>
-            .
+            . Android is not available yet.
           </p>
           <ul className="space-y-3 text-base text-text-secondary">
             <li>Jump straight into your main feed.</li>
@@ -76,10 +98,10 @@ export function LoginPage() {
                   Signed in as <span className="font-semibold text-strong">{user?.email ?? "your account"}</span>
                 </div>
                 <Link
-                  to="/app"
+                  to={postSignInDestination}
                   className="inline-flex w-full items-center justify-center rounded-lg bg-brand px-4 py-2.5 text-sm font-semibold text-white transition hover:-translate-y-px hover:bg-brand/90"
                 >
-                  Go to feed
+                  Continue
                 </Link>
                 <Link
                   to="/delete-account"

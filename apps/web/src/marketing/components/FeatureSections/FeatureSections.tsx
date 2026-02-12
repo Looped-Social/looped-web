@@ -32,7 +32,7 @@ const featureSections: FeatureSection[] = [
   {
     title: "Get verified",
     description:
-      "Getting verified is simple and quick. All information is verified fast and secure, and never stored.",
+      "Getting verified is simple and quick in the iOS app. Verification is fast and secure, and web verification support is in progress.",
     cta: "How We Verify",
     ctaTo: "/faq#how-does-verification-work",
     lightImage: verifyLightImage,
@@ -43,7 +43,7 @@ const featureSections: FeatureSection[] = [
   {
     title: "Anonymous",
     description:
-      "Talk anonymously, free from trackers and data breaches. Anonymous to others, always authentic.",
+      "Talk anonymously, free from trackers and data breaches. Anonymous to others, always authentic. Anonymous posting is currently iOS-only.",
     cta: "Our Privacy Pledge",
     ctaTo: "/privacy",
     lightImage: anonLightImage,

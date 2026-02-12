@@ -1,5 +1,5 @@
 import { type SyntheticEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router";
+import { Link, useLocation, useNavigate } from "react-router";
 
 import { AppLayout } from "@/app/components/AppLayout/AppLayout";
 import { PostMediaGrid } from "@/app/components/PostMediaGrid/PostMediaGrid";
@@ -7,13 +7,16 @@ import { useToast } from "@/app/components/AppToast/AppToast";
 import {
   CommentsApiError,
   createPostComment,
+  fetchViewerInteractionState,
   fetchCommentReplies,
   fetchPostComments,
   fetchPostDetail,
   setCommentLiked,
 } from "@/lib/commentsApi";
+import { getCommunityPermissions, type CommunityPermissions } from "@/lib/communityPermissionsApi";
 import { type ResolvedMediaAsset, resolveMediaAssets } from "@/lib/mediaApi";
 import { extractMediaAssetIds } from "@/lib/postMediaIds";
+import { useCurrentUserStore } from "@/stores/currentUserStore";
 
 const DEFAULT_PROFILE_IMAGE_SRC = "/ios-icons/pfp2.svg";
 
@@ -30,6 +33,8 @@ type AppPostCommentsPageProps = {
 
 type PostSummary = {
   id: string;
+  communityId?: string;
+  communityName?: string;
   content: string;
   authorName: string;
   authorProfileHref?: string;
@@ -255,6 +260,8 @@ function normalizePostDetail(payload: unknown): PostSummary | null {
 
   return {
     id,
+    communityId: pickString(payload, ["community_id", "communityId"]),
+    communityName: pickString(payload, ["community_short_name", "communityShortName", "community_name", "communityName"]),
     content: pickString(payload, ["content", "text", "body", "message"]) ?? "",
     authorName: resolveAuthorName(payload, author, isAnonymous),
     authorProfileHref: resolveProfileHref({ isAnonymous, authorId, anonProfileId }),
@@ -335,15 +342,33 @@ function titleForWriteError(code?: string, fallback = "Action unavailable"): str
   return fallback;
 }
 
-function messageForWriteError(code?: string, fallback = "This action isn't available right now."): string {
+function messageForWriteError(
+  code: string | undefined,
+  {
+    actionVerb = "comment",
+    fallback = "This action isn't available right now.",
+  }: {
+    actionVerb?: "comment" | "interact";
+    fallback?: string;
+  } = {}
+): string {
   if (!code) return fallback;
-  if (code === "community_not_verified" || code === "user_not_verified") {
-    return "You must be verified in this community. Verify in the iOS app.";
+  if (code === "community_not_verified") {
+    return actionVerb === "comment"
+      ? "You must be verified in this community to comment."
+      : "You must be verified in this community to interact.";
+  }
+  if (code === "user_not_verified") {
+    return "Verification required to comment.";
   }
   if (code === "verification_expired") {
-    return "Your verification expired. Re-verify in the iOS app.";
+    return "Your verification expired. Verify again to comment.";
   }
-  if (code === "specialization_not_joined") return "Join this major or field first.";
+  if (code === "specialization_not_joined") {
+    return actionVerb === "comment"
+      ? "Join this major or field to comment."
+      : "Join this major or field to interact.";
+  }
   if (code === "community_banned") return "This community is currently unavailable.";
   if (code === "content_under_review") return "Your content is still under review.";
   return fallback;
@@ -401,6 +426,24 @@ function HeartIcon({ filled, className }: { filled: boolean; className?: string 
   );
 }
 
+function ArrowUpIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.25"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+    >
+      <path d="M12 19V5" />
+      <path d="M6 11l6-6 6 6" />
+    </svg>
+  );
+}
+
 function Avatar({
   src,
   alt,
@@ -446,8 +489,10 @@ function Avatar({
 
 export function AppPostCommentsPage({ postId }: AppPostCommentsPageProps) {
   const navigate = useNavigate();
+  const location = useLocation();
   const composerInputRef = useRef<HTMLInputElement>(null);
   const { showToast } = useToast();
+  const { user, status: currentUserStatus } = useCurrentUserStore({ autoLoad: true });
 
   const [post, setPost] = useState<PostSummary | null>(null);
   const [postStatus, setPostStatus] = useState<"loading" | "idle" | "error">("loading");
@@ -463,6 +508,10 @@ export function AppPostCommentsPage({ postId }: AppPostCommentsPageProps) {
   const [composerText, setComposerText] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [replyTarget, setReplyTarget] = useState<{ id: string; authorName: string } | null>(null);
+  const [permissions, setPermissions] = useState<CommunityPermissions | null>(null);
+  const [permissionsStatus, setPermissionsStatus] = useState<"idle" | "loading" | "ready">("idle");
+  const [permissionsError, setPermissionsError] = useState(false);
+  const [platformVerified, setPlatformVerified] = useState<boolean | null>(null);
 
   const loadPostDetail = useCallback(async () => {
     setPostStatus("loading");
@@ -579,6 +628,62 @@ export function AppPostCommentsPage({ postId }: AppPostCommentsPageProps) {
     void loadComments({ replace: true });
   }, [loadComments, loadPostDetail]);
 
+  useEffect(() => {
+    if (!post) {
+      setPermissions(null);
+      setPermissionsStatus("idle");
+      setPlatformVerified(null);
+      return;
+    }
+
+    let active = true;
+    setPermissionsStatus("loading");
+    setPermissionsError(false);
+
+    if (post.communityId) {
+      getCommunityPermissions(post.communityId)
+        .then((response) => {
+          if (!active) return;
+          setPermissions(response);
+          setPermissionsStatus("ready");
+        })
+        .catch(() => {
+          if (!active) return;
+          // Fail-closed until permissions are known.
+          setPermissions(null);
+          setPermissionsError(true);
+          setPermissionsStatus("ready");
+        });
+    } else {
+      fetchViewerInteractionState()
+        .then((response) => {
+          if (!active) return;
+          setPlatformVerified(response.isVerified);
+          if (response.isAnonymous) {
+            setPermissions({
+              can_post: false,
+              requires_verification: true,
+              requires_join: false,
+            });
+          } else {
+            setPermissions(null);
+          }
+          setPermissionsStatus("ready");
+        })
+        .catch(() => {
+          if (!active) return;
+          setPlatformVerified(null);
+          setPermissions(null);
+          setPermissionsError(true);
+          setPermissionsStatus("ready");
+        });
+    }
+
+    return () => {
+      active = false;
+    };
+  }, [post]);
+
   const allVisibleMediaIds = useMemo(() => {
     const unique: string[] = [];
     const seen = new Set<string>();
@@ -634,8 +739,101 @@ export function AppPostCommentsPage({ postId }: AppPostCommentsPageProps) {
     [resolvedMediaById]
   );
 
+  const isCurrentUserAnonymous = useMemo(() => {
+    if (!user || typeof user !== "object") return false;
+    const profile = user as Record<string, unknown>;
+    return (
+      pickBoolean(profile, ["is_anonymous", "isAnonymous"]) ??
+      pickBoolean(profile, ["active_profile_is_anonymous", "activeProfileIsAnonymous"]) ??
+      false
+    );
+  }, [user]);
+
+  const canInteractFromPermissions = useMemo(() => {
+    if (!permissions) return true;
+    return permissions.can_post || Boolean(permissions.canPost);
+  }, [permissions]);
+
+  const getInteractionBlocker = useCallback(
+    (actionVerb: "comment" | "interact"): { title: string; message: string } | null => {
+      if (currentUserStatus === "loading" || currentUserStatus === "idle") {
+        return { title: "Checking account", message: "Please wait a moment and try again." };
+      }
+
+      if (!user) {
+        return { title: "Sign in required", message: "Sign in to comment and reply." };
+      }
+
+      if (isCurrentUserAnonymous) {
+        return { title: "Action unavailable", message: "Anonymous profiles can't comment on web." };
+      }
+
+      if (permissionsStatus === "loading") {
+        return { title: "Checking permissions", message: "Please wait a moment and try again." };
+      }
+
+      if (permissionsError) {
+        return { title: "Action unavailable", message: "Couldn't check permissions. Try again." };
+      }
+
+      if (!post?.communityId && platformVerified === false) {
+        return { title: "Verification required", message: "Verification required to comment." };
+      }
+
+      if (!canInteractFromPermissions && permissions) {
+        if (permissions.requires_verification) {
+          return {
+            title: "Verification required",
+            message:
+              actionVerb === "comment"
+                ? "You must be verified in this community to comment."
+                : "You must be verified in this community to interact.",
+          };
+        }
+        if (permissions.requires_join || permissions.requiresJoin) {
+          return {
+            title: "Join required",
+            message:
+              actionVerb === "comment"
+                ? "Join this major or field to comment."
+                : "Join this major or field to interact.",
+          };
+        }
+      }
+
+      return null;
+    },
+    [
+      canInteractFromPermissions,
+      currentUserStatus,
+      isCurrentUserAnonymous,
+      permissions,
+      permissionsError,
+      permissionsStatus,
+      platformVerified,
+      post?.communityId,
+      user,
+    ]
+  );
+
   const handleBack = () => {
-    if (typeof window !== "undefined" && window.history.length > 1) {
+    const fromSharePreviewRedirect =
+      typeof location.state === "object" &&
+      location.state !== null &&
+      "fromSharePreviewRedirect" in location.state &&
+      (location.state as { fromSharePreviewRedirect?: boolean }).fromSharePreviewRedirect === true;
+
+    if (fromSharePreviewRedirect) {
+      navigate("/app", { replace: true });
+      return;
+    }
+
+    const historyIndex =
+      typeof window !== "undefined" && typeof window.history.state?.idx === "number"
+        ? window.history.state.idx
+        : 0;
+
+    if (historyIndex > 0) {
       navigate(-1);
       return;
     }
@@ -668,6 +866,16 @@ export function AppPostCommentsPage({ postId }: AppPostCommentsPageProps) {
 
   const handleCommentLikeToggle = useCallback(
     async (comment: CommentView) => {
+      const blocker = getInteractionBlocker("interact");
+      if (blocker) {
+        showToast({
+          title: blocker.title,
+          message: blocker.message,
+          tone: "error",
+        });
+        return;
+      }
+
       const previousLiked = comment.userLiked;
       const previousCount = comment.likesCount;
       const nextLiked = !previousLiked;
@@ -696,7 +904,10 @@ export function AppPostCommentsPage({ postId }: AppPostCommentsPageProps) {
           const parsed = parseApiError(error.details);
           showToast({
             title: titleForWriteError(parsed.error, "Couldn't like comment"),
-            message: parsed.message ?? messageForWriteError(parsed.error),
+            message: messageForWriteError(parsed.error, {
+              actionVerb: "interact",
+              fallback: parsed.message ?? "This action isn't available right now.",
+            }),
             tone: "error",
           });
           return;
@@ -709,19 +920,39 @@ export function AppPostCommentsPage({ postId }: AppPostCommentsPageProps) {
         });
       }
     },
-    [showToast, updateCommentById]
+    [getInteractionBlocker, showToast, updateCommentById]
   );
 
   const handleReplyClick = useCallback((comment: CommentView) => {
+    const blocker = getInteractionBlocker("comment");
+    if (blocker) {
+      showToast({
+        title: blocker.title,
+        message: blocker.message,
+        tone: "error",
+      });
+      return;
+    }
+
     setReplyTarget({ id: comment.id, authorName: comment.authorName });
     window.setTimeout(() => {
       composerInputRef.current?.focus();
     }, 0);
-  }, []);
+  }, [getInteractionBlocker, showToast]);
 
   const handleCreateComment = useCallback(async () => {
     const trimmed = composerText.trim();
     if (!trimmed || isSubmitting) return;
+
+    const blocker = getInteractionBlocker("comment");
+    if (blocker) {
+      showToast({
+        title: blocker.title,
+        message: blocker.message,
+        tone: "error",
+      });
+      return;
+    }
 
     setIsSubmitting(true);
     const parentId = replyTarget?.id ?? null;
@@ -773,7 +1004,10 @@ export function AppPostCommentsPage({ postId }: AppPostCommentsPageProps) {
         const parsed = parseApiError(error.details);
         showToast({
           title: titleForWriteError(parsed.error, "Couldn't post comment"),
-          message: parsed.message ?? messageForWriteError(parsed.error),
+          message: messageForWriteError(parsed.error, {
+            actionVerb: "comment",
+            fallback: parsed.message ?? "This action isn't available right now.",
+          }),
           tone: "error",
         });
       } else {
@@ -786,12 +1020,22 @@ export function AppPostCommentsPage({ postId }: AppPostCommentsPageProps) {
     } finally {
       setIsSubmitting(false);
     }
-  }, [composerText, isSubmitting, postId, replyTarget, showToast]);
+  }, [composerText, getInteractionBlocker, isSubmitting, postId, replyTarget, showToast]);
 
   const title = useMemo(() => {
     const count = post?.commentsCount ?? comments.length;
     return `${count} comment${count === 1 ? "" : "s"}`;
   }, [comments.length, post?.commentsCount]);
+  const commentBlocker = getInteractionBlocker("comment");
+  const lockedCommunityLabel = post?.communityName ?? "this community";
+  const lockedMessage =
+    commentBlocker?.title === "Verification required"
+      ? `You can't comment because you aren't verified for ${lockedCommunityLabel}.`
+      : commentBlocker?.title === "Join required"
+        ? `Join ${lockedCommunityLabel} to comment.`
+        : commentBlocker?.message ?? null;
+  const canShowComposer = !commentBlocker;
+  const hasComposerDraft = composerText.trim().length > 0;
 
   return (
     <AppLayout activeNavId="home">
@@ -801,10 +1045,10 @@ export function AppPostCommentsPage({ postId }: AppPostCommentsPageProps) {
             <button
               type="button"
               onClick={handleBack}
-              className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-bg-muted text-strong transition hover:text-strong/80"
+              className="inline-flex h-10 w-10 items-center justify-center text-strong transition hover:text-strong/80"
               aria-label="Back"
             >
-              <ChevronLeftIcon className="h-5 w-5" />
+              <ChevronLeftIcon className="h-7 w-7" />
             </button>
 
             <h1 className="text-center text-2xl font-semibold text-strong">{title}</h1>
@@ -898,7 +1142,7 @@ export function AppPostCommentsPage({ postId }: AppPostCommentsPageProps) {
               const showReplies = thread?.open ?? false;
 
               return (
-                <article key={comment.id} className="px-5 py-4">
+                <article key={comment.id} className="px-5 py-3.5">
                   <div className="flex items-start gap-3">
                     <Avatar
                       src={comment.authorProfileImageUrl}
@@ -908,15 +1152,15 @@ export function AppPostCommentsPage({ postId }: AppPostCommentsPageProps) {
                     />
 
                     <div className="min-w-0 flex-1">
-                      {comment.content ? <p className="text-[1.5rem] leading-snug text-strong">{comment.content}</p> : null}
+                      {comment.content ? <p className="text-[1.35rem] leading-[1.3] text-strong">{comment.content}</p> : null}
                       {comment.mediaAssetIds.length > 0 ? (
                         <PostMediaGrid
                           attachments={orderedResolvedMedia(comment.mediaAssetIds)}
                           className={comment.content ? "mt-2" : "mt-0.5"}
                         />
                       ) : null}
-                      <p className="mt-1 text-xl text-text-secondary">{comment.authorName}</p>
-                      <div className="mt-1 flex items-center gap-3 text-base text-text-light">
+                      <p className="mt-0.5 text-[1.05rem] font-medium text-text-secondary">{comment.authorName}</p>
+                      <div className="mt-0.5 flex items-center gap-2.5 text-[0.95rem] text-text-light">
                         {comment.createdAtLabel ? <span>{comment.createdAtLabel}</span> : null}
                         <button
                           type="button"
@@ -952,7 +1196,7 @@ export function AppPostCommentsPage({ postId }: AppPostCommentsPageProps) {
                       </div>
 
                       {showReplies ? (
-                        <div className="mt-3 space-y-3 border-l border-border/60 pl-4">
+                        <div className="mt-2.5 space-y-2.5 border-l border-border/60 pl-4">
                           {thread?.loading ? (
                             <p className="text-sm text-text-light">Loading replies…</p>
                           ) : null}
@@ -979,15 +1223,15 @@ export function AppPostCommentsPage({ postId }: AppPostCommentsPageProps) {
                                 sizeClassName="h-8 w-8"
                               />
                               <div className="min-w-0 flex-1">
-                                {reply.content ? <p className="text-lg leading-snug text-strong">{reply.content}</p> : null}
+                                {reply.content ? <p className="text-[1.02rem] leading-[1.3] text-strong">{reply.content}</p> : null}
                                 {reply.mediaAssetIds.length > 0 ? (
                                   <PostMediaGrid
                                     attachments={orderedResolvedMedia(reply.mediaAssetIds)}
                                     className={reply.content ? "mt-2" : "mt-0.5"}
                                   />
                                 ) : null}
-                                <div className="mt-1 flex items-center gap-3 text-sm text-text-light">
-                                  <span className="text-text-secondary">{reply.authorName}</span>
+                                <div className="mt-0.5 flex items-center gap-2.5 text-[0.85rem] text-text-light">
+                                  <span className="font-medium text-text-secondary">{reply.authorName}</span>
                                   {reply.createdAtLabel ? <span>{reply.createdAtLabel}</span> : null}
                                 </div>
                               </div>
@@ -1049,48 +1293,60 @@ export function AppPostCommentsPage({ postId }: AppPostCommentsPageProps) {
         </div>
 
         <footer className="sticky bottom-0 border-t border-border/70 bg-bg px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
-          {replyTarget ? (
-            <div className="mb-2 flex items-center justify-between gap-3 rounded-lg bg-bg-muted px-3 py-2">
-              <p className="truncate text-sm text-text-secondary">
-                Replying to <span className="font-semibold text-strong">{replyTarget.authorName}</span>
-              </p>
-              <button
-                type="button"
-                onClick={() => setReplyTarget(null)}
-                className="text-sm font-semibold text-text-secondary transition hover:text-strong"
+          {canShowComposer ? (
+            <>
+              {replyTarget ? (
+                <div className="mb-2 flex items-center justify-between gap-3 rounded-lg bg-bg-muted px-3 py-2">
+                  <p className="truncate text-sm text-text-secondary">
+                    Replying to <span className="font-semibold text-strong">{replyTarget.authorName}</span>
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setReplyTarget(null)}
+                    className="text-sm font-semibold text-text-secondary transition hover:text-strong"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : null}
+
+              <form
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void handleCreateComment();
+                }}
               >
-                Cancel
-              </button>
-            </div>
-          ) : null}
+                <div className="flex items-center gap-2 rounded-[24px] bg-bg-muted px-4 py-2.5">
+                  <div className="inline-flex h-8 w-8 shrink-0 items-center justify-center text-brand">
+                    <span className="text-[2.2rem] leading-none">+</span>
+                  </div>
 
-          <form
-            onSubmit={(event) => {
-              event.preventDefault();
-              void handleCreateComment();
-            }}
-            className="flex items-center gap-2"
-          >
-            <div className="inline-flex h-9 w-9 items-center justify-center text-3xl leading-none text-brand">+</div>
+                  <input
+                    ref={composerInputRef}
+                    value={composerText}
+                    onChange={(event) => setComposerText(event.target.value)}
+                    placeholder={replyTarget ? `Reply to ${replyTarget.authorName}...` : "Add a comment..."}
+                    className="h-8 min-w-0 flex-1 bg-transparent text-[2rem] text-strong placeholder:text-text-light focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-70"
+                    disabled={isSubmitting}
+                    maxLength={2000}
+                  />
 
-            <input
-              ref={composerInputRef}
-              value={composerText}
-              onChange={(event) => setComposerText(event.target.value)}
-              placeholder={replyTarget ? `Reply to ${replyTarget.authorName}...` : "Add a comment..."}
-              className="h-11 min-w-0 flex-1 rounded-full bg-bg-muted px-4 text-lg text-strong placeholder:text-text-light focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
-              disabled={isSubmitting}
-              maxLength={2000}
-            />
-
-            <button
-              type="submit"
-              disabled={isSubmitting || composerText.trim().length === 0}
-              className="rounded-full bg-brand px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-hover disabled:bg-bg-muted disabled:text-text-light"
-            >
-              {isSubmitting ? "Posting…" : "Post"}
-            </button>
-          </form>
+                  {isSubmitting || hasComposerDraft ? (
+                    <button
+                      type="submit"
+                      disabled={isSubmitting || !hasComposerDraft}
+                      className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-brand text-white transition hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-60"
+                      aria-label={isSubmitting ? "Posting comment" : "Post comment"}
+                    >
+                      <ArrowUpIcon className="h-5 w-5" />
+                    </button>
+                  ) : null}
+                </div>
+              </form>
+            </>
+          ) : (
+            <div className="py-2 text-center text-[1.05rem] text-text-secondary">{lockedMessage}</div>
+          )}
         </footer>
       </div>
     </AppLayout>

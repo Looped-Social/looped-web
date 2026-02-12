@@ -8,6 +8,7 @@ import { useContentPreferences } from "@/lib/contentPreferences";
 import { FeedApiError, fetchFeed, fetchFollowedCommunities, type FeedMode } from "@/lib/feedApi";
 import { extractMediaAssetIds } from "@/lib/postMediaIds";
 import { normalizePostPoll } from "@/lib/postPoll";
+import { extractViewerCapabilitiesFromPost } from "@/lib/postViewerCapabilities";
 
 const feedTabs = [
   { id: "for-you", label: "For You", mode: "for_you" },
@@ -397,6 +398,7 @@ function normalizeFeedItemToPostData(
     viewerLiked,
     viewerSaved,
     viewerHasReposted,
+    viewerCapabilities: extractViewerCapabilitiesFromPost(post),
     poll: normalizePostPoll(post),
     mediaAssetIds: extractMediaAssetIds(post),
     stats: { likes, comments, reposts, shares, saves },

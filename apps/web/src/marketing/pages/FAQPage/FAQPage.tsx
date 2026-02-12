@@ -15,7 +15,7 @@ const faqs: FAQItemProps[] = [
     id: "what-is-looped",
     question: "What is Looped?",
     answer:
-      "Looped is a company- and school-verified social media app. Companies and schools are the main communities. After you join a company, you can join up to 2 Fields. After you join at least one school, you can join up to 2 Majors.",
+      "Looped is a verified social platform for company and school communities. The full experience is on iOS, and a limited web app is available for signed-in members. After you join a company, you can join up to 2 Fields. After you join at least one school, you can join up to 2 Majors.",
   },
   {
     id: "can-i-view-posts-without-verification",
@@ -27,7 +27,19 @@ const faqs: FAQItemProps[] = [
     id: "how-does-verification-work",
     question: "How does verification work?",
     answer:
-      "Verification can be completed two ways. If you have a company or school email, we send a verification email and you are approved quickly. You can also upload a photo of your face and an ID, which takes longer. You must re-verify your information yearly.",
+      "Verification can be completed two ways in the iOS app. If you have a company or school email, we send a verification email and you are approved quickly. You can also upload a photo of your face and an ID, which takes longer. You must re-verify your information yearly.",
+  },
+  {
+    id: "why-cant-i-verify-on-web",
+    question: "Why can't I verify on web yet?",
+    answer:
+      "Verification involves higher-risk identity and community checks. To protect account security and reduce abuse, verification currently runs in the iOS app only. We're actively working on secure web verification support.",
+  },
+  {
+    id: "why-cant-i-post-anonymously-on-web",
+    question: "Why can't I post anonymously on web?",
+    answer:
+      "Anonymous profiles are cryptographically separated from your public account. To preserve that security model and limit abuse while web protections mature, anonymous posting is currently iOS-only. We're working on bringing this safely to web.",
   },
   {
     id: "is-looped-anonymous",
@@ -51,16 +63,17 @@ const faqs: FAQItemProps[] = [
     id: "is-looped-available-on-android",
     question: "Is Looped available on Android?",
     answer:
-      "Currently, Looped is only available on iOS. We're focused on delivering the best experience for iPhone users first.",
+      "Not yet. Looped currently supports iOS and a limited web experience. Android is not available yet.",
   },
   {
     id: "does-looped-have-a-web-app",
     question: "Does Looped have a web app?",
     answer: (
       <>
-        No. We're working on it and it's on our priority list. For now, you can sign in on the web to{" "}
+        Yes. Looped has a limited web app for signed-in members. Today web focuses on feed access, search, messages,
+        settings, and account actions. Verification and anonymous posting still require the iOS app. You can also{" "}
         <Link className="font-semibold text-brand hover:text-brand/90" to="/delete-account">
-          manage account deletion
+          manage account deletion on web
         </Link>
         .
       </>
@@ -100,7 +113,7 @@ const faqs: FAQItemProps[] = [
     id: "can-my-employer-see-what-i-post",
     question: "Can my employer see what I post?",
     answer:
-      "Your anonymous profile is not linked to your public-facing profile, and we use cryptographic protocols to prevent linking. We may disclose information if legally required to do so.",
+      "Your anonymous profile is not linked to your public-facing profile, and we use cryptographic protocols to prevent linking.",
   },
   {
     id: "how-do-i-delete-my-account",

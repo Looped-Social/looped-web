@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router';
 
-import { Logo, ThemeToggle } from '@looped/ui';
+import { Logo } from '@looped/ui';
 
 import { MenuDots, ProfileIcon } from '@/app/components/AppIcons/AppIcons';
 import { useCurrentUserStore } from '@/stores/currentUserStore';
@@ -46,6 +46,12 @@ const navItems: NavItem[] = [
     activeIconSrc: '/ios-icons/nav-notifications-active.svg',
   },
   {
+    id: 'create',
+    label: 'Create',
+    href: '/app/create',
+    iconSrc: '/ios-icons/create-action.svg',
+  },
+  {
     id: 'profile',
     label: 'Profile',
     href: '/app/profile',
@@ -67,23 +73,42 @@ type AppLayoutProps = {
   rightRail?: ReactNode;
 };
 
-function SearchRailIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-      aria-hidden="true"
-    >
-      <circle cx="11" cy="11" r="7" />
-      <path d="M20 20l-3.2-3.2" />
-    </svg>
-  );
-}
+type RailFooterSection = {
+  id: string;
+  label: string;
+  links: Array<{ label: string; to: string }>;
+};
+
+const railFooterSections: RailFooterSection[] = [
+  {
+    id: 'company',
+    label: 'Company',
+    links: [
+      { label: 'About', to: '/about' },
+      { label: 'Contact', to: '/contact' },
+    ],
+  },
+  {
+    id: 'program',
+    label: 'Program',
+    links: [
+      { label: 'FAQ', to: '/faq' },
+      { label: 'Community Request', to: '/community-request' },
+    ],
+  },
+  {
+    id: 'terms',
+    label: 'Terms & Policies',
+    links: [
+      { label: 'Privacy', to: '/privacy' },
+      { label: 'Privacy Policy', to: '/privacy-policy' },
+      { label: 'Cookie Policy', to: '/cookies' },
+      { label: 'User Agreement', to: '/terms' },
+      { label: 'Content Policy', to: '/community-rules' },
+      { label: 'Attributions', to: '/attributions' },
+    ],
+  },
+];
 
 function BackIcon({ className }: { className?: string }) {
   return (
@@ -125,32 +150,24 @@ function ProfileNavAvatar({
 export function AppLayout({ activeNavId = 'home', children, rightRail }: AppLayoutProps) {
   const { user } = useCurrentUserStore({ autoLoad: true });
   const profileImageUrl = user?.profileImageUrl;
+  const [expandedRailSectionId, setExpandedRailSectionId] = useState<string | null>(null);
 
   return (
     <div className="min-h-screen bg-shell-bg">
       <div className="mx-auto w-full">
         <div className="grid w-full gap-x-6 lg:grid-cols-[minmax(220px,1fr)_560px_minmax(220px,1fr)] xl:grid-cols-[minmax(260px,1fr)_560px_minmax(320px,1fr)]">
-          <aside className="hidden lg:block lg:w-[220px] lg:justify-self-end xl:w-[260px]">
+          <aside className="hidden lg:block lg:w-[240px] lg:justify-self-start lg:pl-3 xl:w-[280px]">
             <div className="sticky top-3 py-3">
               <div className="flex flex-col gap-5">
-                <div className="flex items-center justify-between">
-                  <Logo imageClassName="h-12 w-auto" to="/app" />
-                  <ThemeToggle className="h-11 w-11 text-shell-text-muted transition hover:text-shell-text" />
+                <div className="flex items-center gap-2">
+                  <Logo imageClassName="h-16 w-auto" to="/app" />
                 </div>
-
-                <Link
-                  to="/app/search"
-                  className="inline-flex h-10 items-center gap-2 rounded-full bg-bg-muted px-4 text-sm font-medium text-shell-text-muted transition hover:text-shell-text"
-                >
-                  <SearchRailIcon className="h-4 w-4" />
-                  <span>Search</span>
-                </Link>
 
                 <nav className="space-y-1.5">
                   {navItems.map((item) => {
                     const isActive = item.id === activeNavId;
-                    const className = `flex w-full items-center gap-4 rounded-xl px-3 py-2.5 text-base font-semibold transition ${
-                      isActive ? 'text-brand' : 'text-shell-text hover:text-shell-text'
+                    const className = `flex w-full items-center gap-4 rounded-xl px-3 py-3 text-[1.13rem] transition ${
+                      isActive ? 'font-semibold text-brand' : 'font-medium text-shell-text hover:text-shell-text'
                     }`;
 
                     const iconSrc = isActive ? (item.activeIconSrc ?? item.iconSrc) : item.iconSrc;
@@ -158,12 +175,17 @@ export function AppLayout({ activeNavId = 'home', children, rightRail }: AppLayo
                       item.id === 'profile' && profileImageUrl ? (
                         <ProfileNavAvatar
                           src={profileImageUrl}
-                          className="h-6 w-6 shrink-0 rounded-full object-cover"
+                          className="h-7 w-7 shrink-0 rounded-full object-cover"
+                        />
+                      ) : item.id === 'create' ? (
+                        <span
+                          className="h-7 w-7 shrink-0 bg-current [mask-image:url('/ios-icons/create-action.svg')] [mask-repeat:no-repeat] [mask-position:center] [mask-size:contain] [-webkit-mask-image:url('/ios-icons/create-action.svg')] [-webkit-mask-repeat:no-repeat] [-webkit-mask-position:center] [-webkit-mask-size:contain]"
+                          aria-hidden="true"
                         />
                       ) : iconSrc ? (
-                        <img src={iconSrc} alt="" className="h-6 w-6 shrink-0" aria-hidden="true" />
+                        <img src={iconSrc} alt="" className="h-7 w-7 shrink-0" aria-hidden="true" />
                       ) : (
-                        <MenuDots className="h-6 w-6 shrink-0 text-shell-text-muted" />
+                        <MenuDots className="h-7 w-7 shrink-0 text-shell-text-muted" />
                       );
 
                     if (item.href) {
@@ -188,6 +210,49 @@ export function AppLayout({ activeNavId = 'home', children, rightRail }: AppLayo
                     );
                   })}
                 </nav>
+
+                <div className="mt-2 border-t border-border/70 pt-4">
+                  <div className="space-y-2.5">
+                    {railFooterSections.map((section) => {
+                      const expanded = expandedRailSectionId === section.id;
+                      return (
+                        <div key={section.id}>
+                          <button
+                            type="button"
+                            className={`w-full text-left text-[0.95rem] font-semibold transition ${
+                              expanded ? 'text-strong' : 'text-text-light hover:text-text-secondary'
+                            }`}
+                            aria-expanded={expanded}
+                            aria-controls={`rail-footer-${section.id}`}
+                            onClick={() =>
+                              setExpandedRailSectionId((previous) => (previous === section.id ? null : section.id))
+                            }
+                          >
+                            {section.label}
+                          </button>
+
+                          {expanded ? (
+                            <div
+                              id={`rail-footer-${section.id}`}
+                              className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-[0.88rem] text-text-light"
+                            >
+                              {section.links.map((link) => (
+                                <Link
+                                  key={`${section.id}-${link.to}`}
+                                  to={link.to}
+                                  className="transition hover:text-text-secondary"
+                                >
+                                  {link.label}
+                                </Link>
+                              ))}
+                            </div>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <p className="mt-3 text-[0.82rem] text-text-light">© 2026 Looped Social</p>
+                </div>
               </div>
             </div>
           </aside>
@@ -254,7 +319,6 @@ export function AppMobileHeader({
         <span className="text-lg font-semibold">{title}</span>
       )}
       <div className="flex items-center gap-2">
-        <ThemeToggle className="flex h-10 w-10 items-center justify-center text-text-secondary transition hover:text-strong" />
         {showAction ? (
           <Link
             className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-brand text-white"
@@ -267,7 +331,9 @@ export function AppMobileHeader({
               <ProfileIcon className="h-4 w-4" />
             )}
           </Link>
-        ) : null}
+        ) : (
+          <div className="h-9 w-9" aria-hidden="true" />
+        )}
       </div>
     </div>
   );

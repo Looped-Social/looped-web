@@ -7,6 +7,7 @@ import { PostCard, type PostData } from "@/app/components/PostCard/PostCard";
 import { getCommunityPermissions, type CommunityPermissions } from "@/lib/communityPermissionsApi";
 import { extractMediaAssetIds } from "@/lib/postMediaIds";
 import { normalizePostPoll } from "@/lib/postPoll";
+import { extractViewerCapabilitiesFromPost } from "@/lib/postViewerCapabilities";
 import {
   CommunityDetailApiError,
   fetchCommunityDetail,
@@ -286,6 +287,7 @@ function normalizePostItemToPostData(item: unknown): PostData | null {
     viewerLiked: pickBoolean(node, ["user_liked", "userLiked"]) ?? false,
     viewerSaved: pickBoolean(node, ["is_saved", "isSaved"]) ?? false,
     viewerHasReposted: pickBoolean(node, ["viewer_has_reposted", "viewerHasReposted"]) ?? false,
+    viewerCapabilities: extractViewerCapabilitiesFromPost(node),
     poll: normalizePostPoll(node),
     mediaAssetIds: extractMediaAssetIds(node),
     stats: { likes, comments, reposts, shares, saves },

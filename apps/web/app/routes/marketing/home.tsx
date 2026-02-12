@@ -1,3 +1,7 @@
+import { useEffect } from "react";
+import { useNavigate } from "react-router";
+
+import { useUserSession } from "@/hooks/useUserSession";
 import type { Route } from "./+types/home";
 import { HomePage } from "@/marketing/pages/HomePage/HomePage";
 
@@ -12,5 +16,18 @@ export function meta({}: Route.MetaArgs) {
 }
 
 export default function Home() {
+  const navigate = useNavigate();
+  const { status } = useUserSession();
+
+  useEffect(() => {
+    if (status === "authenticated") {
+      navigate("/app", { replace: true });
+    }
+  }, [navigate, status]);
+
+  if (status === "authenticated") {
+    return null;
+  }
+
   return <HomePage />;
 }

@@ -153,7 +153,7 @@ export function Footer() {
 
         <div className="mt-10 flex flex-col gap-3 border-t border-border pt-6 text-sm text-text-light sm:flex-row sm:items-center sm:justify-between sm:gap-4 md:gap-6">
           <p className="text-left sm:text-left">© {currentYear} Looped Social All rights reserved.</p>
-          <p className="text-left sm:text-right">iOS app only</p>
+          <p className="text-left sm:text-right">iOS + limited web (no Android yet)</p>
         </div>
       </div>
     </footer>

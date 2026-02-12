@@ -10,6 +10,7 @@ import { fetchPostDetail } from "@/lib/commentsApi";
 import { fetchFollowedCommunities } from "@/lib/feedApi";
 import { extractMediaAssetIds } from "@/lib/postMediaIds";
 import { normalizePostPoll } from "@/lib/postPoll";
+import { extractViewerCapabilitiesFromPost } from "@/lib/postViewerCapabilities";
 import { fetchHashtagPosts } from "@/lib/postReadApi";
 import {
   SearchApiError,
@@ -838,6 +839,7 @@ function normalizeFeedPost(
     viewerLiked,
     viewerSaved,
     viewerHasReposted,
+    viewerCapabilities: extractViewerCapabilitiesFromPost(post),
     poll: normalizePostPoll(post),
     mediaAssetIds: extractMediaAssetIds(post),
     stats: {

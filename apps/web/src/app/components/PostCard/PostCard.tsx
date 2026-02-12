@@ -9,6 +9,10 @@ import { getCommunityPermissions } from "@/lib/communityPermissionsApi";
 import { type ResolvedMediaAsset, resolveMediaAssets } from "@/lib/mediaApi";
 import { emitPostSavedChanged } from "@/lib/postEvents";
 import { type PostPoll, normalizePoll } from "@/lib/postPoll";
+import {
+  mapLockReasonToErrorCode,
+  type ViewerCapabilities,
+} from "@/lib/postViewerCapabilities";
 import { PostActionsApiError, setPostLike, setPostReposted, setPostSaved, sharePost, votePoll } from "@/lib/postActionsApi";
 
 const DEFAULT_PROFILE_IMAGE_SRC = "/ios-icons/pfp2.svg";
@@ -34,6 +38,7 @@ export type PostData = {
   viewerLiked?: boolean;
   viewerSaved?: boolean;
   viewerHasReposted?: boolean;
+  viewerCapabilities?: ViewerCapabilities | null;
   poll?: PostPoll;
   mediaAssetIds?: string[];
   stats: {
@@ -154,11 +159,9 @@ function RepostIcon({ className }: { className?: string }) {
 
 function ShareIcon({ className }: { className?: string }) {
   return (
-    <img
-      src="/ios-icons/action-send.svg"
-      alt=""
-      className={`shrink-0 object-contain ${className ?? ""}`}
-      loading="lazy"
+    <span
+      className={`inline-block bg-current [mask-image:url('/ios-icons/action-send.svg')] [mask-repeat:no-repeat] [mask-position:center] [mask-size:contain] [-webkit-mask-image:url('/ios-icons/action-send.svg')] [-webkit-mask-repeat:no-repeat] [-webkit-mask-position:center] [-webkit-mask-size:contain] ${className ?? ""}`}
+      aria-hidden="true"
     />
   );
 }
@@ -195,20 +198,49 @@ function LockIcon({ className }: { className?: string }) {
   );
 }
 
-function actionLockTitle(permissions: CommunityPermissions | null): string {
-  if (!permissions) return "Action unavailable";
-  if (permissions.requires_join && !permissions.can_post) return "Join required";
-  if (permissions.requires_verification && !permissions.can_post) return "Verification required";
+function lockCodeFromPermissions(permissions: CommunityPermissions | null): string | undefined {
+  if (!permissions) return undefined;
+  if (permissions.requires_join && !permissions.can_post) return "specialization_not_joined";
+  if (permissions.requires_verification && !permissions.can_post) return "community_not_verified";
+  return undefined;
+}
+
+function lockCodeFromCapabilities(capabilities: ViewerCapabilities | null): string | undefined {
+  if (!capabilities) return undefined;
+  if (capabilities.canInteract) return undefined;
+
+  const mapped = mapLockReasonToErrorCode(capabilities.lockReason);
+  if (mapped) return mapped;
+  if (capabilities.requiresJoin) return "specialization_not_joined";
+  if (capabilities.requiresVerification) return "community_not_verified";
+  return "unknown_restriction";
+}
+
+function actionLockTitle(lockCode?: string): string {
+  if (lockCode === "specialization_not_joined") return "Join required";
+  if (
+    lockCode === "community_not_verified" ||
+    lockCode === "user_not_verified" ||
+    lockCode === "verification_expired"
+  ) {
+    return "Verification required";
+  }
+  if (lockCode === "community_banned") return "Community unavailable";
   return "Action unavailable";
 }
 
-function actionLockMessage(permissions: CommunityPermissions | null, verb: string): string {
-  if (!permissions) return `You can’t ${verb} right now.`;
-  if (permissions.requires_join && !permissions.can_post) {
+function actionLockMessage(lockCode: string | undefined, verb: string): string {
+  if (lockCode === "specialization_not_joined") {
     return `Join this major or field to ${verb}.`;
   }
-  if (permissions.requires_verification && !permissions.can_post) {
-    return `You must be verified in this community to ${verb}. Verify in the iOS app (Settings → Community Verifications).`;
+  if (lockCode === "verification_expired") {
+    return `Your verification expired. Verify again to ${verb}.`;
+  }
+  if (lockCode === "community_not_verified" || lockCode === "user_not_verified") {
+    return `You must be verified in this community to ${verb}.`;
+  }
+  if (lockCode === "community_banned") {
+    return "This community is currently unavailable.";
   }
   return `You can’t ${verb} right now.`;
 }
@@ -289,7 +321,10 @@ export function PostCard({ post }: PostCardProps) {
   }, [post.id]);
 
   useEffect(() => {
-    if (!post.communityId) return;
+    if (post.viewerCapabilities || !post.communityId) {
+      setPermissions(null);
+      return;
+    }
     let active = true;
     getCommunityPermissions(post.communityId)
       .then((response) => {
@@ -303,7 +338,7 @@ export function PostCard({ post }: PostCardProps) {
     return () => {
       active = false;
     };
-  }, [post.communityId]);
+  }, [post.communityId, post.viewerCapabilities]);
 
   useEffect(() => {
     let active = true;
@@ -336,14 +371,51 @@ export function PostCard({ post }: PostCardProps) {
     };
   }, [mediaAssetIdsKey, post.id, post.mediaAssetIds]);
 
+  const fallbackCapabilities = useMemo(() => {
+    if (!permissions) return null;
+    const canPost = permissions.can_post || Boolean(permissions.canPost);
+    const requiresVerification = Boolean(permissions.requires_verification);
+    const requiresJoin = Boolean(permissions.requires_join || permissions.requiresJoin);
+    return {
+      canInteract: canPost,
+      canComment: canPost,
+      canReply: canPost,
+      canLike: canPost,
+      canVote: canPost && Boolean(pollState),
+      canRepost: canPost,
+      canSave: true,
+      requiresVerification,
+      requiresJoin,
+      lockReason: !canPost
+        ? requiresJoin
+          ? "SPECIALIZATION_NOT_JOINED"
+          : requiresVerification
+            ? "COMMUNITY_NOT_VERIFIED"
+            : "UNKNOWN_RESTRICTION"
+        : undefined,
+    } satisfies ViewerCapabilities;
+  }, [permissions, pollState]);
+
+  const effectiveCapabilities = post.viewerCapabilities ?? fallbackCapabilities;
+
+  const lockCode = useMemo(
+    () => lockCodeFromCapabilities(effectiveCapabilities) ?? lockCodeFromPermissions(permissions),
+    [effectiveCapabilities, permissions]
+  );
+
   const isReactionLocked = useMemo(() => {
-    if (!permissions) return false;
-    const requiresGate = permissions.requires_verification || permissions.requires_join || Boolean(permissions.requiresJoin);
-    return requiresGate && !permissions.can_post;
-  }, [permissions]);
+    if (!effectiveCapabilities) return false;
+    return !effectiveCapabilities.canInteract;
+  }, [effectiveCapabilities]);
+
+  const canVote = effectiveCapabilities ? effectiveCapabilities.canVote : !isReactionLocked;
+  const canLike = effectiveCapabilities ? effectiveCapabilities.canLike : !isReactionLocked;
+  const canRepost = effectiveCapabilities ? effectiveCapabilities.canRepost : !isReactionLocked;
+  const canSave = effectiveCapabilities ? effectiveCapabilities.canSave : !isReactionLocked;
+  const canShare = effectiveCapabilities ? effectiveCapabilities.canInteract : !isReactionLocked;
 
   const pollIsOpen = pollState ? isPollOpen(pollState) : false;
-  const isPollVotingGated = Boolean(pollState) && isReactionLocked;
+  const isPollVotingGated = Boolean(pollState) && (!canVote || isReactionLocked);
   const shouldShowPollResults = Boolean(pollState?.viewer.hasVoted || !pollIsOpen || isPollVotingGated);
 
   const handlePollVote = useCallback(async (optionId: string) => {
@@ -352,8 +424,8 @@ export function PostCard({ post }: PostCardProps) {
 
     if (isPollVotingGated) {
       showToast({
-        title: actionLockTitle(permissions),
-        message: actionLockMessage(permissions, "vote in this poll"),
+        title: actionLockTitle(lockCode),
+        message: actionLockMessage(lockCode, "vote in this poll"),
         tone: "error",
       });
       return;
@@ -407,15 +479,15 @@ export function PostCard({ post }: PostCardProps) {
     } finally {
       setIsPollVoting(false);
     }
-  }, [isPollVoting, isPollVotingGated, permissions, pollIsOpen, pollState, showToast]);
+  }, [isPollVoting, isPollVotingGated, lockCode, pollIsOpen, pollState, showToast]);
 
   const handleLikeToggle = async () => {
     if (isLikeLoading) return;
 
-    if (isReactionLocked) {
+    if (!canLike) {
       showToast({
-        title: actionLockTitle(permissions),
-        message: actionLockMessage(permissions, "like"),
+        title: actionLockTitle(lockCode),
+        message: actionLockMessage(lockCode, "like"),
         tone: "error",
       });
       return;
@@ -459,10 +531,10 @@ export function PostCard({ post }: PostCardProps) {
   const handleRepostToggle = async () => {
     if (isRepostLoading) return;
 
-    if (isReactionLocked) {
+    if (!canRepost) {
       showToast({
-        title: actionLockTitle(permissions),
-        message: actionLockMessage(permissions, "repost"),
+        title: actionLockTitle(lockCode),
+        message: actionLockMessage(lockCode, "repost"),
         tone: "error",
       });
       return;
@@ -503,10 +575,10 @@ export function PostCard({ post }: PostCardProps) {
   const handleSaveToggle = async () => {
     if (isSaveLoading) return;
 
-    if (isReactionLocked) {
+    if (!canSave) {
       showToast({
-        title: actionLockTitle(permissions),
-        message: actionLockMessage(permissions, "save"),
+        title: actionLockTitle(lockCode),
+        message: actionLockMessage(lockCode, "save"),
         tone: "error",
       });
       return;
@@ -548,10 +620,10 @@ export function PostCard({ post }: PostCardProps) {
   const handleShare = async () => {
     if (isShareLoading) return;
 
-    if (isReactionLocked) {
+    if (!canShare) {
       showToast({
-        title: actionLockTitle(permissions),
-        message: actionLockMessage(permissions, "share"),
+        title: actionLockTitle(lockCode),
+        message: actionLockMessage(lockCode, "share"),
         tone: "error",
       });
       return;

@@ -1,5 +1,6 @@
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router";
+import { type ThemePreference, useTheme } from "@looped/ui";
 
 import { AppLayout, AppMobileHeader } from "@/app/components/AppLayout/AppLayout";
 import { useToast } from "@/app/components/AppToast/AppToast";
@@ -24,6 +25,12 @@ const MESSAGE_PERMISSION_OPTIONS: Array<{ value: MessagePermission; label: strin
   { value: "company", label: "Company only" },
   { value: "following", label: "Following only" },
   { value: "no_one", label: "No one" },
+];
+
+const THEME_PREFERENCE_OPTIONS: Array<{ value: ThemePreference; label: string }> = [
+  { value: "system", label: "System" },
+  { value: "light", label: "Light" },
+  { value: "dark", label: "Dark" },
 ];
 
 type PendingActionKind = "deactivate" | "delete" | "logout";
@@ -207,9 +214,44 @@ function ActionRow({
   );
 }
 
+function ThemeModeRow({
+  value,
+  disabled,
+  onChange,
+}: {
+  value: ThemePreference;
+  disabled?: boolean;
+  onChange: (next: ThemePreference) => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 px-4 py-3">
+      <p className="min-w-0 text-sm font-semibold text-strong">Theme</p>
+      <div className="inline-flex rounded-lg bg-bg-muted p-1">
+        {THEME_PREFERENCE_OPTIONS.map((option) => {
+          const active = option.value === value;
+          return (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => onChange(option.value)}
+              disabled={disabled}
+              className={`rounded-md px-2.5 py-1 text-xs font-semibold transition ${
+                active ? "bg-secondary text-white" : "text-text-secondary hover:text-strong"
+              } disabled:opacity-60`}
+            >
+              {option.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export function AppSettingsPage() {
   const navigate = useNavigate();
   const { showToast } = useToast();
+  const { preference: themePreference, setThemePreference } = useTheme();
 
   const currentUserState = useCurrentUserStore({ autoLoad: true });
   const [accountUsername, setAccountUsername] = useState("myaccount");
@@ -222,6 +264,7 @@ export function AppSettingsPage() {
   const [messagePermissionState, setMessagePermissionState] = useState<AsyncState>("idle");
   const [hideAnonymousPostsState, setHideAnonymousPostsState] = useState<AsyncState>("idle");
   const [communityNamePreferenceState, setCommunityNamePreferenceState] = useState<AsyncState>("idle");
+  const [themePreferenceState, setThemePreferenceState] = useState<AsyncState>("idle");
   const [actionState, setActionState] = useState<AsyncState>("idle");
 
   const [rowError, setRowError] = useState<string | null>(null);
@@ -410,6 +453,33 @@ export function AppSettingsPage() {
     setTimeout(() => setCommunityNamePreferenceState("idle"), 0);
   }, [communityNamePreferenceState, preferCommunityShortNames, showToast]);
 
+  const handleThemePreferenceChange = useCallback(
+    (next: ThemePreference) => {
+      if (themePreferenceState === "saving" || next === themePreference) return;
+      setThemePreferenceState("saving");
+      try {
+        setThemePreference(next);
+        setThemePreferenceState("success");
+        showToast({
+          kind: "success",
+          title: "Theme updated",
+          message: `Theme set to ${next}.`,
+        });
+      } catch (error) {
+        setThemePreferenceState("error");
+        const message = parseApiErrorMessage(error);
+        showToast({
+          kind: "error",
+          title: "Couldn't update theme",
+          message,
+        });
+      } finally {
+        setTimeout(() => setThemePreferenceState("idle"), 0);
+      }
+    },
+    [setThemePreference, showToast, themePreference, themePreferenceState]
+  );
+
   const handleSignOut = useCallback(async (): Promise<boolean> => {
     if (actionState === "saving") return false;
     setActionState("saving");
@@ -578,6 +648,17 @@ export function AppSettingsPage() {
                 <LinkRow label="Privacy & Data" to="/privacy-policy" />
                 <LinkRow label="Connected Accounts" to="/app/settings/connected" />
               </div>
+            </Section>
+
+            <Section title="Appearance">
+              <div className="divide-y divide-border/60">
+                <ThemeModeRow
+                  value={themePreference}
+                  disabled={themePreferenceState === "saving"}
+                  onChange={handleThemePreferenceChange}
+                />
+              </div>
+              <p className="px-4 py-2 text-xs text-text-light">Default is System unless you choose Light or Dark.</p>
             </Section>
 
             <Section title="Safety">

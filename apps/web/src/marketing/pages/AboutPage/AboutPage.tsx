@@ -59,6 +59,10 @@ export function AboutPage() {
             you join. Speak freely, connect authentically, and build real community with people who share your
             context.
           </p>
+          <p className="text-base leading-7 text-text-secondary">
+            Looped is iOS-first with a limited web experience for signed-in members. Android support is not available
+            yet.
+          </p>
         </header>
 
         <section className="space-y-4">
@@ -133,7 +137,8 @@ export function AboutPage() {
         <section className="rounded-3xl bg-bg-muted px-6 py-8 text-center ring-1 ring-border md:px-10">
           <h2 className="text-2xl font-semibold text-strong md:text-3xl">Ready to join your community?</h2>
           <p className="mt-3 text-base leading-7 text-text-secondary">
-            Download Looped and start connecting with your verified company or school today.
+            Download the iOS app to unlock full onboarding, verification, and anonymous features. Signed-in members
+            can also use our limited web experience.
           </p>
           <div className="mt-5 inline-flex items-center justify-center">
             <AppStoreButton size={6} />

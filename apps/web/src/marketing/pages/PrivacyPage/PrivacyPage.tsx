@@ -55,14 +55,17 @@ export function PrivacyPage() {
             Privacy that protects your identity
           </h1>
           <p className="text-lg leading-8 text-text-secondary md:text-xl">
-            Looped is a company- and school-verified social media app. You can view any post, but you must verify to
-            join and post in a company or school community. Joining a company unlocks Fields, and joining a school
-            unlocks Majors.
+            Looped is a company- and school-verified social platform with a full iOS app and a limited web experience.
+            You can view any post, but you must verify to join and post in a company or school community. Joining a
+            company unlocks Fields, and joining a school unlocks Majors.
           </p>
         </header>
 
         <section className="space-y-6">
           <h2 className="text-2xl font-semibold text-strong">How verification works</h2>
+          <p className="text-base leading-7 text-text-secondary">
+            Verification currently happens in the iOS app. We are working on secure web verification support.
+          </p>
           <div className="grid gap-6 md:grid-cols-3">
             {verificationSteps.map((step, index) => (
               <div key={step.title} className="rounded-2xl border border-border bg-bg p-6 shadow-sm">

@@ -18,6 +18,7 @@ import { isPostSavedChangedEvent, POST_SAVED_CHANGED_EVENT } from "@/lib/postEve
 import { extractMediaAssetIds } from "@/lib/postMediaIds";
 import { type PostReadApiError, fetchPostById } from "@/lib/postReadApi";
 import { normalizePostPoll } from "@/lib/postPoll";
+import { extractViewerCapabilitiesFromPost } from "@/lib/postViewerCapabilities";
 import { useCurrentUserStore } from "@/stores/currentUserStore";
 
 type ContentTabId = "posts" | "replies" | "liked" | "saved";
@@ -244,6 +245,7 @@ function normalizePostItem(item: unknown, preferCommunityShortNames: boolean): P
     viewerLiked: pickBoolean(post, ["user_liked", "userLiked"]) ?? false,
     viewerSaved: pickBoolean(post, ["is_saved", "isSaved"]) ?? false,
     viewerHasReposted: pickBoolean(post, ["viewer_has_reposted", "viewerHasReposted"]) ?? false,
+    viewerCapabilities: extractViewerCapabilitiesFromPost(post),
     poll: normalizePostPoll(post),
     mediaAssetIds: extractMediaAssetIds(post),
     stats: {

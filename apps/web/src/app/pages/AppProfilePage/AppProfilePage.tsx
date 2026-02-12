@@ -9,6 +9,7 @@ import { PostCard, type PostData } from "@/app/components/PostCard/PostCard";
 import { fetchMyReposts, fetchPostsReposted, fetchPostsSaved } from "@/lib/postReadApi";
 import { extractMediaAssetIds } from "@/lib/postMediaIds";
 import { normalizePostPoll } from "@/lib/postPoll";
+import { extractViewerCapabilitiesFromPost } from "@/lib/postViewerCapabilities";
 import { fetchDefaultProfileImageUrl } from "@/lib/profileEditApi";
 import {
   UserApiError,
@@ -253,6 +254,7 @@ function normalizePostItemToPostData(item: unknown): PostData | null {
     viewerLiked: pickBoolean(item, ["user_liked", "userLiked"]) ?? false,
     viewerSaved: pickBoolean(item, ["is_saved", "isSaved"]) ?? false,
     viewerHasReposted: pickBoolean(item, ["viewer_has_reposted", "viewerHasReposted"]) ?? false,
+    viewerCapabilities: extractViewerCapabilitiesFromPost(item),
     poll: normalizePostPoll(item),
     mediaAssetIds: extractMediaAssetIds(item),
     stats: { likes, comments, reposts, shares, saves },

@@ -1,26 +1,37 @@
 import { useEffect, useState } from "react";
 
 export type Theme = "light" | "dark";
+export type ThemePreference = "system" | Theme;
 
 const STORAGE_KEY = "looped-theme";
 const THEME_EVENT = "looped-theme-change";
 
-type ThemeChangeEvent = CustomEvent<Theme>;
+type ThemeChangeEvent = CustomEvent<ThemePreference>;
 
 function getPreferredTheme(): Theme {
   if (typeof window === "undefined") return "light";
   return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
-export function useTheme() {
-  const [theme, setTheme] = useState<Theme>(() => {
-    if (typeof window === "undefined") return "light";
-    const stored = localStorage.getItem(STORAGE_KEY) as Theme | null;
-    if (stored === "light" || stored === "dark") return stored;
-    return getPreferredTheme();
-  });
+function isTheme(value: unknown): value is Theme {
+  return value === "light" || value === "dark";
+}
 
-  // Apply and persist
+function isThemePreference(value: unknown): value is ThemePreference {
+  return value === "system" || isTheme(value);
+}
+
+export function useTheme() {
+  const [preference, setPreference] = useState<ThemePreference>(() => {
+    if (typeof window === "undefined") return "system";
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (isThemePreference(stored)) return stored;
+    return "system";
+  });
+  const [systemTheme, setSystemTheme] = useState<Theme>(() => getPreferredTheme());
+  const theme: Theme = preference === "system" ? systemTheme : preference;
+
+  // Apply resolved theme to root element.
   useEffect(() => {
     if (typeof document === "undefined") return;
     const root = document.documentElement;
@@ -30,19 +41,25 @@ export function useTheme() {
     } else {
       root.removeAttribute("data-theme");
     }
-
-    localStorage.setItem(STORAGE_KEY, theme);
-    window.dispatchEvent(new CustomEvent<Theme>(THEME_EVENT, { detail: theme }));
   }, [theme]);
 
-  // Follow system changes only when user hasn't chosen manually
+  // Persist preference and broadcast changes.
   useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (preference === "system") {
+      localStorage.removeItem(STORAGE_KEY);
+    } else {
+      localStorage.setItem(STORAGE_KEY, preference);
+    }
+    window.dispatchEvent(new CustomEvent<ThemePreference>(THEME_EVENT, { detail: preference }));
+  }, [preference]);
+
+  // Keep system theme in sync with OS preference.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
     const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
     const handler = (event: MediaQueryListEvent) => {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (!stored) {
-        setTheme(event.matches ? "dark" : "light");
-      }
+      setSystemTheme(event.matches ? "dark" : "light");
     };
     mediaQuery.addEventListener("change", handler);
     return () => mediaQuery.removeEventListener("change", handler);
@@ -52,16 +69,26 @@ export function useTheme() {
     if (typeof window === "undefined") return;
     const handler = (event: Event) => {
       const customEvent = event as ThemeChangeEvent;
-      const nextTheme = customEvent.detail;
-      if (nextTheme === theme) return;
-      setTheme(nextTheme);
+      const nextPreference = customEvent.detail;
+      if (!isThemePreference(nextPreference)) return;
+      if (nextPreference === preference) return;
+      setPreference(nextPreference);
     };
 
     window.addEventListener(THEME_EVENT, handler);
     return () => window.removeEventListener(THEME_EVENT, handler);
-  }, [theme]);
+  }, [preference]);
 
-  const toggleTheme = () => setTheme((prev) => (prev === "light" ? "dark" : "light"));
+  const toggleTheme = () => {
+    setPreference((previous) => {
+      const previousResolved = previous === "system" ? systemTheme : previous;
+      return previousResolved === "light" ? "dark" : "light";
+    });
+  };
 
-  return { theme, toggleTheme };
+  const setThemePreference = (next: ThemePreference) => {
+    setPreference(next);
+  };
+
+  return { theme, preference, setThemePreference, toggleTheme };
 }

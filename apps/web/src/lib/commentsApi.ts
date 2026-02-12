@@ -130,9 +130,57 @@ export async function createPostComment({
       content,
       parentId,
       mediaAssetId,
-      asAnon: false,
     }),
   });
+}
+
+export type ViewerInteractionState = {
+  isAnonymous: boolean;
+  isVerified: boolean | null;
+};
+
+export async function fetchViewerInteractionState(): Promise<ViewerInteractionState> {
+  const response = await authFetch<unknown>("/v1/me");
+  if (!isRecord(response)) {
+    return {
+      isAnonymous: false,
+      isVerified: null,
+    };
+  }
+
+  const user = isRecord(response.user) ? response.user : null;
+  const scope = user ?? response;
+
+  const isAnonymous =
+    pickBoolean(scope, ["is_anonymous", "isAnonymous"]) ??
+    pickBoolean(response, ["is_anonymous", "isAnonymous"]) ??
+    false;
+
+  const isVerified =
+    pickBoolean(scope, [
+      "verified",
+      "is_verified",
+      "isVerified",
+      "user_verified",
+      "userVerified",
+      "verification_complete",
+      "verificationComplete",
+    ]) ??
+    pickBoolean(response, [
+      "verified",
+      "is_verified",
+      "isVerified",
+      "user_verified",
+      "userVerified",
+      "verification_complete",
+      "verificationComplete",
+    ]) ??
+    null;
+
+  return {
+    isAnonymous,
+    isVerified,
+  };
 }
 
 export async function setCommentLiked(
