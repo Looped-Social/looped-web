@@ -1738,7 +1738,7 @@ export function AppMessageThreadPage({ threadType, threadId }: AppMessageThreadP
           className="mb-3 hidden items-center gap-1 text-sm font-semibold text-text-secondary transition hover:text-strong lg:inline-flex"
         >
           <BackIcon className="h-4 w-4" />
-          <span>Back to messages</span>
+          <span>Back</span>
         </button>
         <button
           type="button"

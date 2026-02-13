@@ -19,12 +19,11 @@ function BackIcon({ className }: { className?: string }) {
 
 export function SettingsSubpageHeader({
   backHref = "/app/settings",
-  backLabel = "Back to Settings",
 }: {
   backHref?: string;
-  backLabel?: string;
 }) {
   const navigate = useNavigate();
+  const backLabel = "Back";
 
   const handleBack = () => {
     if (typeof window !== "undefined" && window.history.length > 1) {

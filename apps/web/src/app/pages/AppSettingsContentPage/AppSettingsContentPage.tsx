@@ -670,7 +670,7 @@ export function AppSettingsContentPage() {
   return (
     <AppLayout activeNavId="settings">
       <AppMobileHeader title="Content" showAction={false} showBack={false} />
-      <SettingsSubpageHeader backHref="/app/settings" backLabel="Back to Settings" />
+      <SettingsSubpageHeader backHref="/app/settings" />
 
       <div className="mx-auto w-full max-w-[560px] space-y-4 bg-bg">
         <header className="px-4 pt-4">

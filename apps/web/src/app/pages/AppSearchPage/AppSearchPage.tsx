@@ -942,8 +942,8 @@ function SearchFilterPill({
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
-        active ? "bg-brand text-white" : "border border-border/70 bg-bg text-text-secondary hover:text-strong"
+      className={`inline-flex h-9 shrink-0 items-center rounded-full px-4 text-sm font-semibold transition ${
+        active ? "bg-brand text-white" : "bg-bg-muted text-text-secondary hover:text-strong"
       }`}
     >
       {label}
@@ -2018,7 +2018,7 @@ export function AppSearchPage() {
                       Cancel
                     </button>
                   </div>
-                  <div className="mt-3 flex gap-2 overflow-x-auto pb-0.5">
+                  <div className="mt-3 flex items-center gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                     {FILTERS.map((filter) => (
                       <SearchFilterPill
                         key={filter.id}

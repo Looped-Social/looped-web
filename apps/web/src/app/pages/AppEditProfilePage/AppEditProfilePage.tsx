@@ -764,7 +764,7 @@ export function AppEditProfilePage() {
             type="button"
             onClick={handleBack}
             className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-bg-muted text-text-secondary transition hover:text-strong"
-            aria-label="Go back"
+            aria-label="Back"
           >
             <BackIcon className="h-5 w-5" />
           </button>

@@ -12,6 +12,7 @@ import { captureFeedScrollRestore, consumeFeedScrollRestore } from "@/lib/feedSc
 import { extractMediaAssetIds } from "@/lib/postMediaIds";
 import { normalizePostPoll } from "@/lib/postPoll";
 import { extractViewerCapabilitiesFromPost } from "@/lib/postViewerCapabilities";
+import { SearchApiError, searchCommunities } from "@/lib/searchApi";
 
 const feedTabs = [
   { id: "for-you", label: "For You", mode: "for_you" },
@@ -34,8 +35,13 @@ type FeedRouteSnapshot = {
 };
 
 const defaultCommunityFilters: FilterOption[] = [{ id: "all", label: "All Loops" }];
+const COMMUNITY_SEARCH_DEBOUNCE_MS = 280;
+const RECENT_FEED_COMMUNITIES_KEY = "feedRecentCommunities";
+const MAX_RECENT_FEED_COMMUNITIES = 12;
 const feedRouteSnapshots = new Map<string, FeedRouteSnapshot>();
 let latestFeedRouteSnapshot: FeedRouteSnapshot | null = null;
+
+type CommunitySearchStatus = "idle" | "loading" | "ready" | "error";
 
 function saveFeedRouteSnapshot(locationKey: string, snapshot: FeedRouteSnapshot) {
   feedRouteSnapshots.set(locationKey, snapshot);
@@ -81,6 +87,24 @@ function FeedPostSkeleton() {
         </div>
       </div>
     </article>
+  );
+}
+
+function SearchIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+    >
+      <circle cx="11" cy="11" r="7" />
+      <path d="M20 20l-3.2-3.2" />
+    </svg>
   );
 }
 
@@ -244,6 +268,105 @@ function extractApiErrorMessage(details?: string): string | undefined {
     // ignore non-JSON bodies
   }
   return trimmed;
+}
+
+function uniqueCommunityFilters(filters: FilterOption[]): FilterOption[] {
+  const seen = new Set<string>();
+  const next: FilterOption[] = [];
+  for (const filter of filters) {
+    const id = filter.id?.trim();
+    const label = filter.label?.trim();
+    if (!id || !label) continue;
+    if (id === "all") continue;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    next.push({ id, label });
+  }
+  return [defaultCommunityFilters[0], ...next];
+}
+
+function moveCommunityFilterToFront(filters: FilterOption[], selected: FilterOption): FilterOption[] {
+  return uniqueCommunityFilters([
+    selected,
+    ...filters.filter((filter) => filter.id !== "all" && filter.id !== selected.id),
+  ]);
+}
+
+function readRecentFeedCommunities(): FilterOption[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(RECENT_FEED_COMMUNITIES_KEY);
+    if (!raw) return [];
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    const normalized = parsed
+      .map((entry) => {
+        if (!isRecord(entry)) return null;
+        const id = normalizedOptional(entry.id);
+        const label = normalizedOptional(entry.label);
+        if (!id || !label || id === "all") return null;
+        return { id, label } satisfies FilterOption;
+      })
+      .filter((entry): entry is FilterOption => Boolean(entry));
+    return normalized.slice(0, MAX_RECENT_FEED_COMMUNITIES);
+  } catch {
+    return [];
+  }
+}
+
+function writeRecentFeedCommunities(filters: FilterOption[]) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(
+      RECENT_FEED_COMMUNITIES_KEY,
+      JSON.stringify(filters.filter((filter) => filter.id !== "all").slice(0, MAX_RECENT_FEED_COMMUNITIES))
+    );
+  } catch {
+    // ignore storage write failures
+  }
+}
+
+function saveRecentFeedCommunity(filter: FilterOption) {
+  if (filter.id === "all") return;
+  const current = readRecentFeedCommunities();
+  const next = [
+    filter,
+    ...current.filter((entry) => entry.id !== filter.id),
+  ].slice(0, MAX_RECENT_FEED_COMMUNITIES);
+  writeRecentFeedCommunities(next);
+}
+
+function mergeCommunityFilters({
+  previous,
+  followed,
+  activeCommunityId,
+}: {
+  previous: FilterOption[];
+  followed: FilterOption[];
+  activeCommunityId: string;
+}): FilterOption[] {
+  const previousById = new Map(
+    previous.filter((filter) => filter.id !== "all").map((filter) => [filter.id, filter] as const)
+  );
+  const followedById = new Map(
+    followed.filter((filter) => filter.id !== "all").map((filter) => [filter.id, filter] as const)
+  );
+  const recent = readRecentFeedCommunities().map((filter) => followedById.get(filter.id) ?? filter);
+
+  const activeFilter =
+    activeCommunityId === "all"
+      ? null
+      : followedById.get(activeCommunityId) ??
+        previousById.get(activeCommunityId) ??
+        recent.find((filter) => filter.id === activeCommunityId) ??
+        null;
+
+  return uniqueCommunityFilters([
+    ...(activeFilter ? [activeFilter] : []),
+    ...recent,
+    ...followed,
+    ...previous.filter((filter) => filter.id !== "all"),
+  ]);
 }
 
 function normalizeCommunityToFilterOption(item: unknown, preferCommunityShortNames: boolean): FilterOption | null {
@@ -476,6 +599,15 @@ export function AppFeedPage() {
   const [communityFilters, setCommunityFilters] = useState<FilterOption[]>(() =>
     canRestoreSnapshot ? initialSnapshot.communityFilters : defaultCommunityFilters
   );
+  const [isCommunitySearchActive, setIsCommunitySearchActive] = useState(false);
+  const [communitySearchQuery, setCommunitySearchQuery] = useState("");
+  const [communitySearchStatus, setCommunitySearchStatus] = useState<CommunitySearchStatus>("idle");
+  const [communitySearchError, setCommunitySearchError] = useState<string | null>(null);
+  const [communitySearchResults, setCommunitySearchResults] = useState<FilterOption[]>([]);
+  const communitySearchInputRef = useRef<HTMLInputElement | null>(null);
+  const activeCommunitySearchRequestIdRef = useRef(0);
+  const activeFeedRequestIdRef = useRef(0);
+  const activeCommunityIdRef = useRef(activeCommunityId);
 
   const [posts, setPosts] = useState<PostData[]>(() => (canRestoreSnapshot ? initialSnapshot.posts : []));
   const [nextCursor, setNextCursor] = useState<string | null>(() => (canRestoreSnapshot ? initialSnapshot.nextCursor : null));
@@ -490,6 +622,12 @@ export function AppFeedPage() {
   const [storedScrollRestoreY, setStoredScrollRestoreY] = useState<number | null>(null);
   const [storedScrollRestorePostId, setStoredScrollRestorePostId] = useState<string | null>(null);
   const [hasConsumedStoredScrollRestore, setHasConsumedStoredScrollRestore] = useState(false);
+  const feedContextRef = useRef({
+    activeMode,
+    activeCommunityId,
+    hideAnonymousPosts,
+    preferCommunityShortNames,
+  });
   const snapshotStateRef = useRef<Omit<FeedRouteSnapshot, "scrollY">>({
     activeTabId,
     activeCommunityId,
@@ -546,6 +684,26 @@ export function AppFeedPage() {
       preferCommunityShortNames,
     };
   }, [activeCommunityId, activeTabId, communityFilters, hideAnonymousPosts, nextCursor, posts, preferCommunityShortNames]);
+
+  useEffect(() => {
+    feedContextRef.current = {
+      activeMode,
+      activeCommunityId,
+      hideAnonymousPosts,
+      preferCommunityShortNames,
+    };
+    activeCommunityIdRef.current = activeCommunityId;
+  }, [activeCommunityId, activeMode, hideAnonymousPosts, preferCommunityShortNames]);
+
+  useEffect(() => {
+    if (!isCommunitySearchActive || typeof window === "undefined") return;
+    const rafId = window.requestAnimationFrame(() => {
+      communitySearchInputRef.current?.focus();
+    });
+    return () => {
+      window.cancelAnimationFrame(rafId);
+    };
+  }, [isCommunitySearchActive]);
 
   useEffect(() => {
     if (hasRestoredScrollRef.current || typeof window === "undefined") return;
@@ -637,10 +795,18 @@ export function AppFeedPage() {
           .map((item) => normalizeCommunityToFilterOption(item, preferCommunityShortNames))
           .filter((option): option is FilterOption => Boolean(option));
 
-        setCommunityFilters([...defaultCommunityFilters, ...options]);
+        setCommunityFilters((previous) =>
+          mergeCommunityFilters({
+            previous,
+            followed: options,
+            activeCommunityId: activeCommunityIdRef.current,
+          })
+        );
       } catch (_error) {
         if (!active) return;
-        setCommunityFilters(defaultCommunityFilters);
+        setCommunityFilters((previous) =>
+          uniqueCommunityFilters(previous.length > 0 ? previous : defaultCommunityFilters)
+        );
       }
     })();
 
@@ -650,6 +816,15 @@ export function AppFeedPage() {
   }, [preferCommunityShortNames]);
 
   const loadFeed = useCallback(async ({ cursor, replace }: { cursor?: string; replace: boolean }) => {
+    const requestId = activeFeedRequestIdRef.current + 1;
+    activeFeedRequestIdRef.current = requestId;
+    const requestContext = {
+      activeMode,
+      activeCommunityId,
+      hideAnonymousPosts,
+      preferCommunityShortNames,
+    };
+
     setFeedError(null);
     setFeedStatus(cursor ? "loading-more" : "loading");
     try {
@@ -669,10 +844,32 @@ export function AppFeedPage() {
         )
         .filter((post): post is PostData => Boolean(post));
 
+      if (requestId !== activeFeedRequestIdRef.current) return;
+      const latest = feedContextRef.current;
+      if (
+        latest.activeMode !== requestContext.activeMode ||
+        latest.activeCommunityId !== requestContext.activeCommunityId ||
+        latest.hideAnonymousPosts !== requestContext.hideAnonymousPosts ||
+        latest.preferCommunityShortNames !== requestContext.preferCommunityShortNames
+      ) {
+        return;
+      }
+
       setPosts((prev) => (replace ? normalized : [...prev, ...normalized]));
       setNextCursor(response.next_cursor ?? response.nextCursor ?? null);
       setFeedStatus("idle");
     } catch (error) {
+      if (requestId !== activeFeedRequestIdRef.current) return;
+      const latest = feedContextRef.current;
+      if (
+        latest.activeMode !== requestContext.activeMode ||
+        latest.activeCommunityId !== requestContext.activeCommunityId ||
+        latest.hideAnonymousPosts !== requestContext.hideAnonymousPosts ||
+        latest.preferCommunityShortNames !== requestContext.preferCommunityShortNames
+      ) {
+        return;
+      }
+
       const message = error instanceof FeedApiError ? extractApiErrorMessage(error.details) : undefined;
       setFeedError(message ?? "Unable to load feed.");
       setFeedStatus("error");
@@ -698,6 +895,7 @@ export function AppFeedPage() {
   useEffect(() => {
     if (typeof window === "undefined") return;
     const refresh = () => {
+      if (isCommunitySearchActive) return;
       setPosts([]);
       setNextCursor(null);
       lastAutoLoadCursorRef.current = null;
@@ -707,7 +905,72 @@ export function AppFeedPage() {
     return () => {
       window.removeEventListener("looped:content-refresh", refresh);
     };
-  }, [loadFeed]);
+  }, [isCommunitySearchActive, loadFeed]);
+
+  useEffect(() => {
+    if (!isCommunitySearchActive) return;
+    if (typeof window === "undefined") return;
+
+    const trimmedQuery = communitySearchQuery.trim();
+    setCommunitySearchError(null);
+
+    if (trimmedQuery.length < 2) {
+      activeCommunitySearchRequestIdRef.current += 1;
+      setCommunitySearchStatus("idle");
+      setCommunitySearchResults([]);
+      return;
+    }
+
+    const timeoutId = window.setTimeout(async () => {
+      const requestId = activeCommunitySearchRequestIdRef.current + 1;
+      activeCommunitySearchRequestIdRef.current = requestId;
+      setCommunitySearchStatus("loading");
+      try {
+        const response = await searchCommunities({
+          query: trimmedQuery,
+          limit: 25,
+        });
+        if (requestId !== activeCommunitySearchRequestIdRef.current) return;
+
+        const options = (response.items ?? [])
+          .map((item) => normalizeCommunityToFilterOption(item, preferCommunityShortNames))
+          .filter((option): option is FilterOption => Boolean(option));
+
+        setCommunitySearchResults(uniqueCommunityFilters(options).filter((option) => option.id !== "all"));
+        setCommunitySearchStatus("ready");
+      } catch (error) {
+        if (requestId !== activeCommunitySearchRequestIdRef.current) return;
+        const message = error instanceof SearchApiError ? extractApiErrorMessage(error.details) : undefined;
+        setCommunitySearchError(message ?? "Unable to search communities.");
+        setCommunitySearchResults([]);
+        setCommunitySearchStatus("error");
+      }
+    }, COMMUNITY_SEARCH_DEBOUNCE_MS);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [communitySearchQuery, isCommunitySearchActive, preferCommunityShortNames]);
+
+  const dismissCommunitySearch = useCallback(() => {
+    activeCommunitySearchRequestIdRef.current += 1;
+    setIsCommunitySearchActive(false);
+    setCommunitySearchQuery("");
+    setCommunitySearchStatus("idle");
+    setCommunitySearchError(null);
+    setCommunitySearchResults([]);
+  }, []);
+
+  const handleCommunitySelection = useCallback((filter: FilterOption) => {
+    if (filter.id === "all") {
+      setActiveCommunityId("all");
+      return;
+    }
+
+    saveRecentFeedCommunity(filter);
+    setActiveCommunityId(filter.id);
+    setCommunityFilters((previous) => moveCommunityFilterToFront(previous, filter));
+  }, []);
 
   useEffect(() => {
     const node = infiniteSentinelRef.current;
@@ -739,10 +1002,10 @@ export function AppFeedPage() {
 
   return (
     <AppLayout activeNavId="home" rightRail={rightRail}>
-      <AppMobileHeader showBorder={false} />
+      <AppMobileHeader showBorder={false} showAction={false} />
 
-      <header className="border-b border-border/70 bg-bg">
-        <div className="grid grid-cols-3">
+      <header className="bg-bg">
+        <div className="grid grid-cols-3 border-b border-border/70">
           {feedTabs.map((tab) => {
             const isActive = tab.id === activeTabId;
             return (
@@ -761,6 +1024,114 @@ export function AppFeedPage() {
             );
           })}
         </div>
+
+        {isCommunitySearchActive ? (
+          <div className="space-y-2 px-3 pb-3 pt-2.5 lg:hidden">
+            <div className="flex items-center gap-2">
+              <div className="flex h-11 flex-1 items-center gap-2 rounded-full bg-bg-muted px-3 text-text-secondary">
+                <SearchIcon className="h-5 w-5" />
+                <input
+                  ref={communitySearchInputRef}
+                  value={communitySearchQuery}
+                  onChange={(event) => setCommunitySearchQuery(event.target.value)}
+                  type="search"
+                  placeholder="Search communities"
+                  className="w-full bg-transparent text-[1.02rem] text-strong outline-none placeholder:text-text-light"
+                  aria-label="Search communities"
+                  autoComplete="off"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                />
+              </div>
+              <button
+                type="button"
+                onClick={dismissCommunitySearch}
+                className="px-1 text-[1.02rem] font-semibold text-secondary transition hover:opacity-85"
+              >
+                Cancel
+              </button>
+            </div>
+
+            <div className="rounded-2xl border border-border/70 bg-bg px-4 py-3">
+              {communitySearchStatus === "error" ? (
+                <p className="text-sm text-text-secondary">{communitySearchError ?? "Unable to search communities."}</p>
+              ) : null}
+
+              {communitySearchStatus === "loading" ? (
+                <div className="flex items-center gap-2 text-sm text-text-secondary">
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-border border-t-text-secondary" />
+                  <span>Searching communities...</span>
+                </div>
+              ) : null}
+
+              {communitySearchStatus !== "loading" && communitySearchQuery.trim().length === 0 ? (
+                <div className="space-y-1 text-center">
+                  <p className="text-[1.02rem] font-medium text-text-secondary">Start typing to search.</p>
+                  <p className="text-sm text-text-light">Selecting a community filters your feed to posts from that community.</p>
+                </div>
+              ) : null}
+
+              {communitySearchStatus !== "loading" &&
+              communitySearchStatus !== "error" &&
+              communitySearchQuery.trim().length === 1 ? (
+                <p className="text-sm text-text-secondary">Type at least 2 characters.</p>
+              ) : null}
+
+              {communitySearchStatus === "ready" && communitySearchResults.length === 0 ? (
+                <p className="text-sm text-text-secondary">No matches found.</p>
+              ) : null}
+
+              {communitySearchStatus === "ready" && communitySearchResults.length > 0 ? (
+                <div className="-mx-2 divide-y divide-border/60">
+                  {communitySearchResults.map((result) => (
+                    <button
+                      key={`community-search-result-${result.id}`}
+                      type="button"
+                      onClick={() => {
+                        handleCommunitySelection(result);
+                        dismissCommunitySearch();
+                      }}
+                      className="flex w-full items-center justify-between px-2 py-2.5 text-left transition hover:bg-bg-muted/40"
+                    >
+                      <span className="line-clamp-1 text-sm font-semibold text-strong">{result.label}</span>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 overflow-x-auto px-3 py-2.5 lg:hidden [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <button
+              type="button"
+              onClick={() => {
+                setIsCommunitySearchActive(true);
+              }}
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center text-secondary transition hover:opacity-90"
+              aria-label="Search communities"
+            >
+              <SearchIcon className="h-6 w-6" />
+            </button>
+
+            {communityFilters.map((filter) => {
+              const isActive = filter.id === activeCommunityId;
+              return (
+                <button
+                  key={`mobile-filter-${filter.id}`}
+                  type="button"
+                  onClick={() => handleCommunitySelection(filter)}
+                  className={`inline-flex h-9 shrink-0 items-center rounded-full px-4 text-sm font-semibold transition ${
+                    isActive ? "bg-brand text-white" : "bg-bg-muted text-text-secondary hover:text-strong"
+                  }`}
+                  aria-pressed={isActive}
+                >
+                  {filter.label}
+                </button>
+              );
+            })}
+          </div>
+        )}
       </header>
 
       <div className="divide-y divide-border/70 bg-bg">

@@ -29,7 +29,7 @@ export function AppAnonymousProfilePage() {
           to="/app"
           className="mt-4 inline-flex rounded-full border border-border/70 bg-bg px-4 py-2 text-sm font-semibold text-text-secondary transition hover:text-strong"
         >
-          Back to feed
+          Back
         </Link>
       </div>
     </AppLayout>

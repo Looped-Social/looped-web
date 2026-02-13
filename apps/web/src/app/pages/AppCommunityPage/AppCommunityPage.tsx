@@ -748,7 +748,7 @@ export function AppCommunityPage({ communityId }: AppCommunityPageProps) {
                   navigate("/app/search", { replace: true });
                 }}
                 className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-bg-muted text-text-secondary transition hover:text-strong lg:hidden"
-                aria-label="Go back"
+                aria-label="Back"
               >
                 <BackIcon className="h-5 w-5" />
               </button>

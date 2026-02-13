@@ -617,7 +617,7 @@ export function AppSettingsPage() {
 
   return (
     <AppLayout activeNavId="settings">
-      <AppMobileHeader title="Settings" showAction={false} />
+      <AppMobileHeader title="Settings" showAction={false} showBack backHref="/app/profile" />
 
       <div className="mx-auto w-full max-w-[560px] space-y-6 bg-bg px-4 py-4">
         <header>
@@ -784,7 +784,7 @@ export function AppSettingsPage() {
                   }}
                   disabled={isActionPending}
                   className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-bg-muted text-text-secondary transition hover:text-strong disabled:opacity-60"
-                  aria-label="Go back"
+                  aria-label="Back"
                 >
                   <BackIcon className="h-5 w-5" />
                 </button>

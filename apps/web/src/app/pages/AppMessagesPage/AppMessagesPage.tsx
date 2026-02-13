@@ -1192,12 +1192,25 @@ export function AppMessagesPage() {
       <button
         type="button"
         onClick={openComposer}
-        className={`fixed bottom-6 right-5 z-20 inline-flex h-14 w-14 items-center justify-center rounded-full bg-brand text-white shadow-[0_12px_24px_rgba(234,64,74,0.32)] transition hover:bg-brand-hover sm:hidden ${
+        className={`fixed bottom-[calc(5.25rem+env(safe-area-inset-bottom))] right-5 z-50 inline-flex h-14 w-14 items-center justify-center rounded-full bg-brand text-white transition hover:bg-brand-hover sm:hidden ${
           activeTabId !== "messages" ? "pointer-events-none opacity-0" : ""
         }`}
         aria-label="New message"
       >
-        <img src="/ios-icons/action-send.svg" alt="" className="h-6 w-6 object-contain" loading="lazy" />
+        <span
+          className="relative left-[0.5px] top-[0.5px] h-7 w-7 bg-white"
+          style={{
+            maskImage: "url('/ios-icons/action-send.svg')",
+            WebkitMaskImage: "url('/ios-icons/action-send.svg')",
+            maskRepeat: "no-repeat",
+            WebkitMaskRepeat: "no-repeat",
+            maskPosition: "center",
+            WebkitMaskPosition: "center",
+            maskSize: "contain",
+            WebkitMaskSize: "contain",
+          }}
+          aria-hidden="true"
+        />
       </button>
 
       <MessageRecipientComposer

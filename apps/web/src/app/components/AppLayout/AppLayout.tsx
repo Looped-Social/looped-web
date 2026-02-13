@@ -66,6 +66,11 @@ const navItems: NavItem[] = [
     activeIconSrc: '/ios-icons/nav-settings-active.svg',
   },
 ];
+const mobileNavOrder = ['home', 'messages', 'create', 'search', 'notifications', 'profile'] as const;
+const navItemsById = new Map(navItems.map((item) => [item.id, item] as const));
+const mobileNavItems = mobileNavOrder
+  .map((id) => navItemsById.get(id))
+  .filter((item): item is NavItem => Boolean(item));
 
 type AppLayoutProps = {
   activeNavId?: string;
@@ -147,6 +152,31 @@ function ProfileNavAvatar({
   );
 }
 
+function NavMaskIcon({
+  src,
+  className,
+}: {
+  src: string;
+  className?: string;
+}) {
+  return (
+    <span
+      className={className}
+      style={{
+        maskImage: `url('${src}')`,
+        WebkitMaskImage: `url('${src}')`,
+        maskRepeat: 'no-repeat',
+        WebkitMaskRepeat: 'no-repeat',
+        maskPosition: 'center',
+        WebkitMaskPosition: 'center',
+        maskSize: 'contain',
+        WebkitMaskSize: 'contain',
+      }}
+      aria-hidden="true"
+    />
+  );
+}
+
 export function AppLayout({ activeNavId = 'home', children, rightRail }: AppLayoutProps) {
   const location = useLocation();
   const { user } = useCurrentUserStore({ autoLoad: true });
@@ -176,22 +206,19 @@ export function AppLayout({ activeNavId = 'home', children, rightRail }: AppLayo
                       isActive ? 'font-semibold text-brand' : 'font-medium text-shell-text hover:text-shell-text'
                     }`;
 
-                    const iconSrc = isActive ? (item.activeIconSrc ?? item.iconSrc) : item.iconSrc;
                     const icon =
                       item.id === 'profile' && profileImageUrl ? (
                         <ProfileNavAvatar
                           src={profileImageUrl}
                           className="h-7 w-7 shrink-0 rounded-full object-cover"
                         />
-                      ) : item.id === 'create' ? (
-                        <span
+                      ) : item.iconSrc ? (
+                        <NavMaskIcon
+                          src={item.iconSrc}
                           className={`h-7 w-7 shrink-0 ${
                             isActive ? 'bg-current' : 'bg-text-secondary dark:bg-text-light'
-                          } [mask-image:url('/ios-icons/create-action.svg')] [mask-repeat:no-repeat] [mask-position:center] [mask-size:contain] [-webkit-mask-image:url('/ios-icons/create-action.svg')] [-webkit-mask-repeat:no-repeat] [-webkit-mask-position:center] [-webkit-mask-size:contain]`}
-                          aria-hidden="true"
+                          }`}
                         />
-                      ) : iconSrc ? (
-                        <img src={iconSrc} alt="" className="h-7 w-7 shrink-0" aria-hidden="true" />
                       ) : (
                         <MenuDots className="h-7 w-7 shrink-0 text-shell-text-muted" />
                       );
@@ -285,9 +312,8 @@ export function AppLayout({ activeNavId = 'home', children, rightRail }: AppLayo
       {!hideMobileBottomNav ? (
         <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border/70 bg-bg/95 pb-[max(0.4rem,env(safe-area-inset-bottom))] pt-2 backdrop-blur lg:hidden">
           <div className="mx-auto flex max-w-xl items-center justify-between gap-1 px-2">
-            {navItems.map((item) => {
+            {mobileNavItems.map((item) => {
               const isActive = item.id === activeNavId;
-              const iconSrc = isActive ? (item.activeIconSrc ?? item.iconSrc) : item.iconSrc;
               const baseClass = `inline-flex h-10 w-10 items-center justify-center rounded-full transition ${
                 isActive ? 'text-brand' : 'text-shell-text-muted'
               }`;
@@ -297,15 +323,8 @@ export function AppLayout({ activeNavId = 'home', children, rightRail }: AppLayo
                     src={profileImageUrl}
                     className="h-7 w-7 shrink-0 rounded-full object-cover"
                   />
-                ) : item.id === 'create' ? (
-                  <span
-                    className={`h-7 w-7 shrink-0 ${
-                      isActive ? 'bg-current' : 'bg-text-secondary dark:bg-text-light'
-                    } [mask-image:url('/ios-icons/create-action.svg')] [mask-repeat:no-repeat] [mask-position:center] [mask-size:contain] [-webkit-mask-image:url('/ios-icons/create-action.svg')] [-webkit-mask-repeat:no-repeat] [-webkit-mask-position:center] [-webkit-mask-size:contain]`}
-                    aria-hidden="true"
-                  />
-                ) : iconSrc ? (
-                  <img src={iconSrc} alt="" className="h-7 w-7 shrink-0" aria-hidden="true" />
+                ) : item.iconSrc ? (
+                  <NavMaskIcon src={item.iconSrc} className="h-7 w-7 shrink-0 bg-current" />
                 ) : (
                   <MenuDots className="h-7 w-7 shrink-0 text-shell-text-muted" />
                 );
@@ -341,7 +360,6 @@ type AppMobileHeaderProps = {
 };
 
 export function AppMobileHeader({
-  title = 'Looped',
   actionHref = '/app/profile',
   showAction = true,
   showBack = false,
@@ -349,8 +367,13 @@ export function AppMobileHeader({
   showBorder = true,
 }: AppMobileHeaderProps) {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useCurrentUserStore({ autoLoad: true });
   const profileImageUrl = user?.profileImageUrl;
+  const isMainFeedRoute = location.pathname === '/app' && !new URLSearchParams(location.search).has('comments');
+  const shouldRenderHeader = showBack || isMainFeedRoute;
+  const headerSpacingClass = showBack || !isMainFeedRoute ? 'px-4 py-3' : 'px-4 pt-2 pb-1';
+  const backButtonLabel = 'Back';
 
   const handleBack = () => {
     if (typeof window !== 'undefined' && window.history.length > 1) {
@@ -360,9 +383,11 @@ export function AppMobileHeader({
     navigate(backHref, { replace: true });
   };
 
+  if (!shouldRenderHeader) return null;
+
   return (
     <div
-      className={`flex items-center justify-between bg-bg px-4 py-3 lg:hidden ${
+      className={`flex items-center justify-between bg-bg lg:hidden ${headerSpacingClass} ${
         showBorder ? 'border-b border-border/70' : ''
       }`}
     >
@@ -371,15 +396,15 @@ export function AppMobileHeader({
           type="button"
           onClick={handleBack}
           className="inline-flex items-center gap-1 text-sm font-semibold text-strong"
-          aria-label="Go back"
+          aria-label={backButtonLabel}
         >
           <BackIcon className="h-5 w-5" />
-          <span>{title}</span>
+          <span>{backButtonLabel}</span>
         </button>
-      ) : title === 'Looped' ? (
-        <Logo imageClassName="h-8 w-auto" to="/app" />
+      ) : isMainFeedRoute ? (
+        <Logo imageClassName="h-14 w-auto" to="/app" />
       ) : (
-        <span className="text-lg font-semibold">{title}</span>
+        <div className="h-8 w-24" aria-hidden="true" />
       )}
       <div className="flex items-center gap-2">
         {showAction ? (

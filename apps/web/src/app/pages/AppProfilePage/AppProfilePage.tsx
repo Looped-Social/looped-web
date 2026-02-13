@@ -568,6 +568,25 @@ function BriefcaseIcon({ className }: { className?: string }) {
   );
 }
 
+function SettingsIcon({ className }: { className?: string }) {
+  return (
+    <span
+      className={`inline-block shrink-0 ${className ?? ""}`}
+      style={{
+        maskImage: "url('/ios-icons/nav-settings.svg')",
+        WebkitMaskImage: "url('/ios-icons/nav-settings.svg')",
+        maskRepeat: "no-repeat",
+        WebkitMaskRepeat: "no-repeat",
+        maskPosition: "center",
+        WebkitMaskPosition: "center",
+        maskSize: "contain",
+        WebkitMaskSize: "contain",
+      }}
+      aria-hidden="true"
+    />
+  );
+}
+
 function ReplyContentCard({ item }: { item: ReplyFeedData }) {
   return (
     <article className="bg-bg px-4 py-4">
@@ -625,6 +644,7 @@ export function AppProfilePage({ profileUserId }: AppProfilePageProps) {
     [currentUserId, targetUserId]
   );
   const canShowProfileMenu = Boolean(profile && targetUserId && !isCurrentUser && !profile.isAnonymous);
+  const showOwnProfileSettingsShortcut = !profileUserId || isCurrentUser;
   const profileHandleLabel = useMemo(() => {
     if (!profile?.handle) return "@this account";
     return profile.handle.startsWith("@") ? profile.handle : `@${profile.handle}`;
@@ -1001,7 +1021,7 @@ export function AppProfilePage({ profileUserId }: AppProfilePageProps) {
         <div className="mt-4 space-y-2">
           <button
             type="button"
-            className="w-full rounded-xl border border-border/70 bg-bg px-3 py-2 text-sm font-semibold text-text-secondary transition hover:text-strong"
+            className="w-full rounded-full bg-bg-muted px-6 py-2.5 text-center text-[1.02rem] font-semibold text-text-secondary transition hover:text-strong"
             onClick={() =>
               showToast({
                 title: "Share profile",
@@ -1014,7 +1034,7 @@ export function AppProfilePage({ profileUserId }: AppProfilePageProps) {
           {isCurrentUser ? (
             <button
               type="button"
-              className="w-full rounded-xl border border-border/70 bg-bg px-3 py-2 text-sm font-semibold text-text-secondary transition hover:text-strong"
+              className="w-full rounded-full bg-bg-muted px-6 py-2.5 text-center text-[1.02rem] font-semibold text-text-secondary transition hover:text-strong"
               onClick={handleEditProfileNavigation}
             >
               Edit profile
@@ -1091,8 +1111,8 @@ export function AppProfilePage({ profileUserId }: AppProfilePageProps) {
                 <span>Back</span>
               </button>
             ) : null}
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex items-center gap-3">
+            <div className="relative flex items-start justify-between gap-4">
+              <div className={`flex min-w-0 items-center gap-3 ${showOwnProfileSettingsShortcut ? "pr-12 lg:pr-0" : ""}`}>
                 <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full bg-bg-muted text-text-secondary">
                   <img
                     src={profile.avatarUrl ?? defaultProfileImageUrl ?? DEFAULT_PROFILE_IMAGE_SRC}
@@ -1102,14 +1122,22 @@ export function AppProfilePage({ profileUserId }: AppProfilePageProps) {
                     onError={handleAvatarImageError}
                   />
                 </div>
-                <div>
-                  <p className={`text-2xl font-semibold ${profile.isAnonymous ? "text-secondary" : "text-strong"}`}>
+                <div className="min-w-0">
+                  <p className={`truncate text-2xl font-semibold ${profile.isAnonymous ? "text-secondary" : "text-strong"}`}>
                     {profile.name}
                   </p>
-                  <p className="text-[1.1rem] text-text-secondary">{profile.handle}</p>
+                  <p className="truncate text-[1.1rem] text-text-secondary">{profile.handle}</p>
                 </div>
               </div>
-              {!isCurrentUser ? (
+              {showOwnProfileSettingsShortcut ? (
+                <Link
+                  to="/app/settings"
+                  className="absolute right-0 top-0 inline-flex h-10 w-10 items-center justify-center rounded-full bg-bg-muted text-text-secondary transition hover:text-strong lg:hidden"
+                  aria-label="Settings"
+                >
+                  <SettingsIcon className="h-6 w-6 bg-current" />
+                </Link>
+              ) : !isCurrentUser ? (
                 canShowProfileMenu ? (
                   <div className="relative">
                     <button
@@ -1200,8 +1228,8 @@ export function AppProfilePage({ profileUserId }: AppProfilePageProps) {
               </div>
             ) : null}
 
-            <div className="mt-4 flex flex-wrap gap-3">
-              {isCurrentUser ? (
+            {isCurrentUser ? (
+              <div className="mt-4 flex flex-wrap gap-3 lg:hidden">
                 <button
                   type="button"
                   className="min-w-[150px] cursor-pointer rounded-full bg-bg-muted px-6 py-2.5 text-center text-[1.02rem] font-semibold text-text-secondary transition hover:text-strong"
@@ -1209,31 +1237,31 @@ export function AppProfilePage({ profileUserId }: AppProfilePageProps) {
                 >
                   Edit profile
                 </button>
-              ) : (
-                <>
-                  <button
-                    type="button"
-                    className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
-                      isFollowing
-                        ? "min-w-[150px] bg-bg-muted px-6 py-2.5 text-[1.02rem] text-text-secondary hover:text-strong"
-                        : "min-w-[150px] bg-brand px-6 py-2.5 text-[1.02rem] text-white hover:bg-brand-hover"
-                    }`}
-                    onClick={() => void handleFollowToggle()}
-                    disabled={isFollowLoading}
-                  >
-                    {isFollowLoading ? "Updating..." : isFollowing ? "Following" : "Follow"}
-                  </button>
-                  <button
-                    type="button"
-                    className="min-w-[150px] rounded-full bg-bg-muted px-6 py-2.5 text-center text-[1.02rem] font-semibold text-text-secondary transition hover:text-strong disabled:cursor-not-allowed disabled:opacity-70"
-                    onClick={() => void handleMessageNavigation()}
-                    disabled={isMessageLoading}
-                  >
-                    {isMessageLoading ? "Opening..." : "Message"}
-                  </button>
-                </>
-              )}
-            </div>
+              </div>
+            ) : (
+              <div className="mt-4 flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
+                    isFollowing
+                      ? "min-w-[150px] bg-bg-muted px-6 py-2.5 text-[1.02rem] text-text-secondary hover:text-strong"
+                      : "min-w-[150px] bg-brand px-6 py-2.5 text-[1.02rem] text-white hover:bg-brand-hover"
+                  }`}
+                  onClick={() => void handleFollowToggle()}
+                  disabled={isFollowLoading}
+                >
+                  {isFollowLoading ? "Updating..." : isFollowing ? "Following" : "Follow"}
+                </button>
+                <button
+                  type="button"
+                  className="min-w-[150px] rounded-full bg-bg-muted px-6 py-2.5 text-center text-[1.02rem] font-semibold text-text-secondary transition hover:text-strong disabled:cursor-not-allowed disabled:opacity-70"
+                  onClick={() => void handleMessageNavigation()}
+                  disabled={isMessageLoading}
+                >
+                  {isMessageLoading ? "Opening..." : "Message"}
+                </button>
+              </div>
+            )}
           </div>
 
           <div className={`grid ${visibleTabs.length === 3 ? "grid-cols-3" : "grid-cols-2"}`}>

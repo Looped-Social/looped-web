@@ -93,7 +93,7 @@ export function AppSettingsBlockedUsersPage() {
   return (
     <AppLayout activeNavId="settings">
       <AppMobileHeader title="Blocked Users" showAction={false} showBack={false} />
-      <SettingsSubpageHeader backHref="/app/settings" backLabel="Back to Settings" />
+      <SettingsSubpageHeader backHref="/app/settings" />
 
       <div className="mx-auto w-full max-w-[560px] space-y-4 bg-bg px-4 py-4">
         <header>
