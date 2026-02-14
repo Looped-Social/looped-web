@@ -1,6 +1,7 @@
 import { type RouteConfig, index, route } from '@react-router/dev/routes';
 
 export default [
+  route('.well-known/apple-app-site-association', 'routes/marketing/apple-app-site-association.tsx'),
   index('routes/marketing/home.tsx'),
   route('about', 'routes/marketing/about.tsx'),
   route('contact', 'routes/marketing/contact.tsx'),
