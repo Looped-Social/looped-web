@@ -37,6 +37,18 @@ function pickBoolean(source: Record<string, unknown>, keys: string[]): boolean |
   return undefined;
 }
 
+function pickNumber(source: Record<string, unknown>, keys: string[]): number | undefined {
+  for (const key of keys) {
+    const value = source[key];
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+    if (typeof value === "string" && value.trim().length > 0) {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed)) return parsed;
+    }
+  }
+  return undefined;
+}
+
 function toAbsoluteUrl(value: string | undefined): string | undefined {
   if (!value) return undefined;
   try {
@@ -150,11 +162,20 @@ export async function loader({ params, request }: Route.LoaderArgs) {
       pickString(post, ["community_name", "communityName"]);
     const content = pickString(post, ["content", "text", "body", "message"]) ?? "";
 
-    const title = communityName ? `${authorName} on ${communityName} | Looped` : `${authorName} on Looped`;
+    const likesCount = pickNumber(post, ["likes_count", "likesCount", "like_count", "likeCount"]) ?? 0;
+    const commentsCount = pickNumber(post, ["comments_count", "commentsCount", "comment_count", "commentCount"]) ?? 0;
+    const statsSummary = `${likesCount} like${likesCount === 1 ? "" : "s"} · ${commentsCount} comment${commentsCount === 1 ? "" : "s"}`;
+
+    const title = communityName ? `${authorName} in ${communityName} | Looped` : `${authorName} on Looped`;
     const description = sanitizeMetaText(
-      content
-        ? truncate(content, 180)
-        : `View this shared post from ${authorName}${communityName ? ` in ${communityName}` : ""} on Looped.`
+      [
+        content
+          ? truncate(content, 150)
+          : `View this shared post from ${authorName}${communityName ? ` in ${communityName}` : ""} on Looped.`,
+        statsSummary,
+      ]
+        .filter(Boolean)
+        .join(" • ")
     );
 
     const directPreviewUrl = toAbsoluteUrl(
