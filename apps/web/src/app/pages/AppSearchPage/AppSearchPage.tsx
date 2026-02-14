@@ -8,6 +8,7 @@ import { resolveCommunityLabel, usePreferCommunityShortNames } from "@/lib/commu
 import { useContentPreferences } from "@/lib/contentPreferences";
 import { fetchPostDetail } from "@/lib/commentsApi";
 import { fetchFollowedCommunities } from "@/lib/feedApi";
+import { resolveMediaAssets } from "@/lib/mediaApi";
 import { extractMediaAssetIds } from "@/lib/postMediaIds";
 import { normalizePostPoll } from "@/lib/postPoll";
 import { extractViewerCapabilitiesFromPost } from "@/lib/postViewerCapabilities";
@@ -45,9 +46,12 @@ type SearchFeedStatus = "idle" | "loading" | "loading-more" | "ready" | "error";
 type TrendingPost = {
   id: string;
   title: string;
-  subtitle: string;
   content: string;
+  authorName: string;
+  postedInLabel?: string;
+  authorProfileImageUrl?: string;
   imageUrl?: string;
+  mediaAssetIds: string[];
 };
 
 type CommunityCard = {
@@ -478,20 +482,44 @@ function normalizeTrendingPost(item: unknown): TrendingPost | null {
   const id = pickString(post, ["id", "post_id", "postId"]);
   if (!id) return null;
 
+  const isAnonymous =
+    pickBoolean(post, ["author_is_anonymous", "authorIsAnonymous", "is_anonymous", "isAnonymous"]) ?? false;
+  const firstName = pickString(post, ["author_first_name", "authorFirstName"]);
+  const lastName = pickString(post, ["author_last_name", "authorLastName"]);
+  const fullName = [normalizedOptional(firstName), normalizedOptional(lastName)]
+    .filter((value): value is string => Boolean(value))
+    .join(" ")
+    .trim();
+  const authorName = isAnonymous
+    ? "Anonymous"
+    : fullName ||
+      pickString(post, ["author_display_name", "authorDisplayName", "author_name", "authorName", "author_handle", "authorHandle"]) ||
+      "User";
+
   const content = pickString(post, ["content", "text", "body", "message"]) ?? "";
   const fallbackTitle = normalizedOptional(content.slice(0, 90));
   const title = normalizedOptional(pickString(post, ["title", "headline", "name"])) ?? fallbackTitle ?? "Trending post";
-  const communityLabel =
-    normalizedOptional(
-      pickString(post, ["community_short_name", "communityShortName", "community_name", "communityName"])
-    ) ?? "Trending";
-  const timeLabel = formatTimeAgo(post.created_at ?? post.createdAt ?? post.timestamp ?? post.time);
-  const subtitle = `${communityLabel} · ${timeLabel}`;
+  const communityLabel = resolveCommunityLabel({
+    name: pickString(post, ["community_name", "communityName"]),
+    shortName: pickString(post, ["community_short_name", "communityShortName"]),
+    fallback: undefined,
+    preferShortNames: true,
+  });
   const imageUrl = normalizedOptional(
-    pickString(post, ["cdn_url", "cdnUrl", "media_url", "mediaUrl", "image_url", "imageUrl"])
+    pickString(post, ["thumbnail_url", "thumbnailUrl", "cdn_url", "cdnUrl", "media_url", "mediaUrl", "image_url", "imageUrl"])
   );
+  const mediaAssetIds = extractMediaAssetIds(post);
 
-  return { id, title, subtitle, content, imageUrl };
+  return {
+    id,
+    title,
+    content,
+    authorName,
+    postedInLabel: communityLabel ? `Posted in ${communityLabel}` : undefined,
+    authorProfileImageUrl: pickString(post, ["author_profile_image_url", "authorProfileImageUrl"]) ?? undefined,
+    imageUrl,
+    mediaAssetIds,
+  };
 }
 
 function normalizeCommunityKind(item: unknown): string | undefined {
@@ -977,6 +1005,7 @@ export function AppSearchPage() {
   const [landingStatus, setLandingStatus] = useState<LandingStatus>("loading");
   const [landingError, setLandingError] = useState<string | null>(null);
   const [trendingPosts, setTrendingPosts] = useState<TrendingPost[]>([]);
+  const [resolvedTrendingMedia, setResolvedTrendingMedia] = useState<Record<string, { url: string; isVideo: boolean }>>({});
   const [recommendedCommunities, setRecommendedCommunities] = useState<CommunityCard[]>([]);
   const [majorCards, setMajorCards] = useState<SpecializationCard[]>([]);
   const [fieldCards, setFieldCards] = useState<SpecializationCard[]>([]);
@@ -1244,6 +1273,69 @@ export function AppSearchPage() {
   useEffect(() => {
     setTrendingPage((current) => Math.min(current, Math.max(trendingPosts.length - 1, 0)));
   }, [trendingPosts.length]);
+
+  useEffect(() => {
+    const activePostIds = new Set(trendingPosts.map((post) => post.id));
+    setResolvedTrendingMedia((current) => {
+      const next: Record<string, { url: string; isVideo: boolean }> = {};
+      let changed = false;
+      for (const [postId, value] of Object.entries(current)) {
+        if (!activePostIds.has(postId)) {
+          changed = true;
+          continue;
+        }
+        next[postId] = value;
+      }
+      return changed ? next : current;
+    });
+
+    const postsNeedingResolution = trendingPosts.filter(
+      (post) => post.mediaAssetIds.length > 0 && !resolvedTrendingMedia[post.id]
+    );
+    if (postsNeedingResolution.length === 0) return;
+
+    let isCancelled = false;
+
+    const resolveMissingMedia = async () => {
+      const entries = await Promise.all(
+        postsNeedingResolution.map(async (post) => {
+          try {
+            const resolved = await resolveMediaAssets(post.mediaAssetIds);
+            const first = resolved[0];
+            if (!first) return null;
+            return [
+              post.id,
+              {
+                url: first.thumbnailUrl ?? first.cdnUrl,
+                isVideo: Boolean(first.mimeType?.toLowerCase().startsWith("video/") && !first.thumbnailUrl),
+              },
+            ] as const;
+          } catch {
+            return null;
+          }
+        })
+      );
+
+      if (isCancelled) return;
+      const nextEntries = entries.filter(
+        (entry): entry is readonly [string, { url: string; isVideo: boolean }] => Boolean(entry)
+      );
+      if (nextEntries.length === 0) return;
+      setResolvedTrendingMedia((current) => {
+        const next = { ...current };
+        for (const [postId, value] of nextEntries) {
+          next[postId] = value;
+        }
+        return next;
+      });
+    };
+
+    void resolveMissingMedia();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [resolvedTrendingMedia, trendingPosts]);
 
   useEffect(() => {
     setMajorPage((current) => Math.min(current, Math.max(majorPages.length - 1, 0)));
@@ -1896,17 +1988,45 @@ export function AppSearchPage() {
                           onClick={() => void handlePostTap(post)}
                           className="w-full shrink-0 snap-start overflow-hidden rounded-3xl border border-border/60 bg-bg text-left transition hover:bg-bg-muted/20"
                         >
-                          {post.imageUrl ? (
-                            <img src={post.imageUrl} alt="" className="h-44 w-full object-cover" loading="lazy" />
+                          {resolvedTrendingMedia[post.id]?.url || post.imageUrl ? (
+                            resolvedTrendingMedia[post.id]?.isVideo ? (
+                              <video
+                                src={resolvedTrendingMedia[post.id]?.url}
+                                className="h-44 w-full object-cover"
+                                muted
+                                playsInline
+                                preload="metadata"
+                              />
+                            ) : (
+                              <img
+                                src={resolvedTrendingMedia[post.id]?.url ?? post.imageUrl}
+                                alt=""
+                                className="h-44 w-full object-cover"
+                                loading="lazy"
+                              />
+                            )
                           ) : (
                             <div className="flex h-44 w-full items-end bg-gradient-to-br from-brand/20 via-bg-muted to-bg px-4 pb-4">
                               <p className="line-clamp-2 text-lg font-semibold text-strong">{post.title}</p>
                             </div>
                           )}
-                          <div className="space-y-1 px-4 py-4">
-                            <p className="line-clamp-1 text-base font-semibold text-strong">{post.title}</p>
-                            <p className="text-xs font-medium uppercase tracking-wide text-text-secondary">{post.subtitle}</p>
-                            {post.content ? <p className="line-clamp-2 text-sm text-text-primary">{post.content}</p> : null}
+                          <div className="space-y-2 px-4 py-3">
+                            <div className="flex items-center gap-2.5">
+                              <img
+                                src={post.authorProfileImageUrl ?? DEFAULT_PROFILE_IMAGE_SRC}
+                                alt=""
+                                className="h-9 w-9 shrink-0 rounded-full border border-border/50 object-cover"
+                                loading="lazy"
+                                onError={handleProfileImageError}
+                              />
+                              <div className="min-w-0">
+                                <p className="truncate text-base font-semibold text-strong">{post.authorName}</p>
+                                {post.postedInLabel ? <p className="truncate text-sm text-text-secondary">{post.postedInLabel}</p> : null}
+                              </div>
+                            </div>
+                            <p className="line-clamp-2 text-lg leading-snug font-medium text-text-primary">
+                              {post.content || post.title}
+                            </p>
                           </div>
                         </button>
                       ))}

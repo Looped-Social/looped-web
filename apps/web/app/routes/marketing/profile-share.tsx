@@ -1,15 +1,165 @@
 import type { Route } from "./+types/profile-share";
 import { ProfileSharePage } from "@/marketing/pages/ProfileSharePage/ProfileSharePage";
 
-export function meta({ params }: Route.MetaArgs) {
-  const raw = params.username?.trim() ?? "profile";
-  const normalized = raw.replace(/^@/, "").toLowerCase();
-  const username = normalized || "profile";
-  const canonicalUrl = `https://mylooped.app/u/${encodeURIComponent(username)}`;
-  const title = `Looped — @${username}`;
-  const description = `Check out @${username}'s public Looped profile. Sign in to follow, message, and interact.`;
-  const previewImageUrl = "https://mylooped.app/main-logo.svg";
-  const iosDeepLink = `looped://profile/${encodeURIComponent(username)}`;
+type ProfileShareMeta = {
+  title: string;
+  description: string;
+  canonicalUrl: string;
+  previewImageUrl: string;
+  iosDeepLink: string;
+};
+
+const APP_STORE_ID = "6758413180";
+const FALLBACK_IMAGE_URL = "https://mylooped.app/main-logo.svg";
+
+function normalizeSlug(raw: string | undefined): string {
+  const value = raw?.trim() ?? "";
+  const normalized = value.replace(/^@/, "").toLowerCase();
+  return normalized || "profile";
+}
+
+function pickString(source: Record<string, unknown>, keys: string[]): string | undefined {
+  for (const key of keys) {
+    const value = source[key];
+    if (typeof value !== "string") continue;
+    const trimmed = value.trim();
+    if (trimmed.length > 0) return trimmed;
+  }
+  return undefined;
+}
+
+function pickBoolean(source: Record<string, unknown>, keys: string[]): boolean | undefined {
+  for (const key of keys) {
+    const value = source[key];
+    if (typeof value === "boolean") return value;
+    if (typeof value === "number" && Number.isFinite(value)) return value !== 0;
+    if (typeof value === "string") {
+      const normalized = value.trim().toLowerCase();
+      if (normalized === "true" || normalized === "1") return true;
+      if (normalized === "false" || normalized === "0") return false;
+    }
+  }
+  return undefined;
+}
+
+function pickNumber(source: Record<string, unknown>, keys: string[]): number | undefined {
+  for (const key of keys) {
+    const value = source[key];
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+    if (typeof value === "string" && value.trim().length > 0) {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed)) return parsed;
+    }
+  }
+  return undefined;
+}
+
+function toAbsoluteUrl(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  try {
+    return new URL(value, "https://mylooped.app").toString();
+  } catch {
+    return undefined;
+  }
+}
+
+function truncate(value: string, maxLength: number): string {
+  if (value.length <= maxLength) return value;
+  return `${value.slice(0, maxLength - 1).trimEnd()}…`;
+}
+
+function sanitizeMetaText(value: string): string {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function buildFallbackMeta(username: string, origin: string): ProfileShareMeta {
+  const canonicalUrl = `${origin}/u/${encodeURIComponent(username)}`;
+  return {
+    title: `Looped — @${username}`,
+    description: `Check out @${username}'s public Looped profile.`,
+    canonicalUrl,
+    previewImageUrl: FALLBACK_IMAGE_URL,
+    iosDeepLink: `looped://profile/${encodeURIComponent(username)}`,
+  };
+}
+
+export async function loader({ params, request }: Route.LoaderArgs) {
+  const username = normalizeSlug(params.username);
+  const origin = new URL(request.url).origin;
+  const fallback = buildFallbackMeta(username, origin);
+
+  const rawApiBase = import.meta.env.VITE_API_BASE_URL;
+  if (typeof rawApiBase !== "string" || rawApiBase.trim().length === 0) {
+    return fallback;
+  }
+  const apiBase = rawApiBase.replace(/\/$/, "");
+
+  try {
+    const response = await fetch(`${apiBase}/v1/public/profiles/${encodeURIComponent(username)}`, {
+      headers: {
+        Accept: "application/json",
+      },
+    });
+    if (!response.ok) {
+      if (response.status === 404) {
+        return {
+          ...fallback,
+          title: "Looped — Profile Not Found",
+          description: "This shared profile could not be found.",
+        } satisfies ProfileShareMeta;
+      }
+      if (response.status === 410) {
+        return {
+          ...fallback,
+          title: "Looped — Profile Unavailable",
+          description: "This shared profile is unavailable.",
+        } satisfies ProfileShareMeta;
+      }
+      return fallback;
+    }
+
+    const payload = (await response.json()) as unknown;
+    if (typeof payload !== "object" || payload === null) return fallback;
+    const profile = payload as Record<string, unknown>;
+
+    const publicUsername = normalizeSlug(pickString(profile, ["username", "handle"]) ?? username);
+    const displayName = pickString(profile, ["display_name", "displayName", "name"]) ?? `@${publicUsername}`;
+    const bio = pickString(profile, ["bio", "about", "description"]);
+    const displayCommunity = pickString(profile, ["display_community_name", "displayCommunityName"]);
+    const displaySpecialization = pickString(profile, ["display_specialization_name", "displaySpecializationName"]);
+    const showFollowerCount = pickBoolean(profile, ["show_follower_count", "showFollowerCount"]) ?? true;
+    const followers = pickNumber(profile, ["followers_count", "followersCount"]) ?? 0;
+    const following = pickNumber(profile, ["following_count", "followingCount"]) ?? 0;
+
+    const detailLine =
+      displayCommunity && displaySpecialization
+        ? `${displaySpecialization} @ ${displayCommunity}`
+        : displayCommunity ?? displaySpecialization;
+    const countsLine = showFollowerCount ? `${followers} followers · ${following} following` : "";
+    const fallbackDescription = [detailLine, countsLine].filter(Boolean).join(" • ");
+    const baseDescription = bio ?? (fallbackDescription || `Check out ${displayName}'s public Looped profile.`);
+    const description = sanitizeMetaText(truncate(baseDescription, 180));
+
+    return {
+      title: `${displayName} (@${publicUsername}) | Looped`,
+      description,
+      canonicalUrl: `${origin}/u/${encodeURIComponent(publicUsername)}`,
+      previewImageUrl: toAbsoluteUrl(pickString(profile, ["profile_image_url", "profileImageUrl"])) ?? FALLBACK_IMAGE_URL,
+      iosDeepLink: `looped://profile/${encodeURIComponent(publicUsername)}`,
+    } satisfies ProfileShareMeta;
+  } catch {
+    return fallback;
+  }
+}
+
+export function meta({ params, data }: Route.MetaArgs) {
+  const username = normalizeSlug(params.username);
+  const shareMeta = (data as ProfileShareMeta | undefined) ?? buildFallbackMeta(username, "https://mylooped.app");
+  const title = shareMeta.title;
+  const description = shareMeta.description;
+  const canonicalUrl = shareMeta.canonicalUrl;
+  const previewImageUrl = shareMeta.previewImageUrl;
+  const iosDeepLink = shareMeta.iosDeepLink;
 
   return [
     { title },
@@ -17,6 +167,7 @@ export function meta({ params }: Route.MetaArgs) {
       name: "description",
       content: description,
     },
+    { tagName: "link", rel: "canonical", href: canonicalUrl },
     { property: "og:type", content: "profile" },
     { property: "og:site_name", content: "Looped" },
     { property: "og:title", content: title },
@@ -30,6 +181,7 @@ export function meta({ params }: Route.MetaArgs) {
     { property: "al:ios:app_name", content: "Looped" },
     { property: "al:ios:url", content: iosDeepLink },
     { property: "al:web:url", content: canonicalUrl },
+    { name: "apple-itunes-app", content: `app-id=${APP_STORE_ID}, app-argument=${canonicalUrl}` },
   ];
 }
 

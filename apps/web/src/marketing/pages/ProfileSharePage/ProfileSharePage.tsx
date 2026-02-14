@@ -709,12 +709,12 @@ export function ProfileSharePage({ username }: ProfileSharePageProps) {
       <Navbar />
 
       <main className="mx-auto w-full max-w-3xl pb-16 pt-4 sm:pt-6">
-        <div className="flex items-center gap-3 px-4 py-3 sm:px-5">
+        <div className="flex flex-col items-start gap-1 px-4 py-3 sm:flex-row sm:items-center sm:gap-3 sm:px-5">
           <p className="whitespace-nowrap text-[1.38rem] font-semibold leading-tight text-strong">Shared Profile</p>
           {sessionStatus !== "authenticated" ? (
             <Link
               to={`/login?next=${encodeURIComponent(sharePath)}`}
-              className="whitespace-nowrap text-[0.95rem] text-text-secondary underline-offset-2 transition hover:text-strong hover:underline"
+              className="text-[0.95rem] text-text-secondary underline-offset-2 transition hover:text-strong hover:underline"
             >
               <span className="underline decoration-current underline-offset-2">Sign in</span> to follow, message, and view full profile.
             </Link>
