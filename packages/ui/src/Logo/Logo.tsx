@@ -39,6 +39,7 @@ export function Logo({
   const { theme } = useTheme();
   const resolvedVariant = variant === 'auto' ? theme : variant;
   const logoSrc = resolvedVariant === 'dark' ? loopedLogoDark : loopedLogo;
+  const isAutoVariant = variant === 'auto';
   const preset = sizePresets[size];
   const imageClasses = imageClassName ?? preset.className;
   const imageStyle =
@@ -49,7 +50,25 @@ export function Logo({
       to={to}
       className={`inline-flex w-fit shrink-0 cursor-pointer items-center gap-0 text-text-primary no-underline transition-opacity duration-200 hover:opacity-80 ${className}`}
     >
-      <img src={logoSrc} alt="Looped" className={imageClasses} style={imageStyle} />
+      {isAutoVariant ? (
+        <>
+          <img
+            src={loopedLogo}
+            alt="Looped"
+            className={`${imageClasses} looped-logo-img-light`}
+            style={imageStyle}
+          />
+          <img
+            src={loopedLogoDark}
+            alt=""
+            aria-hidden="true"
+            className={`${imageClasses} looped-logo-img-dark`}
+            style={imageStyle}
+          />
+        </>
+      ) : (
+        <img src={logoSrc} alt="Looped" className={imageClasses} style={imageStyle} />
+      )}
     </Link>
   );
 }

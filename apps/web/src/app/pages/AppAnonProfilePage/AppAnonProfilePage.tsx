@@ -1,13 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 
-import { AppLayout, AppMobileHeader } from "@/app/components/AppLayout/AppLayout";
-import { MenuDots } from "@/app/components/AppIcons/AppIcons";
+import { AppLayout } from "@/app/components/AppLayout/AppLayout";
 import { useToast } from "@/app/components/AppToast/AppToast";
 import { PostCard, type PostData } from "@/app/components/PostCard/PostCard";
 import {
   AnonProfileApiError,
-  fetchAnonContent,
+  fetchAnonPosts,
   fetchAnonProfile,
   fetchAnonReposts,
   setAnonFollowing,
@@ -16,18 +15,16 @@ import { extractMediaAssetIds } from "@/lib/postMediaIds";
 import { normalizePostPoll } from "@/lib/postPoll";
 import { extractViewerCapabilitiesFromPost } from "@/lib/postViewerCapabilities";
 
-const DEFAULT_PROFILE_IMAGE_SRC = "/ios-icons/pfp2.svg";
-
 type AppAnonProfilePageProps = {
   anonProfileId: string;
 };
 
 type AnonProfileViewData = {
   id: string;
-  name: string;
-  bio: string;
-  yearsInLoop?: string;
-  memberLine?: string;
+  title: string;
+  handle: string;
+  primaryCommunityLine: string;
+  yearsInLoopLabel: string;
   showFollowerCount: boolean;
   followersCount: number;
   followingCount: number;
@@ -130,7 +127,52 @@ function formatTimeAgo(date: Date): string {
   return rtf.format(years, "year");
 }
 
+function stripAtPrefix(value: string): string {
+  return value.replace(/^@+/, "");
+}
+
+function CalendarIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+    >
+      <rect x="3" y="4" width="18" height="17" rx="2" />
+      <path d="M8 2v4" />
+      <path d="M16 2v4" />
+      <path d="M3 10h18" />
+    </svg>
+  );
+}
+
+function BriefcaseIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+    >
+      <rect x="2" y="7" width="20" height="14" rx="2" />
+      <path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2" />
+      <path d="M2 13h20" />
+    </svg>
+  );
+}
+
 function preferredDisplayName(value: unknown): string | undefined {
+  const inline = normalizeOptional(value);
+  if (inline) return inline;
   if (!isRecord(value)) return undefined;
   const shortName = normalizeOptional(value.short_name ?? value.shortName);
   const name = normalizeOptional(value.name);
@@ -277,16 +319,21 @@ function normalizeProfile(payload: unknown): AnonProfileViewData | null {
   const id = pickString(payload, ["id", "anon_profile_id", "anonProfileId"]);
   if (!id) return null;
 
+  const handle = normalizeOptional(payload.handle);
+  const username = normalizeOptional(payload.username);
+  const normalizedHandle = handle ? stripAtPrefix(handle) : undefined;
+  const normalizedUsername = username ? stripAtPrefix(username) : undefined;
+  const title = normalizedUsername ?? normalizedHandle ?? "Anonymous";
+  const handleLabel = normalizedHandle ?? normalizedUsername ?? "anonymous";
   const createdAt = asDate(payload.created_at ?? payload.createdAt);
-  const yearsInLoop =
-    createdAt === null ? undefined : `${Math.max(0, new Date().getFullYear() - createdAt.getFullYear())} year${Math.max(0, new Date().getFullYear() - createdAt.getFullYear()) === 1 ? "" : "s"} in the Loop`;
-  const bio = normalizeOptional(payload.bio) ?? "Anonymous profile";
+  const yearsInLoop = createdAt ? Math.max(0, new Date().getFullYear() - createdAt.getFullYear()) : 0;
+  const yearsInLoopLabel = `${yearsInLoop} year${yearsInLoop === 1 ? "" : "s"} in the Loop`;
 
   const displaySpecialization = preferredDisplayName(payload.display_specialization ?? payload.displaySpecialization);
   const displayCommunity = preferredDisplayName(payload.display_community ?? payload.displayCommunity);
-  const memberLine = displayCommunity
-    ? `${displaySpecialization ?? "Member"} @ ${displayCommunity}`
-    : displaySpecialization ?? undefined;
+  const primaryCommunityLine = displaySpecialization && displayCommunity
+    ? `${displaySpecialization} @ ${displayCommunity}`
+    : displaySpecialization ?? displayCommunity ?? "No primary community selected";
 
   const stats = isRecord(payload.stats) ? payload.stats : null;
   const followersCount =
@@ -297,7 +344,6 @@ function normalizeProfile(payload: unknown): AnonProfileViewData | null {
     (stats ? pickNumber(stats, ["following_count", "followingCount"]) : undefined) ??
     pickNumber(payload, ["following_count", "followingCount"]) ??
     0;
-
   const showFollowerCount =
     pickBoolean(payload, ["show_follower_count", "showFollowerCount"]) ??
     pickBoolean(stats ?? {}, ["show_follower_count", "showFollowerCount"]) ??
@@ -313,10 +359,10 @@ function normalizeProfile(payload: unknown): AnonProfileViewData | null {
 
   return {
     id,
-    name: "Anonymous",
-    bio,
-    yearsInLoop,
-    memberLine,
+    title,
+    handle: `@${handleLabel}`,
+    primaryCommunityLine,
+    yearsInLoopLabel,
     showFollowerCount,
     followersCount,
     followingCount,
@@ -332,7 +378,7 @@ export function AppAnonProfilePage({ anonProfileId }: AppAnonProfilePageProps) {
   const [profileStatus, setProfileStatus] = useState<"loading" | "idle" | "error">("loading");
   const [profileError, setProfileError] = useState<string | null>(null);
 
-  const [activeTabId, setActiveTabId] = useState<"content" | "reposts">("content");
+  const [activeTabId, setActiveTabId] = useState<"posts" | "reposts">("posts");
   const [posts, setPosts] = useState<PostData[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [postsStatus, setPostsStatus] = useState<"idle" | "loading" | "loading-more" | "error">("loading");
@@ -368,8 +414,8 @@ export function AppAnonProfilePage({ anonProfileId }: AppAnonProfilePageProps) {
 
       try {
         const response =
-          activeTabId === "content"
-            ? await fetchAnonContent({ anonProfileId, limit: 20, cursor, includePostPreview: true })
+          activeTabId === "posts"
+            ? await fetchAnonPosts({ anonProfileId, limit: 20, cursor })
             : await fetchAnonReposts({ anonProfileId, limit: 20, cursor });
 
         const normalized = (response.items ?? [])
@@ -382,8 +428,8 @@ export function AppAnonProfilePage({ anonProfileId }: AppAnonProfilePageProps) {
       } catch (error) {
         const parsed = parseApiError(error);
         const message = parsed.status === 404
-          ? activeTabId === "content"
-            ? "Anonymous content is unavailable."
+          ? activeTabId === "posts"
+            ? "Anonymous posts are unavailable."
             : "Anonymous reposts are unavailable."
           : parsed.message;
         setPostsStatus("error");
@@ -446,8 +492,8 @@ export function AppAnonProfilePage({ anonProfileId }: AppAnonProfilePageProps) {
     }
   }, [anonProfileId, isFollowLoading, isFollowing, profile, showToast]);
 
-  const emptyLabel = useMemo(() => (activeTabId === "content" ? "No content yet." : "No reposts yet."), [activeTabId]);
-  const loadingLabel = useMemo(() => (activeTabId === "content" ? "Loading content..." : "Loading reposts..."), [activeTabId]);
+  const emptyLabel = useMemo(() => (activeTabId === "posts" ? "No posts yet." : "No reposts yet."), [activeTabId]);
+  const loadingLabel = useMemo(() => (activeTabId === "posts" ? "Loading posts..." : "Loading reposts..."), [activeTabId]);
   const handleBackNavigation = useCallback(() => {
     if (typeof window !== "undefined" && window.history.length > 1) {
       navigate(-1);
@@ -458,8 +504,6 @@ export function AppAnonProfilePage({ anonProfileId }: AppAnonProfilePageProps) {
 
   return (
     <AppLayout activeNavId="">
-      <AppMobileHeader title="Anonymous" showAction={false} showBack backHref="/app" />
-
       {profileStatus === "loading" ? (
         <div className="space-y-3 bg-bg px-4 py-6">
           <div className="h-5 w-1/3 animate-pulse rounded-full bg-bg-muted" />
@@ -495,41 +539,51 @@ export function AppAnonProfilePage({ anonProfileId }: AppAnonProfilePageProps) {
               </span>
               <span>Back</span>
             </button>
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full bg-bg-muted text-text-secondary">
-                  <img src={DEFAULT_PROFILE_IMAGE_SRC} alt="" className="h-full w-full object-cover" loading="lazy" />
+            <div className="relative flex items-start justify-between gap-4">
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full bg-bg-muted">
+                  <span
+                    className="inline-block h-full w-full bg-secondary"
+                    style={{
+                      maskImage: "url('/ios-icons/pfp2.svg')",
+                      WebkitMaskImage: "url('/ios-icons/pfp2.svg')",
+                      maskRepeat: "no-repeat",
+                      WebkitMaskRepeat: "no-repeat",
+                      maskPosition: "center",
+                      WebkitMaskPosition: "center",
+                      maskSize: "cover",
+                      WebkitMaskSize: "cover",
+                    }}
+                    aria-hidden="true"
+                  />
                 </div>
-                <div>
-                  <p className="text-2xl font-semibold text-strong">{profile.name}</p>
-                  <p className="text-sm text-text-secondary">Anonymous profile</p>
+                <div className="min-w-0">
+                  <p className="truncate text-2xl font-semibold text-secondary">{profile.title}</p>
+                  <p className="truncate text-[1.1rem] text-text-secondary">{profile.handle}</p>
                 </div>
               </div>
-              <button
-                type="button"
-                className="flex h-9 w-9 items-center justify-center rounded-full border border-border/70 bg-bg text-text-secondary transition hover:text-strong"
-                aria-label="Profile options"
-              >
-                <MenuDots className="h-5 w-5" />
-              </button>
             </div>
 
-            {profile.bio ? <p className="mt-3 text-sm text-text-secondary">{profile.bio}</p> : null}
-
-            <div className="mt-4 space-y-2 text-sm text-text-secondary">
-              {profile.yearsInLoop ? <div>{profile.yearsInLoop}</div> : null}
-              {profile.memberLine ? <div>{profile.memberLine}</div> : null}
+            <div className="mt-3 space-y-1.5 text-[1.08rem] text-text-secondary">
+              <div className="flex items-center gap-2">
+                <CalendarIcon className="h-4 w-4" />
+                <span>{profile.yearsInLoopLabel}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <BriefcaseIcon className="h-4 w-4" />
+                <span>{profile.primaryCommunityLine}</span>
+              </div>
             </div>
 
             {profile.showFollowerCount ? (
-              <div className="mt-4 flex flex-wrap items-center gap-6 text-sm text-text-secondary">
-                <div className="flex items-center gap-1.5">
-                  <span className="font-semibold text-strong">{profile.followingCount}</span>
-                  <span>Following</span>
-                </div>
+              <div className="mt-3 flex flex-wrap items-center gap-6 text-[1.08rem] text-text-secondary">
                 <div className="flex items-center gap-1.5">
                   <span className="font-semibold text-strong">{profile.followersCount}</span>
                   <span>Followers</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="font-semibold text-strong">{profile.followingCount}</span>
+                  <span>Following</span>
                 </div>
               </div>
             ) : null}
@@ -540,8 +594,8 @@ export function AppAnonProfilePage({ anonProfileId }: AppAnonProfilePageProps) {
                   type="button"
                   className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
                     isFollowing
-                      ? "border border-border/70 bg-bg text-text-secondary hover:text-strong"
-                      : "bg-brand text-white hover:bg-brand-hover"
+                      ? "min-w-[150px] bg-bg-muted px-6 py-2.5 text-[1.02rem] text-text-secondary hover:text-strong"
+                      : "min-w-[150px] bg-brand px-6 py-2.5 text-[1.02rem] text-white hover:bg-brand-hover"
                   }`}
                   onClick={() => void handleFollowToggle()}
                   disabled={isFollowLoading}
@@ -552,17 +606,17 @@ export function AppAnonProfilePage({ anonProfileId }: AppAnonProfilePageProps) {
             ) : null}
           </div>
 
-          <div className="grid grid-cols-2 border-t border-border/70">
+          <div className="grid grid-cols-2">
             <button
               type="button"
-              onClick={() => setActiveTabId("content")}
+              onClick={() => setActiveTabId("posts")}
               className={`relative px-2 py-4 text-center text-sm transition ${
-                activeTabId === "content" ? "font-bold text-brand" : "font-medium text-text-secondary hover:text-strong"
+                activeTabId === "posts" ? "font-bold text-brand" : "font-medium text-text-secondary hover:text-strong"
               }`}
-              aria-current={activeTabId === "content" ? "page" : undefined}
+              aria-current={activeTabId === "posts" ? "page" : undefined}
             >
-              Content
-              {activeTabId === "content" ? (
+              Posts
+              {activeTabId === "posts" ? (
                 <span className="absolute bottom-0 left-1/2 h-0.5 w-16 -translate-x-1/2 bg-brand" />
               ) : null}
             </button>

@@ -3,6 +3,8 @@ import { Link } from "react-router";
 
 import { Logo, ThemeToggle } from "@looped/ui";
 
+const APP_STORE_URL = "https://apps.apple.com/us/app/looped-social/id6758413180";
+
 const finePrintLinks = [
   { label: "Content Policy", to: "/community-rules" },
   { label: "Privacy Policy", to: "/privacy-policy" },
@@ -113,12 +115,14 @@ export function Navbar() {
           <Link className="text-[0.95rem] font-normal text-text-primary transition hover:text-strong" to="/login">
             Log in
           </Link>
-          <Link
-            to="/login"
+          <a
+            href={APP_STORE_URL}
+            target="_blank"
+            rel="noopener noreferrer"
             className="inline-flex items-center justify-center rounded-md bg-brand px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:-translate-y-px hover:bg-brand/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand/80"
           >
             Get Looped
-          </Link>
+          </a>
         </div>
 
         <button
@@ -240,13 +244,15 @@ export function Navbar() {
               >
                 Log in
               </Link>
-              <Link
-                to="/login"
+              <a
+                href={APP_STORE_URL}
+                target="_blank"
+                rel="noopener noreferrer"
                 className="block rounded-full bg-brand px-4 py-3 text-center text-sm font-semibold text-white shadow-sm transition hover:-translate-y-px hover:bg-brand/90"
                 onClick={() => setIsMobileOpen(false)}
               >
                 Get Looped
-              </Link>
+              </a>
             </div>
           </div>
         </div>

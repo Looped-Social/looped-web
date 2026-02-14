@@ -1,9 +1,11 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router';
 
 import { Logo } from '@looped/ui';
 
 import { MenuDots, ProfileIcon } from '@/app/components/AppIcons/AppIcons';
+import { useUserSession } from '@/hooks/useUserSession';
+import { loginStatusFromAuthGateCode } from '@/lib/apiBase';
 import { useCurrentUserStore } from '@/stores/currentUserStore';
 
 const DEFAULT_PROFILE_IMAGE_SRC = '/ios-icons/pfp2.svg';
@@ -178,8 +180,10 @@ function NavMaskIcon({
 }
 
 export function AppLayout({ activeNavId = 'home', children, rightRail }: AppLayoutProps) {
+  const navigate = useNavigate();
   const location = useLocation();
-  const { user } = useCurrentUserStore({ autoLoad: true });
+  const { status: sessionStatus, accessState, authGateCode } = useUserSession();
+  const { user } = useCurrentUserStore({ autoLoad: accessState === 'active' });
   const profileImageUrl = user?.profileImageUrl;
   const [expandedRailSectionId, setExpandedRailSectionId] = useState<string | null>(null);
   const pathname = location.pathname;
@@ -187,6 +191,31 @@ export function AppLayout({ activeNavId = 'home', children, rightRail }: AppLayo
   const hideMobileBottomNav =
     /^\/app\/post\/[^/]+\/comments$/.test(pathname) ||
     /^\/app\/messages\/(conversation|channel)\/[^/]+$/.test(pathname);
+
+  useEffect(() => {
+    if (sessionStatus === 'loading' || sessionStatus === 'checking') return;
+    if (accessState === 'active') return;
+
+    const nextPath = `${location.pathname}${location.search}${location.hash}`;
+    const params = new URLSearchParams();
+    if (nextPath.startsWith('/app')) {
+      params.set('next', nextPath);
+    }
+    if (authGateCode) {
+      params.set('status', loginStatusFromAuthGateCode(authGateCode));
+    }
+
+    const query = params.toString();
+    navigate(query ? `/login?${query}` : '/login', { replace: true });
+  }, [accessState, authGateCode, location.hash, location.pathname, location.search, navigate, sessionStatus]);
+
+  if (accessState !== 'active') {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-shell-bg px-4 text-sm font-medium text-text-secondary">
+        Verifying account access...
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-shell-bg">

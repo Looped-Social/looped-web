@@ -13,6 +13,11 @@ function getPreferredTheme(): Theme {
   return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
+function getThemeFromDocument(): Theme | null {
+  if (typeof document === "undefined") return null;
+  return document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light";
+}
+
 function isTheme(value: unknown): value is Theme {
   return value === "light" || value === "dark";
 }
@@ -28,7 +33,7 @@ export function useTheme() {
     if (isThemePreference(stored)) return stored;
     return "system";
   });
-  const [systemTheme, setSystemTheme] = useState<Theme>(() => getPreferredTheme());
+  const [systemTheme, setSystemTheme] = useState<Theme>(() => getThemeFromDocument() ?? getPreferredTheme());
   const theme: Theme = preference === "system" ? systemTheme : preference;
 
   // Apply resolved theme to root element.

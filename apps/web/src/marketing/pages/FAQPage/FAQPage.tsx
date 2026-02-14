@@ -83,7 +83,7 @@ const faqs: FAQItemProps[] = [
     id: "how-do-i-download-looped",
     question: "How do I download Looped?",
     answer:
-      "You can download Looped from the App Store on your iPhone. Search for \"Looped\" or tap the download button on our homepage.",
+      "You can download Looped Social from the App Store on your iPhone. Search for \"Looped Social\" or tap any Download on the App Store button on our site.",
   },
   {
     id: "can-i-join-multiple-communities",

@@ -1,4 +1,4 @@
-import { ApiError, getApiBase } from "./apiBase";
+import { ApiError, getApiBase, notifyAuthGateFromHttpError } from "./apiBase";
 import { getFirebaseIdToken } from "./firebaseClient";
 
 export type NormalizedApiError = {
@@ -95,7 +95,16 @@ async function parseSuccessPayload<T>(response: Response): Promise<T> {
   if (response.status === 204) return {} as T;
   const text = await response.text();
   if (!text.trim()) return {} as T;
-  return JSON.parse(text) as T;
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new SettingsApiError({
+      status: response.status,
+      code: "invalid_response",
+      message: "Unexpected server response.",
+      details: text,
+    });
+  }
 }
 
 function defaultRetryCount(method: string): number {
@@ -161,6 +170,7 @@ export async function settingsAuthFetch<T>(
       await sleep(200 * attempt);
       continue;
     }
+    notifyAuthGateFromHttpError({ status: response.status, details, source: "settingsHttp" });
 
     throw new SettingsApiError({
       status: response.status,

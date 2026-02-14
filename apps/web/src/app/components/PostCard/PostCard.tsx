@@ -397,6 +397,11 @@ export function PostCard({ post }: PostCardProps) {
         : `/app/post/${post.id}/comments`,
     [location.pathname, post.id]
   );
+  const sharePath = useMemo(() => `/p/${encodeURIComponent(post.id)}`, [post.id]);
+  const shareUrl = useMemo(() => {
+    if (typeof window === "undefined") return `https://mylooped.app${sharePath}`;
+    return `${window.location.origin}${sharePath}`;
+  }, [sharePath]);
   const mediaAssetIdsKey = (post.mediaAssetIds ?? []).join(",");
 
   useEffect(() => {
@@ -535,9 +540,9 @@ export function PostCard({ post }: PostCardProps) {
 
   const canVote = effectiveCapabilities ? effectiveCapabilities.canVote : !isReactionLocked;
   const canLike = effectiveCapabilities ? effectiveCapabilities.canLike : !isReactionLocked;
-  const canRepost = effectiveCapabilities ? effectiveCapabilities.canRepost : !isReactionLocked;
+  const canRepost = true;
   const canSave = effectiveCapabilities ? effectiveCapabilities.canSave : !isReactionLocked;
-  const canShare = effectiveCapabilities ? effectiveCapabilities.canInteract : !isReactionLocked;
+  const canShare = true;
 
   const pollIsOpen = pollState ? isPollOpen(pollState) : false;
   const isPollVotingGated = Boolean(pollState) && (!canVote || isReactionLocked);
@@ -754,22 +759,51 @@ export function PostCard({ post }: PostCardProps) {
       return;
     }
 
-    const previousCount = shareCount;
-    setShareCount((count) => count + 1);
     setIsShareLoading(true);
 
     try {
+      const trimmedContent = post.content.trim();
+      const shareSnippet =
+        trimmedContent.length > 0
+          ? trimmedContent.length > 120
+            ? `${trimmedContent.slice(0, 117)}...`
+            : trimmedContent
+          : "";
+
+      if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
+        await navigator.share({
+          title: "Check out this post on Looped",
+          text: shareSnippet ? `Check out this post on Looped: ${shareSnippet}` : "Check out this post on Looped.",
+          url: shareUrl,
+        });
+      } else if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(shareUrl);
+        showToast({
+          title: "Post link copied",
+          message: shareUrl,
+        });
+      } else {
+        showToast({
+          title: "Share unavailable",
+          message: shareUrl,
+          tone: "error",
+        });
+        return;
+      }
+
       const response = await sharePost(post.id);
       if (response.shareCount !== undefined) {
         setShareCount(response.shareCount);
+      } else {
+        setShareCount((count) => count + 1);
       }
     } catch (error) {
-      setShareCount(previousCount);
+      if (error instanceof DOMException && error.name === "AbortError") return;
 
       if (error instanceof PostActionsApiError) {
         const parsed = parseApiError(error.details);
         showToast({
-          title: titleForWriteError(parsed.error, "Couldn't share"),
+          title: "Shared, but counter update failed",
           message: parsed.message ?? messageForWriteError(parsed.error),
           tone: "error",
         });
@@ -1210,7 +1244,16 @@ export function PostCard({ post }: PostCardProps) {
                 {post.subtitle ? (
                   <>
                     <span className="shrink-0 text-[1.08rem] leading-none text-text-light">·</span>
-                    <p className="min-w-0 flex-1 truncate text-[1.03rem] text-text-secondary">{post.subtitle}</p>
+                    {communityHref ? (
+                      <Link
+                        to={communityHref}
+                        className="min-w-0 flex-1 truncate text-[1.03rem] text-text-secondary transition hover:text-strong"
+                      >
+                        {post.subtitle}
+                      </Link>
+                    ) : (
+                      <p className="min-w-0 flex-1 truncate text-[1.03rem] text-text-secondary">{post.subtitle}</p>
+                    )}
                   </>
                 ) : null}
               </div>

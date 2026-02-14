@@ -1,4 +1,4 @@
-import { ApiError, getApiBase } from "./apiBase";
+import { ApiError, getApiBase, notifyAuthGateFromHttpError } from "./apiBase";
 import { getFirebaseIdToken } from "./firebaseClient";
 
 export type CommunityRequestPayload = {
@@ -40,6 +40,7 @@ async function authFetch<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (!response.ok) {
     const details = await response.text();
+    notifyAuthGateFromHttpError({ status: response.status, details, source: "communityApi" });
     throw new CommunityApiError(response.status, details || "Request failed.", details);
   }
 

@@ -6,6 +6,7 @@ import { PageShell } from "@/marketing/components/PageShell/PageShell";
 import { LoginCard } from "@/marketing/components/Auth/LoginCard";
 import { AuthCard } from "@/marketing/components/Auth/AuthCard";
 import { useUserSession } from "@/hooks/useUserSession";
+import { loginStatusFromAuthGateCode } from "@/lib/apiBase";
 import { getFirebaseErrorMessage, sendPasswordReset } from "@/lib/firebaseClient";
 
 function resolvePostSignInDestination(rawSearch: string): string {
@@ -25,17 +26,25 @@ function resolvePostSignInDestination(rawSearch: string): string {
   return next;
 }
 
-function resolveStatusMessage(rawSearch: string): string | null {
+type LoginStatusCode = "delete-pending" | "onboarding-required" | "account-deleted";
+
+function resolveStatusCode(rawSearch: string): LoginStatusCode | null {
   const params = new URLSearchParams(rawSearch);
   const status = params.get("status");
-  if (status === "delete-pending") {
-    return "Your account deletion is in progress. You have been signed out.";
+  if (status === "delete-pending" || status === "onboarding-required" || status === "account-deleted") {
+    return status;
   }
   return null;
 }
 
+function resolveStatusMessage(statusCode: LoginStatusCode | null): string | null {
+  if (statusCode === "delete-pending") return "Your account deletion is in progress. You have been signed out.";
+  return null;
+}
+
 export function LoginPage() {
-  const { status, user, error, signIn, signInWithGoogle, signInWithApple, signOut } = useUserSession();
+  const { status, user, error, signIn, signInWithGoogle, signInWithApple, signOut, authGateCode, accessState, onboardingStep } =
+    useUserSession();
   const navigate = useNavigate();
   const location = useLocation();
   const isBusy = status === "checking";
@@ -45,7 +54,14 @@ export function LoginPage() {
     () => resolvePostSignInDestination(location.search),
     [location.search]
   );
-  const statusMessage = useMemo(() => resolveStatusMessage(location.search), [location.search]);
+  const statusCode = useMemo(() => resolveStatusCode(location.search), [location.search]);
+  const statusMessage = useMemo(() => resolveStatusMessage(statusCode), [statusCode]);
+
+  const gateStatusCode = authGateCode ? loginStatusFromAuthGateCode(authGateCode) : null;
+  const effectiveStatusCode = gateStatusCode ?? statusCode;
+  const isOnboardingBlocked = effectiveStatusCode === "onboarding-required" || accessState === "signed_in_blocked";
+  const isDeletedBlocked = effectiveStatusCode === "account-deleted" || accessState === "deleted";
+  const shouldShowBlockingCard = status !== "authenticated" && (isOnboardingBlocked || isDeletedBlocked);
 
   useEffect(() => {
     if (status === "authenticated") {
@@ -133,17 +149,58 @@ export function LoginPage() {
                   {statusMessage}
                 </div>
               ) : null}
-              <LoginCard
-                onSubmit={signIn}
-                onGoogle={signInWithGoogle}
-                onApple={signInWithApple}
-                onForgotPassword={handleForgotPassword}
-                error={error}
-                resetMessage={resetMessage}
-                resetTone={resetTone}
-                note="No web sign-up. Create your account in the Looped iOS app first, then sign in here."
-                isBusy={isBusy || status === "loading"}
-              />
+              {shouldShowBlockingCard ? (
+                <AuthCard
+                  title={isDeletedBlocked ? "Account unavailable" : "Finish account setup on iOS"}
+                  description={
+                    isDeletedBlocked
+                      ? "This account was deleted. If this is unexpected, contact support."
+                      : "Finish account setup in the Looped iOS app before using web."
+                  }
+                >
+                  <div className="space-y-4">
+                    {!isDeletedBlocked ? (
+                      <div className="rounded-lg border border-border bg-bg-muted px-4 py-3 text-sm text-text-secondary">
+                        Finish account setup on iOS to continue.
+                        {onboardingStep ? ` Current step: ${onboardingStep}.` : ""}
+                      </div>
+                    ) : (
+                      <div className="rounded-lg border border-border bg-bg-muted px-4 py-3 text-sm text-text-secondary">
+                        This account is marked as deleted.
+                      </div>
+                    )}
+
+                    <div className="space-y-3">
+                      {!isDeletedBlocked ? <AppStoreButton size={5.5} /> : null}
+                      <Link
+                        to={isDeletedBlocked ? "/contact" : "/faq"}
+                        className="inline-flex w-full items-center justify-center rounded-lg border border-border px-4 py-2.5 text-sm font-semibold text-text-primary transition hover:bg-bg-muted"
+                      >
+                        {isDeletedBlocked ? "Contact support" : "Need help?"}
+                      </Link>
+                      <Link
+                        to="/login"
+                        replace
+                        className="inline-flex w-full items-center justify-center rounded-lg border border-border px-4 py-2.5 text-sm font-semibold text-text-primary transition hover:bg-bg-muted"
+                      >
+                        Use a different account
+                      </Link>
+                    </div>
+                  </div>
+                </AuthCard>
+              ) : (
+                <LoginCard
+                  onSubmit={signIn}
+                  onGoogle={signInWithGoogle}
+                  onApple={signInWithApple}
+                  onForgotPassword={handleForgotPassword}
+                  error={error}
+                  resetMessage={resetMessage}
+                  resetTone={resetTone}
+                  note="No web sign-up. Create your account in the Looped iOS app first, then sign in here."
+                  isBusy={isBusy || status === "loading"}
+                />
+              )}
             </div>
           )}
         </div>

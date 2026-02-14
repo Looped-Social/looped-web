@@ -1,4 +1,4 @@
-import { ApiError, getApiBase } from "./apiBase";
+import { ApiError, getApiBase, notifyAuthGateFromHttpError } from "./apiBase";
 import { getFirebaseIdToken } from "./firebaseClient";
 
 export class NotificationsApiError extends ApiError {}
@@ -83,6 +83,7 @@ async function authFetch<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (!response.ok) {
     const details = await response.text();
+    notifyAuthGateFromHttpError({ status: response.status, details, source: "notificationsApi" });
     throw new NotificationsApiError(response.status, details || "Request failed.", details);
   }
 

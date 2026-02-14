@@ -3,6 +3,8 @@ import { Link } from "react-router";
 import { AppStoreButton } from "../AppStoreButton/AppStoreButton";
 import { LoopedMoto, LoopedMotoDark, useTheme } from "@looped/ui";
 
+const APP_STORE_URL = "https://apps.apple.com/us/app/looped-social/id6758413180";
+
 export function Footer() {
   const { theme } = useTheme();
   const currentYear = new Date().getFullYear();
@@ -46,7 +48,7 @@ export function Footer() {
                 </Link>
               </li>
               <li>
-                <a className="transition hover:text-strong" href="#download">
+                <a className="transition hover:text-strong" href={APP_STORE_URL} target="_blank" rel="noreferrer">
                   Download
                 </a>
               </li>

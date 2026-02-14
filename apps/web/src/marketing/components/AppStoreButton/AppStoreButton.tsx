@@ -1,6 +1,8 @@
 import appStoreDark from "@/assets/images/download-app-store-black.svg";
 import appStoreLight from "@/assets/images/download-app-store-white.svg";
 
+const APP_STORE_URL = "https://apps.apple.com/us/app/looped-social/id6758413180";
+
 type AppStoreButtonProps = {
   size?: number;
   className?: string;
@@ -11,7 +13,10 @@ export function AppStoreButton({ size = 6, className = "" }: AppStoreButtonProps
 
   return (
     <a
-      href="#download"
+      href={APP_STORE_URL}
+      target="_blank"
+      rel="noreferrer"
+      aria-label="Download Looped Social on the App Store"
       className={`inline-block transition-opacity duration-150 hover:opacity-80 ${className}`}
       style={{ height: dimension }}
     >

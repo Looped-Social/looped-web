@@ -1,4 +1,4 @@
-import { ApiError, getApiBase } from "./apiBase";
+import { ApiError, getApiBase, notifyAuthGateFromHttpError } from "./apiBase";
 import { getFirebaseIdToken } from "./firebaseClient";
 
 export class PostActionsApiError extends ApiError {}
@@ -76,6 +76,7 @@ async function authFetch<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (!response.ok) {
     const details = await response.text();
+    notifyAuthGateFromHttpError({ status: response.status, details, source: "postActionsApi" });
     throw new PostActionsApiError(response.status, details || "Request failed.", details);
   }
 
@@ -171,7 +172,7 @@ export async function reportEntity({
   targetId,
   reason,
 }: {
-  targetType: "post" | "user";
+  targetType: "post" | "user" | "comment";
   targetId: string | number;
   reason: string;
 }): Promise<{ id?: string }> {

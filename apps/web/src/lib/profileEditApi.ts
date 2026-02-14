@@ -1,4 +1,4 @@
-import { ApiError, getApiBase } from "./apiBase";
+import { ApiError, getApiBase, notifyAuthGateFromHttpError } from "./apiBase";
 import { getFirebaseIdToken } from "./firebaseClient";
 import { completeMediaUpload, presignMediaUpload, uploadFileWithPresign } from "./mediaApi";
 
@@ -79,6 +79,7 @@ async function authFetch<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (!response.ok) {
     const details = await response.text();
+    notifyAuthGateFromHttpError({ status: response.status, details, source: "profileEditApi" });
     throw new ProfileEditApiError(response.status, details || "Request failed.", details);
   }
 

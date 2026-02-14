@@ -14,6 +14,7 @@ const VOLUME_ICON_SRC = "/video-icons/volume-one.svg";
 const PLAY_ICON_SRC = "/video-icons/play-button.svg";
 const PAUSE_ICON_SRC = "/video-icons/pause-button.svg";
 const MINIMIZE_ICON_SRC = "/video-icons/minizmize.svg";
+const REWATCH_ICON_SRC = "/video-icons/rewatch.svg";
 
 function isVideo(asset: ResolvedMediaAsset): boolean {
   if (asset.mimeType?.toLowerCase().startsWith("video/")) return true;
@@ -151,6 +152,7 @@ export function PostMediaGrid({ attachments, className, viewerHeader, viewerFoot
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
   const [viewerMuted, setViewerMuted] = useState(true);
   const [viewerPlaying, setViewerPlaying] = useState(true);
+  const [viewerEnded, setViewerEnded] = useState(false);
   const [viewerCurrentTime, setViewerCurrentTime] = useState(0);
   const [viewerDuration, setViewerDuration] = useState(0);
   const viewerVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -162,6 +164,7 @@ export function PostMediaGrid({ attachments, className, viewerHeader, viewerFoot
     if (!viewerAsset || !viewerIsVideo) return;
     setViewerMuted(true);
     setViewerPlaying(true);
+    setViewerEnded(false);
     setViewerCurrentTime(0);
     setViewerDuration(0);
   }, [viewerAsset, viewerIsVideo]);
@@ -184,6 +187,7 @@ export function PostMediaGrid({ attachments, className, viewerHeader, viewerFoot
           setViewerPlaying(false);
         });
       }
+      setViewerEnded(false);
       return;
     }
     node.pause();
@@ -192,6 +196,7 @@ export function PostMediaGrid({ attachments, className, viewerHeader, viewerFoot
   const closeViewer = () => {
     setViewerIndex(null);
     setViewerPlaying(false);
+    setViewerEnded(false);
     setViewerCurrentTime(0);
     setViewerDuration(0);
   };
@@ -199,6 +204,7 @@ export function PostMediaGrid({ attachments, className, viewerHeader, viewerFoot
   const openViewerAt = (index: number) => {
     setViewerIndex(index);
     setViewerPlaying(true);
+    setViewerEnded(false);
   };
 
   const handleSeek = (nextValue: number) => {
@@ -206,6 +212,24 @@ export function PostMediaGrid({ attachments, className, viewerHeader, viewerFoot
     if (!node) return;
     node.currentTime = nextValue;
     setViewerCurrentTime(nextValue);
+    if (viewerDuration > 0 && nextValue < viewerDuration) {
+      setViewerEnded(false);
+    }
+  };
+
+  const handleReplay = () => {
+    const node = viewerVideoRef.current;
+    if (!node) return;
+    node.currentTime = 0;
+    setViewerCurrentTime(0);
+    setViewerEnded(false);
+    setViewerPlaying(true);
+    const playResult = node.play();
+    if (playResult && typeof playResult.catch === "function") {
+      playResult.catch(() => {
+        setViewerPlaying(false);
+      });
+    }
   };
 
   if (media.length === 0) return null;
@@ -250,36 +274,61 @@ export function PostMediaGrid({ attachments, className, viewerHeader, viewerFoot
               <button
                 type="button"
                 onClick={closeViewer}
-                className="ml-4 inline-flex h-9 w-9 items-center justify-center rounded-full bg-black/40 transition hover:bg-black/55"
+                className="ml-4 inline-flex h-9 w-9 items-center justify-center rounded-full bg-black/10 transition hover:bg-black/20 dark:bg-white/10 dark:hover:bg-white/20"
                 aria-label="Close media"
               >
-                <img src={MINIMIZE_ICON_SRC} alt="" className="h-5 w-5 object-contain" loading="lazy" />
+                <img src={MINIMIZE_ICON_SRC} alt="" className="h-5 w-5 object-contain invert dark:invert-0" loading="lazy" />
               </button>
             </div>
 
             <div className="flex min-h-0 flex-1 items-center justify-center px-2 pb-2 pt-1">
               {viewerIsVideo ? (
-                <video
-                  ref={viewerVideoRef}
-                  src={viewerAsset.cdnUrl}
-                  poster={viewerAsset.thumbnailUrl ?? viewerAsset.cdnUrl}
-                  playsInline
-                  autoPlay
-                  muted={viewerMuted}
-                  className="h-full max-h-full w-full max-w-[640px] object-contain"
-                  onLoadedMetadata={(event) => {
-                    setViewerDuration(event.currentTarget.duration || 0);
-                    setViewerCurrentTime(event.currentTarget.currentTime || 0);
-                  }}
-                  onTimeUpdate={(event) => {
-                    setViewerCurrentTime(event.currentTarget.currentTime || 0);
-                    setViewerDuration(event.currentTarget.duration || 0);
-                  }}
-                  onPlay={() => setViewerPlaying(true)}
-                  onPause={() => setViewerPlaying(false)}
-                  onEnded={() => setViewerPlaying(false)}
-                  onClick={() => setViewerPlaying((value) => !value)}
-                />
+                <div className="relative h-full w-full max-w-[640px]">
+                  <video
+                    ref={viewerVideoRef}
+                    src={viewerAsset.cdnUrl}
+                    poster={viewerAsset.thumbnailUrl ?? viewerAsset.cdnUrl}
+                    playsInline
+                    autoPlay
+                    muted={viewerMuted}
+                    className="h-full max-h-full w-full object-contain"
+                    onLoadedMetadata={(event) => {
+                      setViewerDuration(event.currentTarget.duration || 0);
+                      setViewerCurrentTime(event.currentTarget.currentTime || 0);
+                    }}
+                    onTimeUpdate={(event) => {
+                      setViewerCurrentTime(event.currentTarget.currentTime || 0);
+                      setViewerDuration(event.currentTarget.duration || 0);
+                    }}
+                    onPlay={() => {
+                      setViewerPlaying(true);
+                      setViewerEnded(false);
+                    }}
+                    onPause={() => setViewerPlaying(false)}
+                    onEnded={() => {
+                      setViewerPlaying(false);
+                      setViewerEnded(true);
+                    }}
+                    onClick={() => setViewerPlaying((value) => !value)}
+                  />
+                  {viewerEnded ? (
+                    <button
+                      type="button"
+                      onClick={handleReplay}
+                      className="absolute inset-0 z-10 flex items-center justify-center bg-black/22"
+                      aria-label="Replay video"
+                    >
+                      <span className="inline-flex h-24 w-24 items-center justify-center rounded-full bg-white/80 shadow-lg dark:bg-black/55">
+                        <img
+                          src={REWATCH_ICON_SRC}
+                          alt=""
+                          className="h-12 w-12 object-contain invert dark:invert-0"
+                          loading="lazy"
+                        />
+                      </span>
+                    </button>
+                  ) : null}
+                </div>
               ) : (
                 <img
                   src={viewerAsset.cdnUrl}
@@ -295,13 +344,13 @@ export function PostMediaGrid({ attachments, className, viewerHeader, viewerFoot
                   <button
                     type="button"
                     onClick={() => setViewerPlaying((value) => !value)}
-                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white transition hover:bg-white/10"
+                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-strong transition hover:bg-black/10 dark:text-white dark:hover:bg-white/10"
                     aria-label={viewerPlaying ? "Pause video" : "Play video"}
                   >
                     <img
                       src={viewerPlaying ? PAUSE_ICON_SRC : PLAY_ICON_SRC}
                       alt=""
-                      className="h-5 w-5 object-contain"
+                      className="h-5 w-5 object-contain invert dark:invert-0"
                       loading="lazy"
                     />
                   </button>
@@ -313,24 +362,24 @@ export function PostMediaGrid({ attachments, className, viewerHeader, viewerFoot
                     step={0.1}
                     value={Math.min(viewerCurrentTime, Math.max(viewerDuration, 0.01))}
                     onChange={(event) => handleSeek(Number(event.currentTarget.value))}
-                    className="h-1.5 w-full cursor-pointer accent-white"
+                    className="h-1.5 w-full cursor-pointer accent-black dark:accent-white"
                     aria-label="Seek video"
                   />
 
-                  <span className="min-w-[110px] text-right text-[21px] font-medium tabular-nums text-white">
+                  <span className="min-w-[110px] text-right text-[21px] font-medium tabular-nums text-strong dark:text-white">
                     {formatClock(viewerCurrentTime)}/{formatClock(viewerDuration)}
                   </span>
 
                   <button
                     type="button"
                     onClick={() => setViewerMuted((value) => !value)}
-                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white transition hover:bg-white/10"
+                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-strong transition hover:bg-black/10 dark:text-white dark:hover:bg-white/10"
                     aria-label={viewerMuted ? "Unmute video" : "Mute video"}
                   >
                     <img
                       src={viewerMuted ? MUTE_ICON_SRC : VOLUME_ICON_SRC}
                       alt=""
-                      className="h-5 w-5 object-contain"
+                      className="h-5 w-5 object-contain invert dark:invert-0"
                       loading="lazy"
                     />
                   </button>

@@ -16,9 +16,19 @@ import {
 import { getCommunityPermissions, type CommunityPermissions } from "@/lib/communityPermissionsApi";
 import { type ResolvedMediaAsset, resolveMediaAssets } from "@/lib/mediaApi";
 import { extractMediaAssetIds } from "@/lib/postMediaIds";
+import { PostActionsApiError, reportEntity } from "@/lib/postActionsApi";
 import { useCurrentUserStore } from "@/stores/currentUserStore";
 
 const DEFAULT_PROFILE_IMAGE_SRC = "/ios-icons/pfp2.svg";
+const REPORT_REASON_OPTIONS = [
+  "Spam",
+  "Bullying or Harassment",
+  "Nudity or Pornography",
+  "Hate Speech",
+  "Self-harm or Suicide",
+  "Violence or Gore",
+  "Something Else",
+] as const;
 
 function handleProfileImageError(event: SyntheticEvent<HTMLImageElement>) {
   const image = event.currentTarget;
@@ -255,7 +265,7 @@ function normalizePostDetail(payload: unknown): PostSummary | null {
     (author ? pickString(author, ["id", "user_id", "userId"]) : undefined);
   const anonProfileId =
     pickString(payload, ["anon_profile_id", "anonProfileId", "author_anon_profile_id", "authorAnonProfileId"]) ??
-    (author ? pickString(author, ["anon_profile_id", "anonProfileId", "id"]) : undefined);
+    (author ? pickString(author, ["anon_profile_id", "anonProfileId"]) : undefined);
 
   const createdRaw = pickString(payload, ["created_at", "createdAt", "timestamp", "created"]);
   const compact = formatCompactTimeAgo(createdRaw);
@@ -446,6 +456,39 @@ function ArrowUpIcon({ className }: { className?: string }) {
   );
 }
 
+function MoreHorizontalIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      className={className}
+      aria-hidden="true"
+    >
+      <circle cx="5" cy="12" r="1.75" />
+      <circle cx="12" cy="12" r="1.75" />
+      <circle cx="19" cy="12" r="1.75" />
+    </svg>
+  );
+}
+
+function CloseIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+    >
+      <path d="M18 6L6 18" />
+      <path d="M6 6l12 12" />
+    </svg>
+  );
+}
+
 function Avatar({
   src,
   alt,
@@ -514,6 +557,10 @@ export function AppPostCommentsPage({ postId, overlayMode = false, onRequestClos
   const [permissionsStatus, setPermissionsStatus] = useState<"idle" | "loading" | "ready">("idle");
   const [permissionsError, setPermissionsError] = useState(false);
   const [platformVerified, setPlatformVerified] = useState<boolean | null>(null);
+  const [reportTarget, setReportTarget] = useState<CommentView | null>(null);
+  const [reportReason, setReportReason] = useState<(typeof REPORT_REASON_OPTIONS)[number]>("Spam");
+  const [reportCustomReason, setReportCustomReason] = useState("");
+  const [isReportSubmitting, setIsReportSubmitting] = useState(false);
 
   const loadPostDetail = useCallback(async () => {
     setPostStatus("loading");
@@ -626,6 +673,10 @@ export function AppPostCommentsPage({ postId, overlayMode = false, onRequestClos
     setNextCursor(null);
     setReplyTarget(null);
     setComposerText("");
+    setReportTarget(null);
+    setReportReason("Spam");
+    setReportCustomReason("");
+    setIsReportSubmitting(false);
     void loadPostDetail();
     void loadComments({ replace: true });
   }, [loadComments, loadPostDetail]);
@@ -942,6 +993,94 @@ export function AppPostCommentsPage({ postId, overlayMode = false, onRequestClos
     }, 0);
   }, [getInteractionBlocker, showToast]);
 
+  const closeReportDialog = useCallback(() => {
+    if (isReportSubmitting) return;
+    setReportTarget(null);
+    setReportReason("Spam");
+    setReportCustomReason("");
+  }, [isReportSubmitting]);
+
+  const handleReportClick = useCallback(
+    (comment: CommentView) => {
+      if (currentUserStatus === "loading" || currentUserStatus === "idle") {
+        showToast({
+          title: "Checking account",
+          message: "Please wait a moment and try again.",
+          tone: "error",
+        });
+        return;
+      }
+
+      if (!user) {
+        showToast({
+          title: "Sign in required",
+          message: "Sign in to report comments.",
+          tone: "error",
+        });
+        return;
+      }
+
+      setReportTarget(comment);
+      setReportReason("Spam");
+      setReportCustomReason("");
+    },
+    [currentUserStatus, showToast, user]
+  );
+
+  const resolveReportReason = useCallback((): string | null => {
+    if (reportReason === "Something Else") {
+      const custom = reportCustomReason.trim();
+      return custom.length > 0 ? custom : null;
+    }
+    return reportReason;
+  }, [reportCustomReason, reportReason]);
+
+  const handleReportSubmit = useCallback(async () => {
+    if (!reportTarget || isReportSubmitting) return;
+    const reason = resolveReportReason();
+    if (!reason) {
+      showToast({
+        title: "Reason required",
+        message: "Enter a reason before submitting.",
+        tone: "error",
+      });
+      return;
+    }
+
+    setIsReportSubmitting(true);
+    try {
+      await reportEntity({
+        targetType: "comment",
+        targetId: reportTarget.id,
+        reason,
+      });
+      showToast({
+        title: "Comment reported",
+        message: "Thanks for your report.",
+      });
+      setReportTarget(null);
+      setReportReason("Spam");
+      setReportCustomReason("");
+    } catch (error) {
+      if (error instanceof PostActionsApiError) {
+        const parsed = parseApiError(error.details);
+        showToast({
+          title: titleForWriteError(parsed.error, "Couldn't report comment"),
+          message: parsed.message ?? "This action isn't available right now.",
+          tone: "error",
+        });
+      } else {
+        showToast({
+          title: "Couldn't report comment",
+          message: error instanceof Error ? error.message : "Try again.",
+          tone: "error",
+        });
+      }
+    } finally {
+      setIsReportSubmitting(false);
+    }
+  }, [isReportSubmitting, reportTarget, resolveReportReason, showToast]);
+
   const handleCreateComment = useCallback(async () => {
     const trimmed = composerText.trim();
     if (!trimmed || isSubmitting) return;
@@ -1038,6 +1177,8 @@ export function AppPostCommentsPage({ postId, overlayMode = false, onRequestClos
         : commentBlocker?.message ?? null;
   const canShowComposer = !commentBlocker;
   const hasComposerDraft = composerText.trim().length > 0;
+  const reportRequiresCustomReason = reportReason === "Something Else";
+  const isReportInvalid = reportRequiresCustomReason && reportCustomReason.trim().length === 0;
 
   const content = (
     <div className="flex min-h-screen flex-col bg-bg">
@@ -1236,15 +1377,25 @@ export function AppPostCommentsPage({ postId, overlayMode = false, onRequestClos
                                   {reply.createdAtLabel ? <span>{reply.createdAtLabel}</span> : null}
                                 </div>
                               </div>
-                              <button
-                                type="button"
-                                onClick={() => void handleCommentLikeToggle(reply)}
-                                className={`inline-flex items-center gap-1 text-sm ${reply.userLiked ? "text-brand" : "text-text-light"}`}
-                                aria-label={reply.userLiked ? "Unlike reply" : "Like reply"}
-                              >
-                                <HeartIcon filled={reply.userLiked} className="h-4 w-4" />
-                                {reply.likesCount > 0 ? <span>{reply.likesCount}</span> : null}
-                              </button>
+                              <div className="flex items-center gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => void handleCommentLikeToggle(reply)}
+                                  className={`inline-flex items-center gap-1 text-sm ${reply.userLiked ? "text-brand" : "text-text-light"}`}
+                                  aria-label={reply.userLiked ? "Unlike reply" : "Like reply"}
+                                >
+                                  <HeartIcon filled={reply.userLiked} className="h-4 w-4" />
+                                  {reply.likesCount > 0 ? <span>{reply.likesCount}</span> : null}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleReportClick(reply)}
+                                  className="inline-flex h-8 w-8 items-center justify-center text-text-light transition hover:text-strong"
+                                  aria-label="Report reply"
+                                >
+                                  <MoreHorizontalIcon className="h-4 w-4" />
+                                </button>
+                              </div>
                             </div>
                           ))}
 
@@ -1262,17 +1413,27 @@ export function AppPostCommentsPage({ postId, overlayMode = false, onRequestClos
                       ) : null}
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() => void handleCommentLikeToggle(comment)}
-                      className={`inline-flex items-center gap-1 self-center text-sm ${
-                        comment.userLiked ? "text-brand" : "text-text-light"
-                      }`}
-                      aria-label={comment.userLiked ? "Unlike comment" : "Like comment"}
-                    >
-                      <HeartIcon filled={comment.userLiked} className="h-5 w-5" />
-                      {comment.likesCount > 0 ? <span>{comment.likesCount}</span> : null}
-                    </button>
+                    <div className="flex items-center gap-1.5 self-center">
+                      <button
+                        type="button"
+                        onClick={() => void handleCommentLikeToggle(comment)}
+                        className={`inline-flex items-center gap-1 text-sm ${
+                          comment.userLiked ? "text-brand" : "text-text-light"
+                        }`}
+                        aria-label={comment.userLiked ? "Unlike comment" : "Like comment"}
+                      >
+                        <HeartIcon filled={comment.userLiked} className="h-5 w-5" />
+                        {comment.likesCount > 0 ? <span>{comment.likesCount}</span> : null}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleReportClick(comment)}
+                        className="inline-flex h-8 w-8 items-center justify-center text-text-light transition hover:text-strong"
+                        aria-label="Report comment"
+                      >
+                        <MoreHorizontalIcon className="h-4 w-4" />
+                      </button>
+                    </div>
                   </div>
                 </article>
               );
@@ -1349,6 +1510,79 @@ export function AppPostCommentsPage({ postId, overlayMode = false, onRequestClos
             <div className="py-2 text-center text-[1.05rem] text-text-secondary">{lockedMessage}</div>
           )}
         </footer>
+
+        {reportTarget ? (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4"
+            onClick={closeReportDialog}
+          >
+            <div
+              className="w-full max-w-md rounded-2xl border border-border/70 bg-bg p-4"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <h2 className="text-lg font-semibold text-strong">Report comment</h2>
+                <button
+                  type="button"
+                  onClick={closeReportDialog}
+                  disabled={isReportSubmitting}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-bg-muted text-text-secondary transition hover:text-strong disabled:opacity-60"
+                  aria-label="Close report dialog"
+                >
+                  <CloseIcon className="h-4 w-4" />
+                </button>
+              </div>
+
+              <p className="mb-3 text-sm text-text-secondary">
+                Reporting {reportTarget.authorName}&rsquo;s comment helps keep the community safe.
+              </p>
+
+              <div className="space-y-1">
+                {REPORT_REASON_OPTIONS.map((reason) => (
+                  <label key={reason} className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-bg-muted">
+                    <input
+                      type="radio"
+                      name={`report-comment-reason-${reportTarget.id}`}
+                      checked={reportReason === reason}
+                      onChange={() => setReportReason(reason)}
+                      disabled={isReportSubmitting}
+                    />
+                    <span className="text-sm text-strong">{reason}</span>
+                  </label>
+                ))}
+              </div>
+
+              {reportRequiresCustomReason ? (
+                <textarea
+                  value={reportCustomReason}
+                  onChange={(event) => setReportCustomReason(event.target.value)}
+                  className="mt-3 h-24 w-full resize-none rounded-xl border border-border/70 bg-bg px-3 py-2 text-sm text-strong outline-none focus:border-brand"
+                  placeholder="Enter report reason"
+                  disabled={isReportSubmitting}
+                />
+              ) : null}
+
+              <div className="mt-4 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={closeReportDialog}
+                  disabled={isReportSubmitting}
+                  className="rounded-full border border-border/70 px-3 py-1.5 text-sm font-semibold text-text-secondary transition hover:text-strong disabled:opacity-60"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleReportSubmit()}
+                  disabled={isReportSubmitting || isReportInvalid}
+                  className="rounded-full bg-brand px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-brand-hover disabled:opacity-60"
+                >
+                  {isReportSubmitting ? "Submitting…" : "Submit report"}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
     </div>
   );
 

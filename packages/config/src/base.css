@@ -19,3 +19,29 @@ body {
   --color-message-muted: var(--color-message-muted-dark);
   --color-message: var(--color-message-dark);
 }
+
+.looped-logo-img-light {
+  display: block;
+}
+
+.looped-logo-img-dark {
+  display: none;
+}
+
+[data-theme="dark"] .looped-logo-img-light {
+  display: none;
+}
+
+[data-theme="dark"] .looped-logo-img-dark {
+  display: block;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) .looped-logo-img-light {
+    display: none;
+  }
+
+  :root:not([data-theme]) .looped-logo-img-dark {
+    display: block;
+  }
+}

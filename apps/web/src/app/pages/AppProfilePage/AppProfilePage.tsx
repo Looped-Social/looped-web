@@ -14,18 +14,23 @@ import { fetchDefaultProfileImageUrl } from "@/lib/profileEditApi";
 import {
   UserApiError,
   blockUser,
+  fetchMyShareLink,
   fetchMyContent,
+  fetchSlugAvailability,
   fetchUserContent,
   fetchUserFollowing,
   fetchUserProfile,
   fetchUserReposts,
   fetchUserMe,
   fetchUserSavedPosts,
+  parseUserApiError,
   setUserFollowing,
+  updateMyShareLink,
 } from "@/lib/userApi";
 
 const DEFAULT_PROFILE_IMAGE_SRC = "/ios-icons/pfp2.svg";
 const FOLLOW_STORE_KEY = "looped-following-user-ids";
+const SHARE_HANDLE_PATTERN = /^[a-z0-9_]{3,30}$/;
 
 type AppProfilePageProps = {
   profileUserId?: string;
@@ -40,10 +45,18 @@ type ProfileViewData = {
   isAnonymous: boolean;
   yearsInLoop?: string;
   memberLine?: string;
+  highlightedCommunity?: string;
   createdYear?: string;
   showFollowerCount: boolean;
   followingCount: number;
   followersCount: number;
+};
+
+type ShareLinkData = {
+  usernameSlug: string;
+  customSlug: string | null;
+  activeSlug: string;
+  canonicalUrl: string;
 };
 
 type ProfileTabId = "content" | "saved" | "reposts";
@@ -127,6 +140,41 @@ function normalizeOptional(value: unknown): string | undefined {
   if (!raw) return undefined;
   const trimmed = raw.trim();
   return trimmed.length ? trimmed : undefined;
+}
+
+function normalizeShareLink(payload: unknown): ShareLinkData | null {
+  if (!isRecord(payload)) return null;
+
+  const usernameSlug = normalizeOptional(payload.usernameSlug ?? payload.username_slug) ?? "";
+  const activeSlug = normalizeOptional(payload.activeSlug ?? payload.active_slug) ?? "";
+  const canonicalUrl = normalizeOptional(payload.canonicalUrl ?? payload.canonical_url) ?? "";
+
+  if (!usernameSlug || !activeSlug || !canonicalUrl) return null;
+
+  return {
+    usernameSlug,
+    customSlug: normalizeOptional(payload.customSlug ?? payload.custom_slug) ?? null,
+    activeSlug,
+    canonicalUrl,
+  };
+}
+
+function messageForShareSlugError(code: string | null | undefined, fallback: string): string {
+  const normalizedCode = (code ?? "").toLowerCase();
+  if (normalizedCode === "slug_invalid") return "Use 3-30 lowercase letters, numbers, or underscores.";
+  if (normalizedCode === "slug_reserved") return "That slug is reserved.";
+  if (normalizedCode === "slug_taken") return "That slug is already taken.";
+  if (normalizedCode === "slug_not_actionable") return "That slug cannot be used right now.";
+  return fallback;
+}
+
+function displayUrlWithoutProtocol(url: string): string {
+  try {
+    const parsed = new URL(url);
+    return `${parsed.host}${parsed.pathname}`;
+  } catch {
+    return url.replace(/^https?:\/\//i, "");
+  }
 }
 
 function asDate(value: unknown): Date | null {
@@ -457,6 +505,7 @@ function normalizeProfile(payload: unknown): ProfileViewData | null {
     isAnonymous,
     yearsInLoop: yearsLabel,
     memberLine,
+    highlightedCommunity: displayCommunity,
     createdYear,
     showFollowerCount,
     followingCount,
@@ -471,6 +520,7 @@ function mergeProfileData(primary: ProfileViewData, fallback: ProfileViewData): 
     avatarUrl: primary.avatarUrl ?? fallback.avatarUrl,
     yearsInLoop: primary.yearsInLoop ?? fallback.yearsInLoop,
     memberLine: primary.memberLine ?? fallback.memberLine,
+    highlightedCommunity: primary.highlightedCommunity ?? fallback.highlightedCommunity,
     createdYear: primary.createdYear ?? fallback.createdYear,
     followingCount: Math.max(primary.followingCount, fallback.followingCount),
     followersCount: Math.max(primary.followersCount, fallback.followersCount),
@@ -635,6 +685,11 @@ export function AppProfilePage({ profileUserId }: AppProfilePageProps) {
   const [isFollowing, setIsFollowing] = useState(false);
   const [isFollowLoading, setIsFollowLoading] = useState(false);
   const [isMessageLoading, setIsMessageLoading] = useState(false);
+  const [shareLink, setShareLink] = useState<ShareLinkData | null>(null);
+  const [isShareLinkSaving, setIsShareLinkSaving] = useState(false);
+  const [isShareLinkDialogOpen, setIsShareLinkDialogOpen] = useState(false);
+  const [shareLinkDraft, setShareLinkDraft] = useState("");
+  const [shareLinkDialogError, setShareLinkDialogError] = useState<string | null>(null);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const [showBlockPrompt, setShowBlockPrompt] = useState(false);
   const [isBlockingUser, setIsBlockingUser] = useState(false);
@@ -649,6 +704,32 @@ export function AppProfilePage({ profileUserId }: AppProfilePageProps) {
     if (!profile?.handle) return "@this account";
     return profile.handle.startsWith("@") ? profile.handle : `@${profile.handle}`;
   }, [profile?.handle]);
+  const normalizedShareHandle = useMemo(() => {
+    if (!profile?.handle) return null;
+    const normalized = profile.handle.replace(/^@/, "").trim().toLowerCase();
+    return SHARE_HANDLE_PATTERN.test(normalized) ? normalized : null;
+  }, [profile?.handle]);
+  const profileSharePath = useMemo(
+    () => (normalizedShareHandle ? `/u/${encodeURIComponent(normalizedShareHandle)}` : null),
+    [normalizedShareHandle]
+  );
+  const profileShareUrl = useMemo(() => {
+    if (isCurrentUser && shareLink?.canonicalUrl) {
+      return shareLink.canonicalUrl;
+    }
+    if (!profileSharePath) return null;
+    if (typeof window === "undefined") return `https://mylooped.app${profileSharePath}`;
+    return `${window.location.origin}${profileSharePath}`;
+  }, [isCurrentUser, profileSharePath, shareLink?.canonicalUrl]);
+  const profileShareDisplay = useMemo(
+    () =>
+      profileShareUrl
+        ? displayUrlWithoutProtocol(profileShareUrl)
+        : normalizedShareHandle
+          ? `mylooped.app/u/${normalizedShareHandle}`
+          : null,
+    [normalizedShareHandle, profileShareUrl]
+  );
 
   useEffect(() => {
     let active = true;
@@ -738,7 +819,14 @@ export function AppProfilePage({ profileUserId }: AppProfilePageProps) {
 
       if (resolvedCurrentUserId === resolvedTargetUserId) {
         setIsFollowing(false);
+        try {
+          const shareLinkResponse = await fetchMyShareLink();
+          setShareLink(normalizeShareLink(shareLinkResponse));
+        } catch {
+          setShareLink(null);
+        }
       } else {
+        setShareLink(null);
         try {
           const following = await resolveIsFollowingOnServer({
             viewerUserId: resolvedCurrentUserId,
@@ -971,6 +1059,163 @@ export function AppProfilePage({ profileUserId }: AppProfilePageProps) {
     navigate("/app/profile/edit");
   }, [navigate]);
 
+  const handleCopyProfileLink = useCallback(async () => {
+    if (!profileShareUrl) {
+      showToast({
+        title: "Share unavailable",
+        message: "Set a valid username to share your profile link.",
+        tone: "error",
+      });
+      return;
+    }
+
+    if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(profileShareUrl);
+        showToast({
+          title: "Profile link copied",
+          message: profileShareUrl,
+        });
+      } catch (error) {
+        showToast({
+          title: "Couldn't copy link",
+          message: error instanceof Error ? error.message : "Try again.",
+          tone: "error",
+        });
+      }
+      return;
+    }
+
+    showToast({
+      title: "Copy unavailable",
+      message: profileShareUrl,
+      tone: "error",
+    });
+  }, [profileShareUrl, showToast]);
+
+  const handleShareProfile = useCallback(async () => {
+    if (!profile || !profileShareUrl) {
+      showToast({
+        title: "Share unavailable",
+        message: "Set a valid username to share your profile link.",
+        tone: "error",
+      });
+      return;
+    }
+
+    try {
+      const shareIdentity = shareLink?.activeSlug ?? normalizedShareHandle ?? profile.handle.replace(/^@/, "");
+
+      if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
+        await navigator.share({
+          title: `Check out @${shareIdentity} on Looped`,
+          text: `Check out my profile on Looped: @${shareIdentity}`,
+          url: profileShareUrl,
+        });
+        showToast({
+          title: "Profile shared",
+          message: "Your profile link was shared.",
+        });
+        return;
+      }
+
+      await handleCopyProfileLink();
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      showToast({
+        title: "Couldn't share profile",
+        message: error instanceof Error ? error.message : "Try again.",
+        tone: "error",
+      });
+    }
+  }, [handleCopyProfileLink, normalizedShareHandle, profile, profileShareUrl, shareLink?.activeSlug, showToast]);
+
+  const handleCustomizeShareLink = useCallback(() => {
+    if (!isCurrentUser || isShareLinkSaving) return;
+    setShareLinkDraft(shareLink?.customSlug ?? "");
+    setShareLinkDialogError(null);
+    setIsShareLinkDialogOpen(true);
+  }, [isCurrentUser, isShareLinkSaving, shareLink?.customSlug]);
+
+  const closeShareLinkDialog = useCallback(() => {
+    if (isShareLinkSaving) return;
+    setIsShareLinkDialogOpen(false);
+    setShareLinkDialogError(null);
+  }, [isShareLinkSaving]);
+
+  const saveShareLink = useCallback(async () => {
+    if (!isCurrentUser || isShareLinkSaving) return;
+
+    const normalizedInput = shareLinkDraft.trim().replace(/^@/, "").toLowerCase();
+    if (normalizedInput.length > 0 && !SHARE_HANDLE_PATTERN.test(normalizedInput)) {
+      setShareLinkDialogError("Use 3-30 lowercase letters, numbers, or underscores.");
+      return;
+    }
+
+    const nextCustomSlug = normalizedInput.length > 0 ? normalizedInput : null;
+    const currentCustomSlug = shareLink?.customSlug ?? null;
+    if (nextCustomSlug === currentCustomSlug) {
+      closeShareLinkDialog();
+      return;
+    }
+
+    setShareLinkDialogError(null);
+    setIsShareLinkSaving(true);
+    try {
+      if (nextCustomSlug) {
+        const availability = await fetchSlugAvailability(nextCustomSlug);
+        const reserved = availability.reserved === true;
+        const ownedByMe = availability.ownedByMe === true || availability.owned_by_me === true;
+        const available = availability.available === true;
+        if (reserved) {
+          const message = "That slug is reserved.";
+          setShareLinkDialogError(message);
+          showToast({
+            title: "Slug unavailable",
+            message,
+            tone: "error",
+          });
+          return;
+        }
+        if (!available && !ownedByMe) {
+          const message = "That slug is already taken.";
+          setShareLinkDialogError(message);
+          showToast({
+            title: "Slug unavailable",
+            message,
+            tone: "error",
+          });
+          return;
+        }
+      }
+
+      const response = await updateMyShareLink(nextCustomSlug);
+      const normalized = normalizeShareLink(response);
+      if (normalized) {
+        setShareLink(normalized);
+      }
+      setIsShareLinkDialogOpen(false);
+      showToast({
+        title: nextCustomSlug ? "Profile link updated" : "Profile link reset",
+        message: nextCustomSlug
+          ? `Your profile link is now mylooped.app/u/${nextCustomSlug}.`
+          : "Your profile link now uses your username.",
+      });
+    } catch (error) {
+      const parsed = parseUserApiError(error);
+      const message = messageForShareSlugError(parsed.code, parsed.message || "Couldn't update your profile link.");
+
+      setShareLinkDialogError(message);
+      showToast({
+        title: "Couldn't update link",
+        message,
+        tone: "error",
+      });
+    } finally {
+      setIsShareLinkSaving(false);
+    }
+  }, [closeShareLinkDialog, isCurrentUser, isShareLinkSaving, shareLink?.customSlug, shareLinkDraft, showToast]);
+
   const handleBlockUser = useCallback(async () => {
     if (!targetUserId || isCurrentUser || !canShowProfileMenu || isBlockingUser) return;
 
@@ -1000,14 +1245,8 @@ export function AppProfilePage({ profileUserId }: AppProfilePageProps) {
         <h3 className="text-sm font-semibold text-strong">Profile snapshot</h3>
         <div className="mt-4 space-y-3">
           <div className="rounded-xl border border-border/60 bg-bg px-3 py-2">
-            <p className="text-xs font-semibold uppercase tracking-wide text-text-light">Top communities</p>
-            <p className="mt-1 text-sm font-semibold text-strong">{profile.memberLine ?? "Not set yet"}</p>
-          </div>
-          <div className="rounded-xl border border-border/60 bg-bg px-3 py-2">
-            <p className="text-xs font-semibold uppercase tracking-wide text-text-light">Visibility</p>
-            <p className="mt-1 text-sm font-semibold text-strong">
-              {profile.isAnonymous ? "Anonymous by default" : "Named profile"}
-            </p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-text-light">Current highlighted community</p>
+            <p className="mt-1 text-sm font-semibold text-strong">{profile.highlightedCommunity ?? "Not set yet"}</p>
           </div>
           <div className="rounded-xl border border-border/60 bg-bg px-3 py-2">
             <p className="text-xs font-semibold uppercase tracking-wide text-text-light">Member since</p>
@@ -1022,15 +1261,32 @@ export function AppProfilePage({ profileUserId }: AppProfilePageProps) {
           <button
             type="button"
             className="w-full rounded-full bg-bg-muted px-6 py-2.5 text-center text-[1.02rem] font-semibold text-text-secondary transition hover:text-strong"
-            onClick={() =>
-              showToast({
-                title: "Share profile",
-                message: "Profile sharing is coming soon on web.",
-              })
-            }
+            onClick={() => void handleShareProfile()}
           >
             Share profile
           </button>
+          {isCurrentUser && profileShareDisplay ? (
+            <div className="rounded-xl border border-border/70 bg-bg px-3 py-2.5">
+              <p className="truncate text-sm font-semibold text-strong">{profileShareDisplay}</p>
+              <div className="mt-1 flex items-center gap-3 text-sm">
+                <button
+                  type="button"
+                  className="font-semibold text-text-secondary underline-offset-2 transition hover:text-strong hover:underline"
+                  onClick={() => void handleCopyProfileLink()}
+                >
+                  Copy link
+                </button>
+                <button
+                  type="button"
+                  className="font-semibold text-text-secondary underline-offset-2 transition hover:text-strong hover:underline disabled:cursor-not-allowed disabled:opacity-70"
+                  onClick={handleCustomizeShareLink}
+                  disabled={isShareLinkSaving}
+                >
+                  {isShareLinkSaving ? "Saving..." : "Customize link"}
+                </button>
+              </div>
+            </div>
+          ) : null}
           {isCurrentUser ? (
             <button
               type="button"
@@ -1229,14 +1485,23 @@ export function AppProfilePage({ profileUserId }: AppProfilePageProps) {
             ) : null}
 
             {isCurrentUser ? (
-              <div className="mt-4 flex flex-wrap gap-3 lg:hidden">
-                <button
-                  type="button"
-                  className="min-w-[150px] cursor-pointer rounded-full bg-bg-muted px-6 py-2.5 text-center text-[1.02rem] font-semibold text-text-secondary transition hover:text-strong"
-                  onClick={handleEditProfileNavigation}
-                >
-                  Edit profile
-                </button>
+              <div className="mt-4 space-y-3 lg:hidden">
+                <div className="flex flex-wrap gap-3">
+                  <button
+                    type="button"
+                    className="min-w-[150px] cursor-pointer rounded-full bg-bg-muted px-6 py-2.5 text-center text-[1.02rem] font-semibold text-text-secondary transition hover:text-strong"
+                    onClick={handleEditProfileNavigation}
+                  >
+                    Edit profile
+                  </button>
+                  <button
+                    type="button"
+                    className="min-w-[150px] cursor-pointer rounded-full bg-bg-muted px-6 py-2.5 text-center text-[1.02rem] font-semibold text-text-secondary transition hover:text-strong"
+                    onClick={() => void handleShareProfile()}
+                  >
+                    Share profile
+                  </button>
+                </div>
               </div>
             ) : (
               <div className="mt-4 flex flex-wrap gap-3">
@@ -1314,6 +1579,88 @@ export function AppProfilePage({ profileUserId }: AppProfilePageProps) {
                 Cancel
               </button>
             </div>
+          </div>
+        </div>
+      ) : null}
+
+      {isShareLinkDialogOpen ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-4"
+          onClick={closeShareLinkDialog}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl border border-border/70 bg-bg p-4 shadow-xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-semibold text-strong">Customize share link</h2>
+                <p className="mt-1 text-sm text-text-secondary">
+                  Use 3-30 lowercase letters, numbers, or underscores.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="inline-flex h-8 w-8 items-center justify-center rounded-full text-text-secondary transition hover:bg-bg-muted hover:text-strong disabled:cursor-not-allowed disabled:opacity-60"
+                onClick={closeShareLinkDialog}
+                disabled={isShareLinkSaving}
+                aria-label="Close dialog"
+              >
+                <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4" aria-hidden="true">
+                  <path d="M5 5l10 10M15 5L5 15" />
+                </svg>
+              </button>
+            </div>
+
+            <form
+              className="mt-4 space-y-3"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void saveShareLink();
+              }}
+            >
+              <label className="block">
+                <span className="mb-1.5 block text-sm font-semibold text-strong">Custom slug (optional)</span>
+                <input
+                  value={shareLinkDraft}
+                  onChange={(event) => {
+                    setShareLinkDraft(event.currentTarget.value.toLowerCase());
+                    if (shareLinkDialogError) setShareLinkDialogError(null);
+                  }}
+                  placeholder={shareLink?.usernameSlug ?? "username"}
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  className="w-full rounded-xl border border-border/70 bg-bg-muted px-3 py-2.5 text-sm text-strong outline-none transition focus:border-brand/50"
+                />
+                {shareLinkDialogError ? <p className="mt-1.5 text-xs text-brand">{shareLinkDialogError}</p> : null}
+              </label>
+
+              <p className="text-xs text-text-light">
+                Link preview:{" "}
+                <span className="font-semibold text-text-secondary">
+                  mylooped.app/u/{(shareLinkDraft.trim().replace(/^@/, "").toLowerCase() || shareLink?.usernameSlug || "username")}
+                </span>
+              </p>
+
+              <div className="flex flex-col gap-2 pt-1 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  onClick={() => setShareLinkDraft("")}
+                  disabled={isShareLinkSaving}
+                  className="w-full rounded-xl border border-border/70 bg-bg px-4 py-2.5 text-sm font-semibold text-text-secondary transition hover:text-strong disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+                >
+                  Reset to username
+                </button>
+                <button
+                  type="submit"
+                  disabled={isShareLinkSaving}
+                  className="w-full rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+                >
+                  {isShareLinkSaving ? "Saving..." : "Save"}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       ) : null}

@@ -16,6 +16,7 @@ export function DeleteAccountPage() {
   const [completion, setCompletion] = useState<CompletionState | null>(null);
   const [action, setAction] = useState<"idle" | "deactivate" | "delete">("idle");
   const [actionError, setActionError] = useState<string | null>(null);
+  const [isDeactivateModalOpen, setIsDeactivateModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [deletePhraseInput, setDeletePhraseInput] = useState("");
   const [deleteEmailInput, setDeleteEmailInput] = useState("");
@@ -26,10 +27,6 @@ export function DeleteAccountPage() {
     deletePhraseInput.trim() === deletePhrase && deleteEmailInput.trim().toLowerCase() === normalizedEmail;
 
   const handleDeactivate = async () => {
-    if (!window.confirm("Are you sure you want to deactivate your account?")) {
-      return;
-    }
-
     setAction("deactivate");
     setActionError(null);
 
@@ -166,7 +163,7 @@ export function DeleteAccountPage() {
             </div>
             <button
               type="button"
-              onClick={handleDeactivate}
+              onClick={() => setIsDeactivateModalOpen(true)}
               disabled={action !== "idle"}
               className="inline-flex items-center justify-center rounded-lg border border-border px-4 py-2.5 text-sm font-semibold text-text-primary transition hover:bg-bg-muted disabled:cursor-not-allowed disabled:opacity-60"
             >
@@ -198,6 +195,50 @@ export function DeleteAccountPage() {
           </div>
         )}
       </div>
+
+      {isDeactivateModalOpen ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4"
+          onClick={() => {
+            if (action !== "idle") return;
+            setIsDeactivateModalOpen(false);
+          }}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl border border-border bg-bg p-6 shadow-xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="space-y-3">
+              <h2 className="text-xl font-semibold text-strong">Confirm deactivation</h2>
+              <p className="text-sm text-text-secondary">
+                Deactivation is reversible. Your profile will be hidden until you sign in again.
+              </p>
+            </div>
+
+            <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={() => setIsDeactivateModalOpen(false)}
+                disabled={action !== "idle"}
+                className="inline-flex items-center justify-center rounded-lg border border-border px-4 py-2 text-sm font-semibold text-text-primary transition hover:bg-bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  setIsDeactivateModalOpen(false);
+                  await handleDeactivate();
+                }}
+                disabled={action !== "idle"}
+                className="inline-flex items-center justify-center rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white transition hover:-translate-y-px hover:bg-brand/90 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Deactivate account
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {isDeleteModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">

@@ -270,6 +270,13 @@ function extractApiErrorMessage(details?: string): string | undefined {
   return trimmed;
 }
 
+function formatMembersLabel(value: unknown): string | undefined {
+  const count = getNumber(value);
+  if (count === undefined) return undefined;
+  const safeCount = Math.max(Math.round(count), 0);
+  return `${safeCount} ${safeCount === 1 ? "member" : "members"}`;
+}
+
 function uniqueCommunityFilters(filters: FilterOption[]): FilterOption[] {
   const seen = new Set<string>();
   const next: FilterOption[] = [];
@@ -280,7 +287,7 @@ function uniqueCommunityFilters(filters: FilterOption[]): FilterOption[] {
     if (id === "all") continue;
     if (seen.has(id)) continue;
     seen.add(id);
-    next.push({ id, label });
+    next.push({ ...filter, id, label });
   }
   return [defaultCommunityFilters[0], ...next];
 }
@@ -374,15 +381,52 @@ function normalizeCommunityToFilterOption(item: unknown, preferCommunityShortNam
   const id =
     pickString(item, ["id", "community_id", "communityId", "loop_id", "loopId"]) ??
     pickString(item, ["communityId", "community_id"]);
+  const name = pickString(item, ["name", "display_name", "displayName", "title"]);
+  const shortName = pickString(item, ["short_name", "shortName"]);
   const label =
     resolveCommunityLabel({
-      name: pickString(item, ["name", "display_name", "displayName", "title"]),
-      shortName: pickString(item, ["short_name", "shortName"]),
+      name,
+      shortName,
       fallback: pickString(item, ["handle", "username"]) ?? "Community",
       preferShortNames: preferCommunityShortNames,
     }) ?? pickString(item, ["handle", "username"]);
   if (!id || !label) return null;
-  return { id, label };
+
+  const normalizedName = normalizedOptional(name);
+  const normalizedShortName = normalizedOptional(shortName);
+  const longLabel =
+    preferCommunityShortNames && normalizedName && normalizedName !== label
+      ? normalizedName
+      : !preferCommunityShortNames && normalizedShortName && normalizedShortName !== label
+        ? normalizedShortName
+        : undefined;
+
+  const membersLabel = formatMembersLabel(
+    item.member_count ??
+      item.memberCount ??
+      item.members_count ??
+      item.membersCount ??
+      item.follower_count ??
+      item.followers_count
+  );
+
+  const kind = normalizedOptional(pickString(item, ["kind", "community_kind", "communityKind", "type"]));
+  const description = normalizedOptional(pickString(item, ["description", "bio", "summary"]));
+  const icon = normalizedOptional(
+    pickString(item, ["emoji", "icon_emoji", "iconEmoji", "icon_value", "iconValue", "icon_url", "iconUrl"])
+  );
+  const imageUrl = normalizedOptional(pickString(item, ["image_url", "imageUrl"]));
+
+  return {
+    id,
+    label,
+    longLabel,
+    description,
+    membersLabel,
+    kind,
+    icon,
+    imageUrl,
+  };
 }
 
 function normalizeFeedItemToPostData(
@@ -753,15 +797,6 @@ export function AppFeedPage() {
     });
   }, [activeCommunityId, activeTabId, communityFilters, hideAnonymousPosts, location.key, nextCursor, posts, preferCommunityShortNames]);
 
-  const rightRail = (
-    <AppSearchPanel
-      defaultActiveFilterId="all"
-      activeFilterId={activeCommunityId}
-      onActiveFilterIdChange={(id) => setActiveCommunityId(id)}
-      filters={communityFilters}
-    />
-  );
-
   const closeCommentsOverlay = useCallback(() => {
     if (openedFromSharePreviewRedirect) {
       navigate("/app", { replace: true });
@@ -908,7 +943,6 @@ export function AppFeedPage() {
   }, [isCommunitySearchActive, loadFeed]);
 
   useEffect(() => {
-    if (!isCommunitySearchActive) return;
     if (typeof window === "undefined") return;
 
     const trimmedQuery = communitySearchQuery.trim();
@@ -950,7 +984,7 @@ export function AppFeedPage() {
     return () => {
       window.clearTimeout(timeoutId);
     };
-  }, [communitySearchQuery, isCommunitySearchActive, preferCommunityShortNames]);
+  }, [communitySearchQuery, preferCommunityShortNames]);
 
   const dismissCommunitySearch = useCallback(() => {
     activeCommunitySearchRequestIdRef.current += 1;
@@ -999,6 +1033,28 @@ export function AppFeedPage() {
     observer.observe(node);
     return () => observer.disconnect();
   }, [feedStatus, loadFeed, nextCursor]);
+
+  const rightRail = (
+    <AppSearchPanel
+      defaultActiveFilterId="all"
+      activeFilterId={activeCommunityId}
+      query={communitySearchQuery}
+      onQueryChange={(value) => setCommunitySearchQuery(value)}
+      onFilterSelect={(filter) => {
+        handleCommunitySelection(filter);
+        activeCommunitySearchRequestIdRef.current += 1;
+        setCommunitySearchQuery("");
+        setCommunitySearchStatus("idle");
+        setCommunitySearchError(null);
+        setCommunitySearchResults([]);
+      }}
+      filters={communityFilters}
+      searchStatus={communitySearchStatus}
+      searchError={communitySearchError}
+      searchResults={communitySearchResults}
+      minSearchLength={2}
+    />
+  );
 
   return (
     <AppLayout activeNavId="home" rightRail={rightRail}>

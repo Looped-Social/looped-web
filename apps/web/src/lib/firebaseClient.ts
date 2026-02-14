@@ -1,5 +1,6 @@
 import type { FirebaseApp, FirebaseOptions } from "firebase/app";
 import type { Auth, User, UserCredential } from "firebase/auth";
+import { getApiBase, getAuthGateCode, type AuthGateCode } from "./apiBase";
 
 let cachedApp: FirebaseApp | null = null;
 let cachedAuth: Auth | null = null;
@@ -160,7 +161,153 @@ export async function getFirebaseIdToken(): Promise<string> {
   return user.getIdToken();
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function getBoolean(value: unknown): boolean | undefined {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number" && Number.isFinite(value)) return value !== 0;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "true" || normalized === "1") return true;
+    if (normalized === "false" || normalized === "0") return false;
+  }
+  return undefined;
+}
+
+function parseErrorPayload(details?: string): Record<string, unknown> | null {
+  if (!details || details.trim().length === 0) return null;
+  try {
+    const parsed = JSON.parse(details) as unknown;
+    if (!isRecord(parsed)) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeOptional(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function extractOnboardingStep(details?: string): string | undefined {
+  const payload = parseErrorPayload(details);
+  if (!payload) return undefined;
+  return normalizeOptional(payload.onboarding_step ?? payload.onboardingStep);
+}
+
+function onboardingCompleteFromPayload(payload: unknown): boolean | undefined {
+  if (!isRecord(payload)) return undefined;
+  const userPayload = isRecord(payload.user) ? payload.user : payload;
+
+  return (
+    getBoolean(userPayload.onboarding_complete) ??
+    getBoolean(userPayload.onboardingComplete) ??
+    getBoolean(payload.onboarding_complete) ??
+    getBoolean(payload.onboardingComplete)
+  );
+}
+
+const WEB_ACCESS_REQUIRED_MESSAGE =
+  "Complete account setup in the Looped iOS app before signing in on web.";
+const WEB_ACCESS_CHECK_FAILED_MESSAGE = "Unable to verify account access right now. Please try again.";
+
+export type WebAccessErrorCode = AuthGateCode | "unauthorized" | "unknown";
+
+export class WebAccessError extends Error {
+  code: WebAccessErrorCode;
+  onboardingStep?: string;
+
+  constructor({
+    code,
+    message,
+    onboardingStep,
+  }: {
+    code: WebAccessErrorCode;
+    message: string;
+    onboardingStep?: string;
+  }) {
+    super(message);
+    this.code = code;
+    this.onboardingStep = onboardingStep;
+  }
+}
+
+function resolveWebAccessMessage(code: AuthGateCode): string {
+  if (code === "account_deleted") {
+    return "This account was deleted. Contact support if you need help restoring access.";
+  }
+  return WEB_ACCESS_REQUIRED_MESSAGE;
+}
+
+export async function assertWebAccessEligible(): Promise<void> {
+  const token = await getFirebaseIdToken();
+  const response = await fetch(`${getApiBase()}/v1/me`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (!response.ok) {
+    const details = (await response.text()).trim();
+    const gateCode = getAuthGateCode(response.status, details);
+    if (gateCode) {
+      throw new WebAccessError({
+        code: gateCode,
+        message: resolveWebAccessMessage(gateCode),
+        onboardingStep: gateCode === "onboarding_incomplete" ? extractOnboardingStep(details) : undefined,
+      });
+    }
+
+    if (response.status === 401) {
+      throw new WebAccessError({
+        code: "unauthorized",
+        message: "Your session could not be verified. Please try signing in again.",
+      });
+    }
+
+    throw new WebAccessError({
+      code: "unknown",
+      message: WEB_ACCESS_CHECK_FAILED_MESSAGE,
+    });
+  }
+
+  const text = (await response.text()).trim();
+  if (!text) return;
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text) as unknown;
+  } catch {
+    throw new WebAccessError({
+      code: "unknown",
+      message: WEB_ACCESS_CHECK_FAILED_MESSAGE,
+    });
+  }
+
+  const onboardingComplete = onboardingCompleteFromPayload(parsed);
+  if (onboardingComplete === false) {
+    throw new WebAccessError({
+      code: "onboarding_incomplete",
+      message: WEB_ACCESS_REQUIRED_MESSAGE,
+      onboardingStep: normalizeOptional(
+        isRecord(parsed)
+          ? (isRecord(parsed.user) ? parsed.user.onboarding_step ?? parsed.user.onboardingStep : parsed.onboarding_step ?? parsed.onboardingStep)
+          : undefined
+      ),
+    });
+  }
+}
+
 export function getFirebaseErrorMessage(error: unknown): string {
+  if (error instanceof WebAccessError) {
+    return error.message;
+  }
+
   if (typeof error === "object" && error && "code" in error) {
     const code = String((error as { code: string }).code);
 

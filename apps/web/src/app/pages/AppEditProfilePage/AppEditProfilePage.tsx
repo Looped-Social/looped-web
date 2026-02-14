@@ -18,11 +18,12 @@ import {
   updateMyProfile,
   uploadProfilePhoto,
 } from "@/lib/profileEditApi";
-import { fetchUserMe, fetchUserProfile } from "@/lib/userApi";
+import { fetchMyShareLink, fetchSlugAvailability, fetchUserMe, fetchUserProfile, parseUserApiError, updateMyShareLink } from "@/lib/userApi";
 import { isValidUsername, normalizeUsername } from "@/lib/settingsValidation";
 import { refreshCurrentUser } from "@/stores/currentUserStore";
 
 const DEFAULT_PROFILE_IMAGE_SRC = "/ios-icons/pfp2.svg";
+const SHARE_HANDLE_PATTERN = /^[a-z0-9_]{3,30}$/;
 
 type SelectOption = {
   id: string;
@@ -53,6 +54,13 @@ type EditableProfile = {
   displayCommunityLabel?: string;
   displaySpecializationId: string;
   displaySpecializationLabel?: string;
+};
+
+type ShareLinkData = {
+  usernameSlug: string;
+  customSlug: string | null;
+  activeSlug: string;
+  canonicalUrl: string;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -87,6 +95,41 @@ function normalizeDateInput(value: unknown): string {
   const parsed = new Date(raw);
   if (Number.isNaN(parsed.getTime())) return "";
   return parsed.toISOString().slice(0, 10);
+}
+
+function normalizeShareLink(payload: unknown): ShareLinkData | null {
+  if (!isRecord(payload)) return null;
+
+  const usernameSlug = normalizeOptional(payload.usernameSlug ?? payload.username_slug) ?? "";
+  const activeSlug = normalizeOptional(payload.activeSlug ?? payload.active_slug) ?? "";
+  const canonicalUrl = normalizeOptional(payload.canonicalUrl ?? payload.canonical_url) ?? "";
+
+  if (!usernameSlug || !activeSlug || !canonicalUrl) return null;
+
+  return {
+    usernameSlug,
+    customSlug: normalizeOptional(payload.customSlug ?? payload.custom_slug) ?? null,
+    activeSlug,
+    canonicalUrl,
+  };
+}
+
+function displayUrlWithoutProtocol(url: string): string {
+  try {
+    const parsed = new URL(url);
+    return `${parsed.host}${parsed.pathname}`;
+  } catch {
+    return url.replace(/^https?:\/\//i, "");
+  }
+}
+
+function messageForShareSlugError(code: string | null | undefined, fallback: string): string {
+  const normalizedCode = (code ?? "").toLowerCase();
+  if (normalizedCode === "slug_invalid") return "Use 3-30 lowercase letters, numbers, or underscores.";
+  if (normalizedCode === "slug_reserved") return "That slug is reserved.";
+  if (normalizedCode === "slug_taken") return "That slug is already taken.";
+  if (normalizedCode === "slug_not_actionable") return "That slug cannot be used right now.";
+  return fallback;
 }
 
 function resolveCurrentUserId(payload: unknown): string | undefined {
@@ -375,6 +418,9 @@ export function AppEditProfilePage() {
 
   const [usernameStatus, setUsernameStatus] = useState<UsernameStatus>("idle");
   const [usernameMessage, setUsernameMessage] = useState<string | null>(null);
+  const [shareLink, setShareLink] = useState<ShareLinkData | null>(null);
+  const [initialShareCustomSlug, setInitialShareCustomSlug] = useState<string | null>(null);
+  const [shareLinkDraft, setShareLinkDraft] = useState("");
 
   const [isSaving, setIsSaving] = useState(false);
   const [showExitPrompt, setShowExitPrompt] = useState(false);
@@ -401,11 +447,12 @@ export function AppEditProfilePage() {
     setLoadError(null);
 
     try {
-      const [defaultAvatar, meResponse, communityPayload, specializationPayload] = await Promise.all([
+      const [defaultAvatar, meResponse, communityPayload, specializationPayload, shareLinkResponse] = await Promise.all([
         fetchDefaultProfileImageUrl().catch(() => undefined),
         fetchUserMe(),
         fetchProfileCommunities().catch(() => []),
         fetchJoinedSpecializations({ type: "all", limit: 200 }).catch(() => ({ items: [] })),
+        fetchMyShareLink().catch(() => null),
       ]);
 
       setDefaultProfileImageUrl(defaultAvatar);
@@ -476,6 +523,10 @@ export function AppEditProfilePage() {
       setForm(normalizedForm);
       setInitialForm(normalizedForm);
       setAvatarUrl(normalized.avatarUrl);
+      const normalizedShareLink = normalizeShareLink(shareLinkResponse);
+      setShareLink(normalizedShareLink);
+      setInitialShareCustomSlug(normalizedShareLink?.customSlug ?? null);
+      setShareLinkDraft(normalizedShareLink?.activeSlug ?? normalized.username);
       setUsernameStatus("owned");
       setUsernameMessage(null);
       setPhotoFile(null);
@@ -508,6 +559,30 @@ export function AppEditProfilePage() {
   }, [cropSourceUrl, photoPreviewUrl]);
 
   const normalizedUsername = normalizeUsername(form.username);
+  const normalizedShareDraft = useMemo(
+    () => shareLinkDraft.trim().replace(/^@/, "").toLowerCase(),
+    [shareLinkDraft]
+  );
+  const effectiveUsernameSlug = useMemo(
+    () => normalizedUsername || shareLink?.usernameSlug || "",
+    [normalizedUsername, shareLink?.usernameSlug]
+  );
+  const shareLinkFieldError =
+    normalizedShareDraft.length > 0 && !SHARE_HANDLE_PATTERN.test(normalizedShareDraft)
+      ? "Use 3-30 lowercase letters, numbers, or underscores."
+      : null;
+  const nextShareCustomSlug = useMemo(() => {
+    if (!normalizedShareDraft || normalizedShareDraft === effectiveUsernameSlug) return null;
+    return normalizedShareDraft;
+  }, [effectiveUsernameSlug, normalizedShareDraft]);
+  const isShareLinkDirty = (initialShareCustomSlug ?? null) !== (nextShareCustomSlug ?? null);
+  const profileShareUrl = useMemo(() => {
+    const activeSlug = normalizedShareDraft || effectiveUsernameSlug;
+    if (!activeSlug) return null;
+    if (typeof window === "undefined") return `https://mylooped.app/u/${activeSlug}`;
+    return `${window.location.origin}/u/${activeSlug}`;
+  }, [effectiveUsernameSlug, normalizedShareDraft]);
+  const profileShareDisplay = useMemo(() => (profileShareUrl ? displayUrlWithoutProtocol(profileShareUrl) : null), [profileShareUrl]);
 
   useEffect(() => {
     if (!initialForm || status !== "idle") return;
@@ -571,9 +646,10 @@ export function AppEditProfilePage() {
       form.dateOfBirth !== initialForm.dateOfBirth ||
       form.bio !== initialForm.bio ||
       form.displayCommunityId !== initialForm.displayCommunityId ||
-      form.displaySpecializationId !== initialForm.displaySpecializationId
+      form.displaySpecializationId !== initialForm.displaySpecializationId ||
+      isShareLinkDirty
     );
-  }, [form, initialForm, photoFile]);
+  }, [form, initialForm, isShareLinkDirty, photoFile]);
   const blocker = useBlocker(hasUnsavedChanges && !isSaving);
 
   useEffect(() => {
@@ -603,6 +679,7 @@ export function AppEditProfilePage() {
     form.lastName.trim().length > 0 &&
     isValidUsername(normalizedUsername) &&
     (usernameStatus === "available" || usernameStatus === "owned") &&
+    !shareLinkFieldError &&
     !isSaving;
 
   const handleBack = useCallback(() => {
@@ -615,6 +692,45 @@ export function AppEditProfilePage() {
       [field]: field === "username" ? value.toLowerCase() : value,
     }));
   }, []);
+
+  const handleCopyProfileLink = useCallback(async () => {
+    if (!profileShareUrl || shareLinkFieldError) {
+      showToast({
+        title: "Share unavailable",
+        message: shareLinkFieldError ?? "Set a valid username to share your profile link.",
+        tone: "error",
+      });
+      return;
+    }
+
+    if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(profileShareUrl);
+        showToast({
+          title: "Profile link copied",
+          message: profileShareUrl,
+        });
+      } catch (error) {
+        showToast({
+          title: "Couldn't copy link",
+          message: error instanceof Error ? error.message : "Try again.",
+          tone: "error",
+        });
+      }
+      return;
+    }
+
+    showToast({
+      title: "Copy unavailable",
+      message: profileShareUrl,
+      tone: "error",
+    });
+  }, [profileShareUrl, shareLinkFieldError, showToast]);
+
+  const handleResetShareLinkToUsername = useCallback(() => {
+    if (!effectiveUsernameSlug) return;
+    setShareLinkDraft(effectiveUsernameSlug);
+  }, [effectiveUsernameSlug]);
 
   const handlePhotoPicked = useCallback(
     (event: ChangeEvent<HTMLInputElement>) => {
@@ -669,6 +785,23 @@ export function AppEditProfilePage() {
     setIsSaving(true);
 
     try {
+      if (isShareLinkDirty && nextShareCustomSlug) {
+        const availability = await fetchSlugAvailability(nextShareCustomSlug);
+        const reserved = availability.reserved === true;
+        const ownedByMe = availability.ownedByMe === true || availability.owned_by_me === true;
+        const available = availability.available === true;
+
+        if (reserved || (!available && !ownedByMe)) {
+          const message = reserved ? "That slug is reserved." : "That slug is already taken.";
+          showToast({
+            title: "Slug unavailable",
+            message,
+            tone: "error",
+          });
+          return false;
+        }
+      }
+
       let uploadedMediaAssetId: string | number | undefined;
       if (photoFile) {
         uploadedMediaAssetId = await uploadProfilePhoto(photoFile);
@@ -698,12 +831,41 @@ export function AppEditProfilePage() {
         await updateMyDisplaySpecialization(normalizeIdForPayload(form.displaySpecializationId));
       }
 
+      if (isShareLinkDirty) {
+        await updateMyShareLink(nextShareCustomSlug);
+      }
+
+      try {
+        const refreshedShareLink = await fetchMyShareLink();
+        const normalizedShareLink = normalizeShareLink(refreshedShareLink);
+        setShareLink(normalizedShareLink);
+        setInitialShareCustomSlug(normalizedShareLink?.customSlug ?? null);
+        if (normalizedShareLink?.activeSlug) {
+          setShareLinkDraft(normalizedShareLink.activeSlug);
+        } else if (normalizedUsername) {
+          setShareLinkDraft(normalizedUsername);
+        }
+      } catch {
+        setInitialShareCustomSlug(nextShareCustomSlug ?? null);
+      }
+
       await fetchUserMe();
       try {
         await refreshCurrentUser();
       } catch {
         // Keep save success state even if store revalidation fails.
       }
+
+      setInitialForm({
+        username: normalizedUsername,
+        firstName: form.firstName,
+        lastName: form.lastName,
+        dateOfBirth: form.dateOfBirth,
+        bio: form.bio,
+        displayCommunityId: form.displayCommunityId,
+        displaySpecializationId: form.displaySpecializationId,
+      });
+      setPhotoFile(null);
 
       showToast({
         title: "Profile updated",
@@ -712,6 +874,17 @@ export function AppEditProfilePage() {
       setShowExitPrompt(false);
       return true;
     } catch (error) {
+      const parsedUserError = parseUserApiError(error);
+      const message = messageForShareSlugError(parsedUserError.code, parsedUserError.message);
+      if (message !== parsedUserError.message || parsedUserError.code?.startsWith("slug_")) {
+        showToast({
+          title: "Couldn't update link",
+          message,
+          tone: "error",
+        });
+        return false;
+      }
+
       const parsed = parseApiError(error);
       showToast({
         title: titleForProfileError(parsed.code),
@@ -722,7 +895,16 @@ export function AppEditProfilePage() {
     } finally {
       setIsSaving(false);
     }
-  }, [canSave, form, initialForm, normalizedUsername, photoFile, showToast]);
+  }, [
+    canSave,
+    form,
+    initialForm,
+    isShareLinkDirty,
+    nextShareCustomSlug,
+    normalizedUsername,
+    photoFile,
+    showToast,
+  ]);
 
   const handleSave = useCallback(async () => {
     await saveProfile();
@@ -852,6 +1034,42 @@ export function AppEditProfilePage() {
                   <p className="mt-1.5 text-xs text-brand">{usernameMessage}</p>
                 ) : null}
               </label>
+
+              <div className="rounded-xl border border-border/70 bg-bg-muted px-3 py-3">
+                <p className="text-[1.08rem] font-semibold text-strong">Share Link</p>
+                <div className="mt-2 flex items-center gap-2 rounded-xl border border-border/70 bg-bg px-3 py-2">
+                  <span className="shrink-0 text-sm text-text-secondary">mylooped.app/u/</span>
+                  <input
+                    value={shareLinkDraft}
+                    onChange={(event) => setShareLinkDraft(event.currentTarget.value.toLowerCase())}
+                    placeholder={effectiveUsernameSlug || "username"}
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    className="min-w-0 flex-1 bg-transparent text-sm text-strong outline-none"
+                  />
+                </div>
+                {shareLinkFieldError ? <p className="mt-1.5 text-xs text-brand">{shareLinkFieldError}</p> : null}
+                <p className="mt-1 truncate text-xs text-text-light">{profileShareDisplay ?? "Set a username to enable sharing."}</p>
+                <div className="mt-2 flex items-center gap-3 text-sm">
+                  <button
+                    type="button"
+                    className="font-semibold text-text-secondary underline-offset-2 transition hover:text-strong hover:underline disabled:cursor-not-allowed disabled:opacity-70"
+                    onClick={() => void handleCopyProfileLink()}
+                    disabled={!profileShareUrl || Boolean(shareLinkFieldError)}
+                  >
+                    Copy link
+                  </button>
+                  <button
+                    type="button"
+                    className="font-semibold text-text-secondary underline-offset-2 transition hover:text-strong hover:underline disabled:cursor-not-allowed disabled:opacity-70"
+                    onClick={handleResetShareLinkToUsername}
+                    disabled={!effectiveUsernameSlug}
+                  >
+                    Reset to username
+                  </button>
+                </div>
+              </div>
 
               <label className="block">
                 <span className="mb-2 block text-[1.08rem] font-semibold text-strong">Display Community</span>

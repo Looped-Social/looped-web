@@ -1,4 +1,4 @@
-import { ApiError, getApiBase } from "./apiBase";
+import { ApiError, getApiBase, notifyAuthGateFromHttpError } from "./apiBase";
 import { getFirebaseIdToken } from "./firebaseClient";
 
 export class UserApiError extends ApiError {}
@@ -37,6 +37,7 @@ async function userFetch<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (!response.ok) {
     const details = await response.text();
+    notifyAuthGateFromHttpError({ status: response.status, details, source: "userApi" });
     throw new UserApiError(response.status, details || "Request failed.", details);
   }
 
@@ -44,7 +45,16 @@ async function userFetch<T>(path: string, init?: RequestInit): Promise<T> {
     return {} as T;
   }
 
-  return response.json() as Promise<T>;
+  const text = await response.text();
+  if (!text.trim()) {
+    return {} as T;
+  }
+
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new UserApiError(response.status, "Unexpected server response.", text);
+  }
 }
 
 export async function fetchUserMe(): Promise<UserMe> {
@@ -219,8 +229,45 @@ export type DeleteUserResponse = {
   delete_pending?: boolean;
 };
 
+export type SlugAvailabilityResponse = {
+  slug?: string;
+  available?: boolean;
+  ownedByMe?: boolean;
+  owned_by_me?: boolean;
+  reserved?: boolean;
+};
+
+export type MyShareLinkResponse = {
+  usernameSlug?: string;
+  username_slug?: string;
+  customSlug?: string | null;
+  custom_slug?: string | null;
+  activeSlug?: string;
+  active_slug?: string;
+  canonicalUrl?: string;
+  canonical_url?: string;
+};
+
 export async function deleteUser(): Promise<DeleteUserResponse> {
   return userFetch<DeleteUserResponse>("/v1/users/me/delete", { method: "POST" });
+}
+
+export async function fetchSlugAvailability(slug: string): Promise<SlugAvailabilityResponse> {
+  const normalized = slug.trim().toLowerCase();
+  const params = new URLSearchParams();
+  params.set("slug", normalized);
+  return userFetch<SlugAvailabilityResponse>(`/v1/users/slug/availability?${params.toString()}`);
+}
+
+export async function fetchMyShareLink(): Promise<MyShareLinkResponse> {
+  return userFetch<MyShareLinkResponse>("/v1/users/me/share-link");
+}
+
+export async function updateMyShareLink(customSlug: string | null): Promise<MyShareLinkResponse> {
+  return userFetch<MyShareLinkResponse>("/v1/users/me/share-link", {
+    method: "PUT",
+    body: JSON.stringify({ customSlug }),
+  });
 }
 
 export async function unlinkGoogleProvider(): Promise<void> {

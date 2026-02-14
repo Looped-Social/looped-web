@@ -991,6 +991,8 @@ export function AppSearchPage() {
   const [trendingPage, setTrendingPage] = useState(0);
   const [majorPage, setMajorPage] = useState(0);
   const [fieldPage, setFieldPage] = useState(0);
+  const [canScrollCommunitiesPrev, setCanScrollCommunitiesPrev] = useState(false);
+  const [canScrollCommunitiesNext, setCanScrollCommunitiesNext] = useState(false);
 
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
 
@@ -1287,6 +1289,34 @@ export function AppSearchPage() {
     [fieldPages.length, loadMoreFields]
   );
 
+  const updateCommunityScrollControls = useCallback(
+    (container?: HTMLDivElement | null) => {
+      const scroller = container ?? communitiesScrollerRef.current;
+      if (!scroller) {
+        setCanScrollCommunitiesPrev(false);
+        setCanScrollCommunitiesNext(false);
+        return;
+      }
+
+      const maxScrollLeft = Math.max(scroller.scrollWidth - scroller.clientWidth, 0);
+      const remaining = maxScrollLeft - scroller.scrollLeft;
+      const canPrev = scroller.scrollLeft > 4;
+      const canNextFromScroll = remaining > 4;
+      const canNextFromCursor = Boolean(communitiesNextCursor) && !isLoadingMoreCommunities;
+
+      setCanScrollCommunitiesPrev(canPrev);
+      setCanScrollCommunitiesNext(canNextFromScroll || canNextFromCursor);
+    },
+    [communitiesNextCursor, isLoadingMoreCommunities]
+  );
+
+  const handleCommunitiesScroll = useCallback(
+    (event: SyntheticEvent<HTMLDivElement>) => {
+      updateCommunityScrollControls(event.currentTarget);
+    },
+    [updateCommunityScrollControls]
+  );
+
   const scrollPagerToPage = useCallback((container: HTMLDivElement | null, page: number) => {
     if (!container) return;
     const clamped = Math.max(page, 0);
@@ -1327,6 +1357,53 @@ export function AppSearchPage() {
       void loadMoreFields();
     }
   }, [fieldPage, fieldPages.length, fieldsNextCursor, loadMoreFields, scrollPagerToPage]);
+
+  const handleCommunitiesPrev = useCallback(() => {
+    const scroller = communitiesScrollerRef.current;
+    if (!scroller || !canScrollCommunitiesPrev) return;
+    const distance = Math.max(scroller.clientWidth * 0.8, 200);
+    scroller.scrollBy({ left: -distance, behavior: "smooth" });
+  }, [canScrollCommunitiesPrev]);
+
+  const handleCommunitiesNext = useCallback(() => {
+    const scroller = communitiesScrollerRef.current;
+    if (!scroller) return;
+
+    const maxScrollLeft = Math.max(scroller.scrollWidth - scroller.clientWidth, 0);
+    const remaining = maxScrollLeft - scroller.scrollLeft;
+
+    if (remaining > 4) {
+      const distance = Math.max(scroller.clientWidth * 0.8, 200);
+      scroller.scrollBy({ left: distance, behavior: "smooth" });
+      return;
+    }
+
+    if (communitiesNextCursor && !isLoadingMoreCommunities) {
+      void loadMoreCommunities();
+    }
+  }, [communitiesNextCursor, isLoadingMoreCommunities, loadMoreCommunities]);
+
+  useEffect(() => {
+    if (landingStatus !== "ready") {
+      setCanScrollCommunitiesPrev(false);
+      setCanScrollCommunitiesNext(false);
+      return;
+    }
+
+    updateCommunityScrollControls();
+
+    if (typeof window === "undefined") return;
+    const frame = window.requestAnimationFrame(() => {
+      updateCommunityScrollControls();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [
+    communitiesNextCursor,
+    isLoadingMoreCommunities,
+    landingStatus,
+    recommendedCommunities.length,
+    updateCommunityScrollControls,
+  ]);
 
   useEffect(() => {
     if (!isResultsOpen || resultsMode !== "results") return;
@@ -1856,10 +1933,43 @@ export function AppSearchPage() {
             </section>
 
             <section className="space-y-4">
-              <SectionHeader title="Communities" subtitle="Recommended communities for you" />
+              <div className="flex items-center justify-between gap-3">
+                <SectionHeader title="Communities" subtitle="Recommended communities for you" />
+                {landingStatus === "ready" && recommendedCommunities.length > 0 ? (
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleCommunitiesPrev}
+                      disabled={!canScrollCommunitiesPrev}
+                      className={`inline-flex h-11 w-11 items-center justify-center transition ${
+                        canScrollCommunitiesPrev
+                          ? "text-strong hover:text-brand"
+                          : "text-text-light/70"
+                      }`}
+                      aria-label="Previous communities"
+                    >
+                      <ChevronLeftIcon className="h-7 w-7" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleCommunitiesNext}
+                      disabled={!canScrollCommunitiesNext}
+                      className={`inline-flex h-11 w-11 items-center justify-center transition ${
+                        canScrollCommunitiesNext
+                          ? "text-strong hover:text-brand"
+                          : "text-text-light/70"
+                      }`}
+                      aria-label="Next communities"
+                    >
+                      <ChevronRightIcon className="h-7 w-7" />
+                    </button>
+                  </div>
+                ) : null}
+              </div>
               {landingStatus === "ready" && recommendedCommunities.length > 0 ? (
                 <div
                   ref={communitiesScrollerRef}
+                  onScroll={handleCommunitiesScroll}
                   className="flex snap-x snap-mandatory gap-3 overflow-x-auto scroll-smooth pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
                 >
                   {recommendedCommunities.map((community, index) => (
