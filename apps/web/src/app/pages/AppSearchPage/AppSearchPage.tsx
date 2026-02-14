@@ -1006,6 +1006,8 @@ export function AppSearchPage() {
   const [landingError, setLandingError] = useState<string | null>(null);
   const [trendingPosts, setTrendingPosts] = useState<TrendingPost[]>([]);
   const [resolvedTrendingMedia, setResolvedTrendingMedia] = useState<Record<string, { url: string; isVideo: boolean }>>({});
+  const [canScrollTrendingPrev, setCanScrollTrendingPrev] = useState(false);
+  const [canScrollTrendingNext, setCanScrollTrendingNext] = useState(false);
   const [recommendedCommunities, setRecommendedCommunities] = useState<CommunityCard[]>([]);
   const [majorCards, setMajorCards] = useState<SpecializationCard[]>([]);
   const [fieldCards, setFieldCards] = useState<SpecializationCard[]>([]);
@@ -1045,6 +1047,7 @@ export function AppSearchPage() {
   const feedRequestRef = useRef(0);
   const previousQueryRef = useRef(query);
   const communitiesScrollerRef = useRef<HTMLDivElement | null>(null);
+  const trendingScrollerRef = useRef<HTMLDivElement | null>(null);
   const lastCommunityCardRef = useRef<HTMLButtonElement | null>(null);
   const majorPagerRef = useRef<HTMLDivElement | null>(null);
   const fieldPagerRef = useRef<HTMLDivElement | null>(null);
@@ -1351,9 +1354,49 @@ export function AppSearchPage() {
       const pageWidth = container.clientWidth || 1;
       const nextPage = Math.max(0, Math.min(Math.round(container.scrollLeft / pageWidth), trendingPosts.length - 1));
       setTrendingPage(nextPage);
+      const maxScrollLeft = Math.max(container.scrollWidth - container.clientWidth, 0);
+      setCanScrollTrendingPrev(container.scrollLeft > 4);
+      setCanScrollTrendingNext(container.scrollLeft < maxScrollLeft - 4);
     },
     [trendingPosts.length]
   );
+
+  const updateTrendingScrollControls = useCallback((container?: HTMLDivElement | null) => {
+    const scroller = container ?? trendingScrollerRef.current;
+    if (!scroller) {
+      setCanScrollTrendingPrev(false);
+      setCanScrollTrendingNext(false);
+      return;
+    }
+    const maxScrollLeft = Math.max(scroller.scrollWidth - scroller.clientWidth, 0);
+    setCanScrollTrendingPrev(scroller.scrollLeft > 4);
+    setCanScrollTrendingNext(scroller.scrollLeft < maxScrollLeft - 4);
+  }, []);
+
+  useEffect(() => {
+    updateTrendingScrollControls();
+    const handleResize = () => updateTrendingScrollControls();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, [trendingPosts.length, updateTrendingScrollControls]);
+
+  const handleTrendingPrev = useCallback(() => {
+    const scroller = trendingScrollerRef.current;
+    if (!scroller) return;
+    scroller.scrollBy({
+      left: -(scroller.clientWidth || 320),
+      behavior: "smooth",
+    });
+  }, []);
+
+  const handleTrendingNext = useCallback(() => {
+    const scroller = trendingScrollerRef.current;
+    if (!scroller) return;
+    scroller.scrollBy({
+      left: scroller.clientWidth || 320,
+      behavior: "smooth",
+    });
+  }, []);
 
   const handleMajorsPagerScroll = useCallback(
     (event: SyntheticEvent<HTMLDivElement>) => {
@@ -1943,7 +1986,35 @@ export function AppSearchPage() {
             <LandingSearchButton onClick={handleOpenResults} />
 
             <section className="space-y-4">
-              <SectionHeader title="Trending Posts" />
+              <div className="flex items-center justify-between gap-3">
+                <SectionHeader title="Trending Posts" />
+                {landingStatus === "ready" && trendingPosts.length > 1 ? (
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleTrendingPrev}
+                      disabled={!canScrollTrendingPrev}
+                      className={`inline-flex h-11 w-11 items-center justify-center transition ${
+                        canScrollTrendingPrev ? "text-strong hover:text-brand" : "text-text-light/70"
+                      }`}
+                      aria-label="Previous trending post"
+                    >
+                      <ChevronLeftIcon className="h-7 w-7" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleTrendingNext}
+                      disabled={!canScrollTrendingNext}
+                      className={`inline-flex h-11 w-11 items-center justify-center transition ${
+                        canScrollTrendingNext ? "text-strong hover:text-brand" : "text-text-light/70"
+                      }`}
+                      aria-label="Next trending post"
+                    >
+                      <ChevronRightIcon className="h-7 w-7" />
+                    </button>
+                  </div>
+                ) : null}
+              </div>
 
               {landingStatus === "loading" ? (
                 <div className="space-y-3">
@@ -1978,6 +2049,7 @@ export function AppSearchPage() {
                 trendingPosts.length ? (
                   <div className="space-y-3">
                     <div
+                      ref={trendingScrollerRef}
                       onScroll={handleTrendingScroll}
                       className="flex snap-x snap-mandatory gap-3 overflow-x-auto scroll-smooth pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
                     >

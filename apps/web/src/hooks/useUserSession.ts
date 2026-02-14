@@ -33,6 +33,10 @@ const initialState: UserSessionState = {
   onboardingStep: null,
 };
 
+let cachedSessionState: UserSessionState = initialState;
+let lastEligibilityCheck: { uid: string; at: number } | null = null;
+const SESSION_RECHECK_WINDOW_MS = 15_000;
+
 function authGateMessage(code: AuthGateCode): string {
   if (code === "account_deleted") {
     return "This account was deleted. Contact support if you need help restoring access.";
@@ -41,7 +45,15 @@ function authGateMessage(code: AuthGateCode): string {
 }
 
 export function useUserSession() {
-  const [state, setState] = useState<UserSessionState>(initialState);
+  const [state, setState] = useState<UserSessionState>(cachedSessionState);
+
+  const setAndCacheState = (next: UserSessionState | ((prev: UserSessionState) => UserSessionState)) => {
+    setState((prev) => {
+      const resolved = typeof next === "function" ? (next as (value: UserSessionState) => UserSessionState)(prev) : next;
+      cachedSessionState = resolved;
+      return resolved;
+    });
+  };
 
   useEffect(() => {
     let active = true;
@@ -60,7 +72,7 @@ export function useUserSession() {
         pendingUnauthenticatedError = null;
         pendingAuthGateCode = null;
         pendingOnboardingStep = null;
-        setState({
+        setAndCacheState({
           status: "unauthenticated",
           user: null,
           error,
@@ -70,15 +82,27 @@ export function useUserSession() {
         return;
       }
 
+      if (
+        lastEligibilityCheck &&
+        lastEligibilityCheck.uid === user.uid &&
+        Date.now() - lastEligibilityCheck.at < SESSION_RECHECK_WINDOW_MS
+      ) {
+        pendingAuthGateCode = null;
+        pendingOnboardingStep = null;
+        setAndCacheState({ status: "authenticated", user, error: null, authGateCode: null, onboardingStep: null });
+        return;
+      }
+
       const requestId = ++authCheckRequestId;
-      setState({ status: "checking", user: null, error: null, authGateCode: null, onboardingStep: null });
+      setAndCacheState({ status: "checking", user, error: null, authGateCode: null, onboardingStep: null });
       void (async () => {
         try {
           await assertWebAccessEligible();
           if (!active || requestId !== authCheckRequestId) return;
+          lastEligibilityCheck = { uid: user.uid, at: Date.now() };
           pendingAuthGateCode = null;
           pendingOnboardingStep = null;
-          setState({ status: "authenticated", user, error: null, authGateCode: null, onboardingStep: null });
+          setAndCacheState({ status: "authenticated", user, error: null, authGateCode: null, onboardingStep: null });
         } catch (error) {
           let message = error instanceof Error ? error.message : "Unable to verify account access.";
           if (error instanceof WebAccessError) {
@@ -97,13 +121,14 @@ export function useUserSession() {
           }
 
           pendingUnauthenticatedError = message;
+          lastEligibilityCheck = null;
           try {
             await signOutUser();
           } catch {
             // best effort sign-out to clear unsupported sessions
           }
           if (!active || requestId !== authCheckRequestId) return;
-          setState({
+          setAndCacheState({
             status: "unauthenticated",
             user: null,
             error: pendingUnauthenticatedError,
@@ -127,7 +152,7 @@ export function useUserSession() {
       pendingOnboardingStep = onboardingStep;
       pendingUnauthenticatedError = gateMessage;
 
-      setState((prev) => ({
+      setAndCacheState((prev) => ({
         ...prev,
         status: "checking",
         error: null,
@@ -139,7 +164,8 @@ export function useUserSession() {
         })
         .finally(() => {
           if (!active) return;
-          setState({
+          lastEligibilityCheck = null;
+          setAndCacheState({
             status: "unauthenticated",
             user: null,
             error: gateMessage,
@@ -156,7 +182,7 @@ export function useUserSession() {
       .catch((error) => {
         if (!active) return;
         const message = error instanceof Error ? error.message : "Unable to initialize authentication.";
-        setState({
+        setAndCacheState({
           status: "error",
           user: null,
           error: message,
@@ -179,11 +205,12 @@ export function useUserSession() {
   }, []);
 
   const startSignIn = async <TResult,>(action: () => Promise<TResult>) => {
-    setState((prev) => ({ ...prev, status: "checking", error: null, authGateCode: null, onboardingStep: null }));
+    setAndCacheState((prev) => ({ ...prev, status: "checking", error: null, authGateCode: null, onboardingStep: null }));
     try {
       await action();
+      lastEligibilityCheck = null;
     } catch (error) {
-      setState((prev) => ({
+      setAndCacheState((prev) => ({
         ...prev,
         status: "unauthenticated",
         error: getFirebaseErrorMessage(error),
