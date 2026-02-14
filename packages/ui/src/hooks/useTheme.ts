@@ -40,12 +40,7 @@ export function useTheme() {
   useEffect(() => {
     if (typeof document === "undefined") return;
     const root = document.documentElement;
-
-    if (theme === "dark") {
-      root.setAttribute("data-theme", "dark");
-    } else {
-      root.removeAttribute("data-theme");
-    }
+    root.setAttribute("data-theme", theme);
   }, [theme]);
 
   // Persist preference and broadcast changes.
