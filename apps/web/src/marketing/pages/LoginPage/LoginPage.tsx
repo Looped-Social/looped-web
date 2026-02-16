@@ -8,6 +8,7 @@ import { AuthCard } from "@/marketing/components/Auth/AuthCard";
 import { useUserSession } from "@/hooks/useUserSession";
 import { loginStatusFromAuthGateCode } from "@/lib/apiBase";
 import { getFirebaseErrorMessage, sendPasswordReset } from "@/lib/firebaseClient";
+import { consumePostLogoutNotice } from "@/lib/postLogoutNotice";
 
 function resolvePostSignInDestination(rawSearch: string): string {
   const params = new URLSearchParams(rawSearch);
@@ -50,6 +51,7 @@ export function LoginPage() {
   const isBusy = status === "checking";
   const [resetMessage, setResetMessage] = useState<string | null>(null);
   const [resetTone, setResetTone] = useState<"error" | "success">("success");
+  const [postLogoutNotice, setPostLogoutNotice] = useState<string | null>(null);
   const postSignInDestination = useMemo(
     () => resolvePostSignInDestination(location.search),
     [location.search]
@@ -68,6 +70,10 @@ export function LoginPage() {
       navigate(postSignInDestination, { replace: true });
     }
   }, [navigate, postSignInDestination, status]);
+
+  useEffect(() => {
+    setPostLogoutNotice(consumePostLogoutNotice());
+  }, []);
 
   const handleForgotPassword = async (email: string) => {
     if (!email) {
@@ -147,6 +153,11 @@ export function LoginPage() {
               {statusMessage ? (
                 <div className="rounded-lg border border-border bg-bg-muted px-4 py-3 text-sm text-text-secondary">
                   {statusMessage}
+                </div>
+              ) : null}
+              {postLogoutNotice ? (
+                <div className="rounded-lg border border-border bg-bg-muted px-4 py-3 text-sm text-text-secondary">
+                  {postLogoutNotice}
                 </div>
               ) : null}
               {shouldShowBlockingCard ? (

@@ -248,6 +248,16 @@ export type MyShareLinkResponse = {
   canonical_url?: string;
 };
 
+export type UnlinkProviderResponse = {
+  unlinked?: boolean | null;
+  disconnected?: boolean | null;
+  linked?: boolean | null;
+  providerLinked?: boolean | null;
+  status?: string | null;
+  message?: string | null;
+  [key: string]: unknown;
+};
+
 export async function deleteUser(): Promise<DeleteUserResponse> {
   return userFetch<DeleteUserResponse>("/v1/users/me/delete", { method: "POST" });
 }
@@ -270,12 +280,12 @@ export async function updateMyShareLink(customSlug: string | null): Promise<MySh
   });
 }
 
-export async function unlinkGoogleProvider(): Promise<void> {
-  await userFetch("/v1/me/providers/google", { method: "DELETE" });
+export async function unlinkGoogleProvider(): Promise<UnlinkProviderResponse> {
+  return userFetch<UnlinkProviderResponse>("/v1/me/providers/google", { method: "DELETE" });
 }
 
-export async function unlinkAppleProvider(): Promise<void> {
-  await userFetch("/v1/me/providers/apple", { method: "DELETE" });
+export async function unlinkAppleProvider(): Promise<UnlinkProviderResponse> {
+  return userFetch<UnlinkProviderResponse>("/v1/me/providers/apple", { method: "DELETE" });
 }
 
 type ParsedUserApiError = {

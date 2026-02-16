@@ -4,6 +4,8 @@ import { Link, useLocation } from "react-router";
 import { MenuDots } from "@/app/components/AppIcons/AppIcons";
 import { PostMediaGrid } from "@/app/components/PostMediaGrid/PostMediaGrid";
 import { useToast } from "@/app/components/AppToast/AppToast";
+import { EntityText } from "@/app/components/EntityText/EntityText";
+import { useEntityNavigation } from "@/app/hooks/useEntityNavigation";
 import type { CommunityPermissions } from "@/lib/communityPermissionsApi";
 import { getCommunityPermissions } from "@/lib/communityPermissionsApi";
 import { type ResolvedMediaAsset, resolveMediaAssets } from "@/lib/mediaApi";
@@ -341,6 +343,7 @@ function clampPercent(value: number): number {
 export function PostCard({ post }: PostCardProps) {
   const location = useLocation();
   const { showToast } = useToast();
+  const { openHashtag, openMention } = useEntityNavigation();
   const { user: currentUser } = useCurrentUserStore({ autoLoad: false });
   const [permissions, setPermissions] = useState<CommunityPermissions | null>(null);
 
@@ -1283,7 +1286,12 @@ export function PostCard({ post }: PostCardProps) {
         </div>
 
         {shouldRenderPostText ? (
-          <p className="mt-3 text-[1.08rem] leading-[1.45] text-text-primary">{editDraft}</p>
+          <EntityText
+            text={editDraft}
+            className="mt-3 text-[1.08rem] leading-[1.45] text-text-primary"
+            onHashtagPress={openHashtag}
+            onMentionPress={openMention}
+          />
         ) : null}
         {pollState ? (
           <section className="mt-1 pt-1">

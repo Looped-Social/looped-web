@@ -1,4 +1,4 @@
-import { type ChangeEvent, type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type ChangeEvent, type FormEvent, type SyntheticEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 
 import { AppLayout } from "@/app/components/AppLayout/AppLayout";
@@ -10,6 +10,7 @@ import {
   type PostMediaKind,
   uploadPostMediaFiles,
 } from "@/lib/postCreateApi";
+import { searchUsers } from "@/lib/searchApi";
 import { normalizeSettingsError } from "@/lib/settingsHttp";
 import { useCurrentUserStore } from "@/stores/currentUserStore";
 
@@ -20,6 +21,9 @@ const MAX_POLL_OPTIONS = 20;
 const MIN_POLL_OPTIONS = 2;
 const MIN_POLL_END_SECONDS = 60;
 const MAX_POLL_END_DAYS = 30;
+const MENTION_LOOKUP_DEBOUNCE_MS = 250;
+const MAX_MENTION_SUGGESTIONS = 6;
+const DEFAULT_PROFILE_IMAGE_SRC = "/ios-icons/pfp2.svg";
 
 type AsyncStatus = "idle" | "loading" | "ready" | "error";
 
@@ -42,6 +46,22 @@ type PollValidationResult = {
 };
 
 type FileKind = PostMediaKind | "gif" | "unsupported";
+type MentionSearchStatus = "idle" | "loading" | "ready" | "error";
+
+type MentionSuggestion = {
+  id: string;
+  handle: string;
+  username?: string;
+  displayName: string;
+  avatarUrl?: string;
+  rank: 0 | 1 | 2;
+};
+
+type ActiveMentionToken = {
+  start: number;
+  end: number;
+  query: string;
+};
 
 const ERROR_MESSAGES_BY_CODE: Record<string, string> = {
   community_not_verified: "You must be verified in this community to post.",
@@ -130,6 +150,111 @@ function CloseIcon({ className }: { className?: string }) {
       <path d="m6 6 12 12" />
     </svg>
   );
+}
+
+function handleProfileImageError(event: SyntheticEvent<HTMLImageElement>) {
+  const image = event.currentTarget;
+  if (image.dataset.fallbackApplied === "true") return;
+  image.dataset.fallbackApplied = "true";
+  image.src = DEFAULT_PROFILE_IMAGE_SRC;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function getString(value: unknown): string | undefined {
+  if (typeof value === "string") return value;
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  return undefined;
+}
+
+function normalizeOptional(value: unknown): string | undefined {
+  const raw = getString(value);
+  if (!raw) return undefined;
+  const trimmed = raw.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function normalizeMentionHandle(value: unknown): string | undefined {
+  const normalized = normalizeOptional(value)?.replace(/^@/, "");
+  return normalized && normalized.length > 0 ? normalized : undefined;
+}
+
+function resolveMentionRank(candidate: MentionSuggestion, query: string): 0 | 1 | 2 | null {
+  const normalizedQuery = query.toLowerCase();
+  const fields = [candidate.handle, candidate.username]
+    .map((value) => value?.toLowerCase())
+    .filter((value): value is string => Boolean(value));
+
+  if (fields.some((value) => value === normalizedQuery)) return 0;
+  if (fields.some((value) => value.startsWith(normalizedQuery))) return 1;
+  if (fields.some((value) => value.includes(normalizedQuery))) return 2;
+  return null;
+}
+
+function normalizeMentionSuggestion(item: unknown, query: string): MentionSuggestion | null {
+  if (!isRecord(item)) return null;
+  const id = normalizeOptional(item.id ?? item.user_id ?? item.userId);
+  if (!id) return null;
+
+  const handle = normalizeMentionHandle(item.handle ?? item.username);
+  if (!handle) return null;
+
+  const username = normalizeMentionHandle(item.username);
+  const displayName =
+    normalizeOptional(item.display_name ?? item.displayName ?? item.name ?? item.full_name ?? item.fullName) ??
+    handle;
+
+  const suggestion: MentionSuggestion = {
+    id,
+    handle,
+    username,
+    displayName,
+    avatarUrl: normalizeOptional(
+      item.profile_image_url ?? item.profileImageUrl ?? item.avatar_url ?? item.avatarUrl ?? item.image_url ?? item.imageUrl
+    ),
+    rank: 2,
+  };
+
+  const rank = resolveMentionRank(suggestion, query);
+  if (rank === null) return null;
+
+  suggestion.rank = rank;
+  return suggestion;
+}
+
+function rankMentionSuggestions(items: MentionSuggestion[]): MentionSuggestion[] {
+  return items
+    .slice()
+    .sort((left, right) => {
+      if (left.rank !== right.rank) return left.rank - right.rank;
+      const leftHandle = left.handle.toLowerCase();
+      const rightHandle = right.handle.toLowerCase();
+      if (leftHandle !== rightHandle) return leftHandle.localeCompare(rightHandle);
+      return left.id.localeCompare(right.id);
+    });
+}
+
+function findActiveMentionToken(content: string, cursorIndex: number): ActiveMentionToken | null {
+  const safeCursor = Math.max(0, Math.min(cursorIndex, content.length));
+  const prefix = content.slice(0, safeCursor);
+  const match = prefix.match(/(^|[^A-Za-z0-9_])@([A-Za-z0-9_]*)$/);
+  if (!match) return null;
+
+  const query = match[2] ?? "";
+  if (!query) return null;
+
+  const tokenLength = query.length + 1;
+  const tokenEnd = prefix.length;
+  const tokenStart = tokenEnd - tokenLength;
+  if (tokenStart < 0) return null;
+
+  return {
+    start: tokenStart,
+    end: tokenEnd,
+    query,
+  };
 }
 
 function normalizeBoolean(value: unknown): boolean {
@@ -342,7 +467,9 @@ export function AppCreatePostPage() {
 
   const photoInputRef = useRef<HTMLInputElement | null>(null);
   const mediaInputRef = useRef<HTMLInputElement | null>(null);
+  const composerTextAreaRef = useRef<HTMLTextAreaElement | null>(null);
   const selectedMediaRef = useRef<SelectedMedia[]>([]);
+  const mentionRequestIdRef = useRef(0);
 
   const [communitiesStatus, setCommunitiesStatus] = useState<AsyncStatus>("idle");
   const [communities, setCommunities] = useState<PostableCommunity[]>([]);
@@ -351,6 +478,9 @@ export function AppCreatePostPage() {
   const [showCommunityPostingInfo, setShowCommunityPostingInfo] = useState(false);
 
   const [content, setContent] = useState("");
+  const [composerSelectionStart, setComposerSelectionStart] = useState(0);
+  const [mentionSuggestions, setMentionSuggestions] = useState<MentionSuggestion[]>([]);
+  const [mentionSearchStatus, setMentionSearchStatus] = useState<MentionSearchStatus>("idle");
   const [selectedMedia, setSelectedMedia] = useState<SelectedMedia[]>([]);
 
   const [pollEnabled, setPollEnabled] = useState(false);
@@ -422,6 +552,51 @@ export function AppCreatePostPage() {
       }),
     [pollEnabled, pollQuestion, pollOptions, pollHasEndDate, pollEndDateLocal]
   );
+  const activeMentionToken = useMemo(
+    () => findActiveMentionToken(content, composerSelectionStart),
+    [content, composerSelectionStart]
+  );
+
+  useEffect(() => {
+    const token = activeMentionToken;
+    if (!token) {
+      setMentionSearchStatus("idle");
+      setMentionSuggestions([]);
+      mentionRequestIdRef.current += 1;
+      return;
+    }
+
+    const requestId = mentionRequestIdRef.current + 1;
+    mentionRequestIdRef.current = requestId;
+    setMentionSearchStatus("loading");
+
+    const timer = window.setTimeout(async () => {
+      try {
+        const response = await searchUsers({
+          query: token.query,
+          limit: 20,
+        });
+        if (mentionRequestIdRef.current !== requestId) return;
+
+        const normalized = rankMentionSuggestions(
+          (Array.isArray(response.items) ? response.items : [])
+            .map((item) => normalizeMentionSuggestion(item, token.query))
+            .filter((item): item is MentionSuggestion => Boolean(item))
+        ).slice(0, MAX_MENTION_SUGGESTIONS);
+
+        setMentionSuggestions(normalized);
+        setMentionSearchStatus("ready");
+      } catch {
+        if (mentionRequestIdRef.current !== requestId) return;
+        setMentionSuggestions([]);
+        setMentionSearchStatus("error");
+      }
+    }, MENTION_LOOKUP_DEBOUNCE_MS);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [activeMentionToken]);
 
   const characterCount = content.length;
   const charactersRemaining = MAX_POST_CHARACTERS - characterCount;
@@ -589,6 +764,45 @@ export function AppCreatePostPage() {
       await appendMediaFiles(files);
     },
     [appendMediaFiles]
+  );
+
+  const handleComposerSelection = useCallback((event: SyntheticEvent<HTMLTextAreaElement>) => {
+    const target = event.currentTarget;
+    const nextSelectionStart = target.selectionStart ?? target.value.length;
+    setComposerSelectionStart(nextSelectionStart);
+  }, []);
+
+  const handleComposerTextChange = useCallback((event: ChangeEvent<HTMLTextAreaElement>) => {
+    const target = event.currentTarget;
+    setContent(target.value);
+    setComposerSelectionStart(target.selectionStart ?? target.value.length);
+  }, []);
+
+  const selectMentionSuggestion = useCallback(
+    (suggestion: MentionSuggestion) => {
+      if (!activeMentionToken) return;
+
+      const insertion = `@${suggestion.handle} `;
+      const nextContent =
+        content.slice(0, activeMentionToken.start) +
+        insertion +
+        content.slice(activeMentionToken.end);
+      const nextSelectionStart = activeMentionToken.start + insertion.length;
+
+      mentionRequestIdRef.current += 1;
+      setContent(nextContent);
+      setComposerSelectionStart(nextSelectionStart);
+      setMentionSuggestions([]);
+      setMentionSearchStatus("idle");
+
+      window.requestAnimationFrame(() => {
+        const textarea = composerTextAreaRef.current;
+        if (!textarea) return;
+        textarea.focus();
+        textarea.setSelectionRange(nextSelectionStart, nextSelectionStart);
+      });
+    },
+    [activeMentionToken, content]
   );
 
   const handleSubmit = useCallback(
@@ -774,15 +988,59 @@ export function AppCreatePostPage() {
               What&apos;s happening?
             </label>
             <textarea
+              ref={composerTextAreaRef}
               id="composer-text"
               value={content}
-              onChange={(event) => setContent(event.target.value)}
+              onChange={handleComposerTextChange}
+              onSelect={handleComposerSelection}
+              onClick={handleComposerSelection}
+              onKeyUp={handleComposerSelection}
               maxLength={MAX_POST_CHARACTERS}
               placeholder="Share your thoughts..."
               rows={6}
               disabled={isSubmitting}
               className="w-full resize-y rounded-2xl border border-border/70 bg-bg-muted px-3 py-3 text-[1.02rem] leading-relaxed text-strong outline-none transition placeholder:text-text-light focus:border-brand/45 focus:ring-2 focus:ring-brand/15 disabled:cursor-not-allowed disabled:opacity-75"
             />
+            {activeMentionToken ? (
+              <div className="overflow-hidden rounded-2xl border border-border/70 bg-bg">
+                {mentionSearchStatus === "loading" ? (
+                  <p className="px-3 py-2 text-sm text-text-secondary">Searching people...</p>
+                ) : null}
+                {mentionSearchStatus === "error" ? (
+                  <p className="px-3 py-2 text-sm text-text-secondary">Couldn&apos;t load mentions right now.</p>
+                ) : null}
+                {mentionSearchStatus === "ready" && mentionSuggestions.length === 0 ? (
+                  <p className="px-3 py-2 text-sm text-text-secondary">No matching people.</p>
+                ) : null}
+                {mentionSuggestions.length > 0 ? (
+                  <ul className="divide-y divide-border/60">
+                    {mentionSuggestions.map((suggestion) => (
+                      <li key={`${suggestion.id}-${suggestion.handle}`}>
+                        <button
+                          type="button"
+                          onClick={() => selectMentionSuggestion(suggestion)}
+                          className="flex w-full items-center gap-2 px-3 py-2 text-left transition hover:bg-bg-muted/60"
+                        >
+                          <div className="h-8 w-8 shrink-0 overflow-hidden rounded-full bg-bg-muted">
+                            <img
+                              src={suggestion.avatarUrl ?? DEFAULT_PROFILE_IMAGE_SRC}
+                              alt=""
+                              className="h-full w-full object-cover"
+                              loading="lazy"
+                              onError={handleProfileImageError}
+                            />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-strong">{suggestion.displayName}</p>
+                            <p className="truncate text-xs text-text-secondary">@{suggestion.handle}</p>
+                          </div>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+            ) : null}
           </section>
 
           <section className="flex flex-wrap gap-2">

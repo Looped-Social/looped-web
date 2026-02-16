@@ -42,12 +42,6 @@ type CommunityViewData = {
   isJoined: boolean;
 };
 
-type HashtagListItem = {
-  id: string;
-  name: string;
-  postCount?: number;
-};
-
 type VerificationLabel = "Verified" | "Pending" | "Rejected" | "Expired" | "Unverified";
 
 type VerificationInfo = {
@@ -295,25 +289,6 @@ function normalizePostItemToPostData(item: unknown): PostData | null {
   };
 }
 
-function normalizeHashtagItem(item: unknown): HashtagListItem | null {
-  if (typeof item === "string") {
-    const cleaned = item.replace(/^#/, "").trim();
-    if (!cleaned) return null;
-    return { id: cleaned.toLowerCase(), name: cleaned };
-  }
-  if (!isRecord(item)) return null;
-  const name = pickString(item, ["name", "hashtag", "tag", "label"]);
-  if (!name) return null;
-  const clean = name.replace(/^#/, "").trim();
-  if (!clean) return null;
-
-  return {
-    id: pickString(item, ["id"]) ?? clean.toLowerCase(),
-    name: clean,
-    postCount: pickNumber(item, ["post_count", "postCount", "count", "usage_count", "usageCount"]),
-  };
-}
-
 function normalizeCommunityKind(value: unknown): string | undefined {
   const raw = normalizeOptional(value);
   return raw ? raw.toLowerCase() : undefined;
@@ -473,7 +448,7 @@ export function AppCommunityPage({ communityId }: AppCommunityPageProps) {
   const [postsStatus, setPostsStatus] = useState<LoadStatus>("idle");
   const [postsError, setPostsError] = useState<string | null>(null);
 
-  const [hashtags, setHashtags] = useState<HashtagListItem[]>([]);
+  const [hashtags, setHashtags] = useState<PostData[]>([]);
   const [hashtagsCursor, setHashtagsCursor] = useState<string | null>(null);
   const [hashtagsStatus, setHashtagsStatus] = useState<LoadStatus>("idle");
   const [hashtagsError, setHashtagsError] = useState<string | null>(null);
@@ -610,8 +585,8 @@ export function AppCommunityPage({ communityId }: AppCommunityPageProps) {
           cursor,
         });
         const normalized = (response.items ?? [])
-          .map(normalizeHashtagItem)
-          .filter((item): item is HashtagListItem => Boolean(item));
+          .map(normalizePostItemToPostData)
+          .filter((post): post is PostData => Boolean(post));
         setHashtags((previous) => (replace ? normalized : [...previous, ...normalized]));
         setHashtagsCursor(response.next_cursor ?? response.nextCursor ?? null);
         setHashtagsStatus("idle");
@@ -956,7 +931,7 @@ export function AppCommunityPage({ communityId }: AppCommunityPageProps) {
             <div className="divide-y divide-border/70 bg-bg">
               {hashtagsError ? (
                 <div className="space-y-3 px-4 py-4">
-                  <p className="text-sm font-semibold text-strong">Unable to load hashtags.</p>
+                  <p className="text-sm font-semibold text-strong">Unable to load hashtag posts.</p>
                   <p className="text-sm text-text-secondary">{hashtagsError}</p>
                   <button
                     type="button"
@@ -968,32 +943,16 @@ export function AppCommunityPage({ communityId }: AppCommunityPageProps) {
                 </div>
               ) : null}
 
-              {hashtags.map((tag) => (
-                <button
-                  key={tag.id}
-                  type="button"
-                  onClick={() => {
-                    showToast({
-                      title: "Hashtag",
-                      message: `Open #${tag.name} from Search.`,
-                    });
-                    navigate("/app/search");
-                  }}
-                  className="flex w-full items-center justify-between px-4 py-3 text-left transition hover:bg-bg-muted/35"
-                >
-                  <span className="text-sm font-semibold text-strong">#{tag.name}</span>
-                  <span className="text-xs text-text-light">
-                    {tag.postCount !== undefined ? `${tag.postCount} posts` : ""}
-                  </span>
-                </button>
+              {hashtags.map((post) => (
+                <PostCard key={post.id} post={post} />
               ))}
 
               {hashtagsStatus === "loading" && hashtags.length === 0 && !hashtagsError ? (
-                <div className="px-4 py-5 text-sm text-text-secondary">Loading hashtags...</div>
+                <div className="px-4 py-5 text-sm text-text-secondary">Loading hashtag posts...</div>
               ) : null}
 
               {hashtags.length === 0 && hashtagsStatus === "idle" && !hashtagsError ? (
-                <div className="px-4 py-5 text-sm text-text-secondary">No hashtags yet.</div>
+                <div className="px-4 py-5 text-sm text-text-secondary">No hashtag posts yet.</div>
               ) : null}
 
               {hashtagsCursor && hashtagsStatus !== "loading-more" ? (

@@ -6,18 +6,68 @@ import { useToast } from "@/app/components/AppToast/AppToast";
 import { NotificationsApiError, fetchNotifications, markNotificationRead } from "@/lib/notificationsApi";
 import { fetchUserFollowing, fetchUserMe, fetchUserProfile, setUserFollowing } from "@/lib/userApi";
 
+type NotificationType =
+  | "like"
+  | "comment"
+  | "reply"
+  | "mention"
+  | "follow"
+  | "post_from_followed"
+  | "message_request"
+  | "announcement"
+  | "system"
+  | "loopInvite"
+  | "groupInvite"
+  | "repost";
+
 type NotificationView = {
   id: string;
-  type: string;
+  rawType: string;
+  type: NotificationType;
   createdAt: string;
   unread: boolean;
   actorName: string;
   actorUserId?: string;
   actorAnonProfileId?: string;
   actorProfileImageUrl?: string;
-  description: string;
-  href?: string;
+  postId?: string;
+  commentId?: string;
+  deeplinkRoute?: string;
+  actionDeeplinkRoute?: string;
+  payloadTitle?: string;
+  payloadBody?: string;
+  payloadContext?: string;
+  category?: string;
+  kind?: string;
+  verificationStatus?: string;
+  verificationMethod?: string;
+  companyId?: string;
+  communityId?: string;
+  communityName?: string;
+  expiresAt?: string;
+  daysRemaining?: number;
+  eventKey?: string;
+  years?: number;
 };
+
+type NotificationPresentation = {
+  title: string;
+  description: string;
+};
+
+type NotificationTapAction =
+  | {
+      kind: "navigate";
+      href: string;
+    }
+  | {
+      kind: "system_detail";
+    }
+  | {
+      kind: "unavailable";
+      message: string;
+      tone: "info" | "error";
+    };
 
 type ActorProfilePreview = {
   name?: string;
@@ -25,16 +75,32 @@ type ActorProfilePreview = {
 };
 
 const POLL_INTERVAL_MS = 30_000;
-const SOCIAL_NOTIFICATION_TYPES = new Set([
-  "follow",
+const DEFAULT_PROFILE_IMAGE_SRC = "/ios-icons/pfp2.svg";
+
+const POST_TARGET_NOTIFICATION_TYPES = new Set<NotificationType>([
   "like",
   "comment",
   "reply",
   "mention",
   "repost",
-  "post_from_followed",
 ]);
-const DEFAULT_PROFILE_IMAGE_SRC = "/ios-icons/pfp2.svg";
+
+const VERIFICATION_KINDS = new Set(["community_verification", "user_verification"]);
+
+const NOTIFICATION_TYPE_BY_COMPACT_KEY: Record<string, NotificationType> = {
+  like: "like",
+  comment: "comment",
+  reply: "reply",
+  mention: "mention",
+  follow: "follow",
+  postfromfollowed: "post_from_followed",
+  messagerequest: "message_request",
+  announcement: "announcement",
+  system: "system",
+  loopinvite: "loopInvite",
+  groupinvite: "groupInvite",
+  repost: "repost",
+};
 
 function handleProfileImageError(event: SyntheticEvent<HTMLImageElement>) {
   const image = event.currentTarget;
@@ -64,6 +130,15 @@ function getBoolean(value: unknown): boolean | undefined {
   return undefined;
 }
 
+function getNumber(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim().length > 0) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return undefined;
+}
+
 function pickString(obj: Record<string, unknown>, keys: string[]): string | undefined {
   for (const key of keys) {
     const value = getString(obj[key]);
@@ -75,8 +150,8 @@ function pickString(obj: Record<string, unknown>, keys: string[]): string | unde
 function normalizeOptional(value: unknown): string | undefined {
   const raw = getString(value);
   if (!raw) return undefined;
-  const trimmed = raw.trim();
-  return trimmed.length ? trimmed : undefined;
+  const compact = raw.replace(/[\u200B-\u200D\uFEFF]/g, "").trim();
+  return compact.length ? compact : undefined;
 }
 
 function asDate(value: unknown): Date | null {
@@ -122,25 +197,72 @@ function extractPayload(item: Record<string, unknown>): Record<string, unknown> 
   return {};
 }
 
-function resolveRouteFromLoopedPath(rawPath: string): string | undefined {
-  const path = rawPath.replace(/^\/+/, "");
-  if (!path) return undefined;
+function routeToPost(postId: string, commentId?: string): string {
+  const base = `/app/post/${encodeURIComponent(postId)}/comments`;
+  if (!commentId) return base;
+  return `${base}?commentId=${encodeURIComponent(commentId)}`;
+}
 
-  if (path.startsWith("app/")) return `/${path}`;
-  if (path.startsWith("notifications")) return "/app/notifications";
-  if (path.startsWith("messages") || path.startsWith("conversations")) return "/app/messages";
-  if (path.startsWith("settings")) return "/app/settings";
-  if (path.startsWith("profiles/anon/") || path.startsWith("anon/")) {
-    const parts = path.split("/");
-    const anonProfileId = parts[parts.length - 1];
-    return anonProfileId ? `/app/profile/anon/${anonProfileId}` : undefined;
+function safePathSegment(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  return trimmed.replace(/^\/+|\/+$/g, "");
+}
+
+function resolveRouteFromLoopedPath(path: string, searchParams?: URLSearchParams): string | undefined {
+  const normalizedPath = path.replace(/^\/+/, "");
+  if (!normalizedPath) return undefined;
+
+  const segments = normalizedPath.split("/").filter((segment) => segment.length > 0);
+  if (segments.length === 0) return undefined;
+
+  const [first, second] = segments;
+
+  if (first === "app") {
+    return `/${segments.join("/")}`;
   }
-  if (path.startsWith("profiles/") || path.startsWith("users/")) {
-    const parts = path.split("/");
-    const userId = parts[parts.length - 1];
-    return userId ? `/app/profile/${userId}` : undefined;
+
+  if (first === "post" && second) {
+    return routeToPost(second);
   }
-  if (path.startsWith("posts") || path.startsWith("feed")) return "/app";
+
+  if (first === "comment" && second) {
+    const postId = safePathSegment(searchParams?.get("post_id") ?? undefined);
+    if (!postId) return "/app/notifications";
+    return routeToPost(postId, second);
+  }
+
+  if (first === "user" && second) {
+    const anonParam = (searchParams?.get("anon") ?? "").toLowerCase();
+    if (anonParam === "true" || anonParam === "1") {
+      return `/app/profile/anon/${encodeURIComponent(second)}`;
+    }
+    return `/app/profile/${encodeURIComponent(second)}`;
+  }
+
+  if (first === "conversations" && second) {
+    return `/app/messages/conversation/${encodeURIComponent(second)}`;
+  }
+
+  if (first === "channels" && second) {
+    return `/app/messages/channel/${encodeURIComponent(second)}`;
+  }
+
+  if (first === "announcement") {
+    return "/app/notifications";
+  }
+
+  if (first === "notifications") return "/app/notifications";
+  if (first === "messages") return "/app/messages";
+  if (first === "settings") return "/app/settings";
+  if (first === "profiles" && segments[1] === "anon" && segments[2]) {
+    return `/app/profile/anon/${encodeURIComponent(segments[2])}`;
+  }
+  if ((first === "profiles" || first === "users") && second) {
+    return `/app/profile/${encodeURIComponent(second)}`;
+  }
+
   return undefined;
 }
 
@@ -150,22 +272,61 @@ function resolveRouteFromDeeplink(value: string | undefined): string | undefined
   if (!trimmed) return undefined;
 
   if (trimmed.startsWith("looped://")) {
-    const path = trimmed.slice("looped://".length);
-    return resolveRouteFromLoopedPath(path);
+    try {
+      const parsed = new URL(trimmed);
+      const host = parsed.hostname;
+      const path = parsed.pathname.replace(/^\/+/, "");
+      const combined = [host, path].filter(Boolean).join("/");
+      return resolveRouteFromLoopedPath(combined, parsed.searchParams);
+    } catch {
+      const fallbackPath = trimmed.slice("looped://".length);
+      return resolveRouteFromLoopedPath(fallbackPath);
+    }
   }
 
   if (trimmed.startsWith("/")) {
     if (trimmed.startsWith("/app")) return trimmed;
+    if (trimmed.startsWith("/p/")) {
+      const postId = safePathSegment(trimmed.replace(/^\/p\//, ""));
+      return postId ? routeToPost(postId) : undefined;
+    }
+    if (trimmed.startsWith("/u/")) {
+      const slug = safePathSegment(trimmed.replace(/^\/u\//, ""));
+      return slug ? `/u/${encodeURIComponent(slug)}` : undefined;
+    }
     return resolveRouteFromLoopedPath(trimmed);
   }
 
   try {
     const parsed = new URL(trimmed);
-    if (parsed.pathname.startsWith("/app")) return parsed.pathname;
-    return resolveRouteFromLoopedPath(parsed.pathname);
+    if (parsed.pathname.startsWith("/app")) {
+      const suffix = parsed.search ? `${parsed.pathname}${parsed.search}` : parsed.pathname;
+      return suffix;
+    }
+
+    if (parsed.pathname.startsWith("/p/")) {
+      const postId = safePathSegment(parsed.pathname.replace(/^\/p\//, ""));
+      return postId ? routeToPost(postId) : undefined;
+    }
+
+    if (parsed.pathname.startsWith("/u/")) {
+      const slug = safePathSegment(parsed.pathname.replace(/^\/u\//, ""));
+      return slug ? `/u/${encodeURIComponent(slug)}` : undefined;
+    }
+
+    return resolveRouteFromLoopedPath(parsed.pathname, parsed.searchParams);
   } catch {
     return undefined;
   }
+}
+
+function normalizeNotificationType(value: string): NotificationType {
+  const compact = value
+    .trim()
+    .replace(/[_\s-]/g, "")
+    .toLowerCase();
+  if (!compact) return "system";
+  return NOTIFICATION_TYPE_BY_COMPACT_KEY[compact] ?? "system";
 }
 
 function resolveActorAnonId(payload: Record<string, unknown>, actor?: Record<string, unknown>): string | undefined {
@@ -205,27 +366,77 @@ function resolveActorName(payload: Record<string, unknown>): string {
   return "Someone";
 }
 
-function resolveActorRoute(payload: Record<string, unknown>): string | undefined {
-  const actor = isRecord(payload.actor) ? payload.actor : undefined;
-  const actorAnonId = resolveActorAnonId(payload, actor);
-  if (actorAnonId) return `/app/profile/anon/${actorAnonId}`;
-
-  const actorUserId = resolveActorUserId(payload, actor);
-  if (actorUserId) return `/app/profile/${actorUserId}`;
-
-  return undefined;
+function isVerificationNotification(notification: NotificationView): boolean {
+  if (notification.category === "verification") return true;
+  if (!notification.kind) return false;
+  return VERIFICATION_KINDS.has(notification.kind);
 }
 
-function fallbackRouteFromType(type: string): string {
-  if (type === "message_request" || type === "dm_message" || type === "channel_message") {
-    return "/app/messages";
+function resolveVerificationDaysRemaining(notification: NotificationView): number | undefined {
+  if (typeof notification.daysRemaining === "number" && Number.isFinite(notification.daysRemaining)) {
+    return Math.max(0, Math.floor(notification.daysRemaining));
   }
-  if (type === "announcement" || type === "system") return "/app/notifications";
-  return "/app";
+  const expiresDate = asDate(notification.expiresAt);
+  if (!expiresDate) return undefined;
+  const diffMs = expiresDate.getTime() - Date.now();
+  if (diffMs <= 0) return 0;
+  return Math.ceil(diffMs / 86_400_000);
 }
 
-function buildNotificationTitle(type: string, actorName: string): string {
-  switch (type) {
+function resolveVerificationPresentation(notification: NotificationView): NotificationPresentation | null {
+  if (!isVerificationNotification(notification)) return null;
+
+  const payloadTitle = notification.payloadTitle;
+  const payloadBody = notification.payloadBody;
+  const status = notification.verificationStatus;
+  const communityName = notification.communityName;
+  const daysRemaining = resolveVerificationDaysRemaining(notification);
+
+  if (status === "approved") {
+    return {
+      title: payloadTitle ?? "Verification approved",
+      description:
+        payloadBody ??
+        (communityName
+          ? `You're verified in ${communityName}.`
+          : "Your verification was approved."),
+    };
+  }
+
+  if (status === "rejected") {
+    return {
+      title: payloadTitle ?? "Verification rejected",
+      description: payloadBody ?? "Your verification request was rejected.",
+    };
+  }
+
+  if (status === "expiring") {
+    const expirationCopy =
+      typeof daysRemaining === "number"
+        ? `Your verification expires in ${Math.max(0, Math.floor(daysRemaining))} day${Math.floor(daysRemaining) === 1 ? "" : "s"}.`
+        : "Your verification is expiring soon.";
+
+    return {
+      title: payloadTitle ?? "Verification expiring soon",
+      description: payloadBody ?? expirationCopy,
+    };
+  }
+
+  if (status === "expired") {
+    return {
+      title: payloadTitle ?? "Verification expired",
+      description: payloadBody ?? "Your verification has expired. Re-verify in the iOS app.",
+    };
+  }
+
+  return {
+    title: payloadTitle ?? "Verification update",
+    description: payloadBody ?? "Review your verification status.",
+  };
+}
+
+function buildNotificationTitle(notification: NotificationView, actorName: string): string {
+  switch (notification.type) {
     case "follow":
       return `${actorName} followed you`;
     case "like":
@@ -242,32 +453,101 @@ function buildNotificationTitle(type: string, actorName: string): string {
       return `${actorName} posted something new`;
     case "message_request":
       return `${actorName} sent a message request`;
-    case "dm_message":
-      return `${actorName} sent you a message`;
-    case "channel_message":
-      return "New message in a channel";
+    case "loopInvite":
+      return "Loop invite";
+    case "groupInvite":
+      return "Group invite";
     case "announcement":
-      return "New announcement";
+      return "Announcement";
     case "system":
       return "System update";
     default:
-      return "Notification";
+      return "System update";
   }
 }
 
-function buildNotificationDescription(type: string, payload: Record<string, unknown>): string {
+function buildNotificationDescription(notification: NotificationView): string {
   const directMessage =
-    normalizeOptional(payload.message) ??
-    normalizeOptional(payload.body) ??
-    normalizeOptional(payload.text) ??
-    normalizeOptional(payload.preview_text ?? payload.previewText);
+    notification.payloadBody ??
+    notification.payloadContext;
   if (directMessage) return directMessage;
 
-  if (SOCIAL_NOTIFICATION_TYPES.has(type)) return "Tap to view profile.";
-  if (type === "message_request" || type === "dm_message" || type === "channel_message") {
+  if (notification.type === "announcement" && typeof notification.years === "number") {
+    const roundedYears = Math.max(0, Math.floor(notification.years));
+    if (roundedYears > 0) {
+      return `Celebrating ${roundedYears} year${roundedYears === 1 ? "" : "s"}.`;
+    }
+  }
+
+  if (POST_TARGET_NOTIFICATION_TYPES.has(notification.type) || notification.type === "post_from_followed") {
+    return "Tap to view post.";
+  }
+  if (notification.type === "follow") return "Tap to view profile.";
+  if (notification.type === "message_request") {
     return "Tap to open messages.";
   }
+  if (notification.type === "loopInvite" || notification.type === "groupInvite") return "Tap to open invite.";
+  if (notification.type === "announcement" || notification.type === "system") return "Tap to view details.";
+
   return "Tap to open.";
+}
+
+function resolveNotificationPresentation(notification: NotificationView, actorName: string): NotificationPresentation {
+  const verification = resolveVerificationPresentation(notification);
+  if (verification) return verification;
+
+  return {
+    title: notification.payloadTitle ?? buildNotificationTitle(notification, actorName),
+    description: buildNotificationDescription(notification),
+  };
+}
+
+function resolveNotificationTapAction(notification: NotificationView): NotificationTapAction {
+  if (POST_TARGET_NOTIFICATION_TYPES.has(notification.type)) {
+    if (notification.postId) {
+      const commentId = notification.type === "comment" || notification.type === "reply"
+        ? notification.commentId
+        : undefined;
+      return { kind: "navigate", href: routeToPost(notification.postId, commentId) };
+    }
+    if (notification.deeplinkRoute) return { kind: "navigate", href: notification.deeplinkRoute };
+    if (notification.actionDeeplinkRoute) return { kind: "navigate", href: notification.actionDeeplinkRoute };
+    return { kind: "unavailable", message: "This post isn't available right now.", tone: "error" };
+  }
+
+  if (notification.type === "follow") {
+    if (notification.actorUserId) {
+      return { kind: "navigate", href: `/app/profile/${encodeURIComponent(notification.actorUserId)}` };
+    }
+    if (notification.actorAnonProfileId) {
+      return { kind: "navigate", href: `/app/profile/anon/${encodeURIComponent(notification.actorAnonProfileId)}` };
+    }
+    if (notification.deeplinkRoute) return { kind: "navigate", href: notification.deeplinkRoute };
+    if (notification.actionDeeplinkRoute) return { kind: "navigate", href: notification.actionDeeplinkRoute };
+    return { kind: "unavailable", message: "This profile isn't available right now.", tone: "error" };
+  }
+
+  if (notification.type === "post_from_followed") {
+    if (notification.postId) return { kind: "navigate", href: routeToPost(notification.postId) };
+    if (notification.deeplinkRoute) return { kind: "navigate", href: notification.deeplinkRoute };
+    if (notification.actionDeeplinkRoute) return { kind: "navigate", href: notification.actionDeeplinkRoute };
+    return { kind: "unavailable", message: "This post isn't available right now.", tone: "error" };
+  }
+
+  if (notification.type === "message_request") {
+    if (notification.deeplinkRoute) return { kind: "navigate", href: notification.deeplinkRoute };
+    if (notification.actionDeeplinkRoute) return { kind: "navigate", href: notification.actionDeeplinkRoute };
+    return { kind: "unavailable", message: "This destination isn't available yet.", tone: "info" };
+  }
+
+  if (notification.type === "announcement" || notification.type === "system") {
+    return { kind: "system_detail" };
+  }
+
+  if (notification.deeplinkRoute) return { kind: "navigate", href: notification.deeplinkRoute };
+  if (notification.actionDeeplinkRoute) return { kind: "navigate", href: notification.actionDeeplinkRoute };
+
+  return { kind: "unavailable", message: "This notification isn't available right now.", tone: "error" };
 }
 
 function parseUserProfilePreview(payload: unknown): ActorProfilePreview {
@@ -311,16 +591,24 @@ function normalizeNotification(item: unknown): NotificationView | null {
   if (!isRecord(item)) return null;
 
   const id = pickString(item, ["id", "notification_id", "notificationId"]);
-  const type = pickString(item, ["type"]) ?? "system";
-  const createdAt = pickString(item, ["created_at", "createdAt"]);
-  if (!id || !createdAt) return null;
+  if (!id) return null;
 
-  const unread = getBoolean(item.unread) ?? false;
   const payload = extractPayload(item);
   const payloadActor = isRecord(payload.actor) ? payload.actor : undefined;
   const topLevelActor = isRecord(item.actor) ? item.actor : undefined;
   const actor = payloadActor ?? topLevelActor;
   const actorLookup: Record<string, unknown> = { ...item, ...payload, ...(actor ? { actor } : {}) };
+
+  const rawType = pickString(item, ["type"]) ?? pickString(payload, ["type"]) ?? "system";
+  const type = normalizeNotificationType(rawType);
+
+  const createdDate =
+    asDate(item.created_at ?? item.createdAt ?? item.timestamp ?? item.time) ??
+    asDate(payload.created_at ?? payload.createdAt ?? payload.timestamp ?? payload.time) ??
+    new Date();
+
+  const read = getBoolean(item.read);
+  const unread = getBoolean(item.unread) ?? (read !== undefined ? !read : false);
 
   const actorName = resolveActorName(actorLookup);
   const actorUserId = resolveActorUserId(actorLookup, actor);
@@ -338,25 +626,47 @@ function normalizeNotification(item: unknown): NotificationView | null {
       ? pickString(actor, ["profile_image_url", "profileImageUrl", "avatar_url", "avatarUrl", "image_url", "imageUrl"])
       : undefined);
 
-  const actionRoute = resolveRouteFromDeeplink(pickString(actorLookup, ["action_deeplink", "actionDeeplink"]));
-  const deeplinkRoute = resolveRouteFromDeeplink(pickString(actorLookup, ["deeplink", "deep_link", "deepLink"]));
-  const actorRoute = resolveActorRoute(actorLookup);
+  const postId = pickString(actorLookup, ["post_id", "postId"]);
+  const commentId = pickString(actorLookup, ["comment_id", "commentId"]);
 
-  const href = SOCIAL_NOTIFICATION_TYPES.has(type)
-    ? actorRoute ?? actionRoute ?? deeplinkRoute ?? fallbackRouteFromType(type)
-    : actionRoute ?? deeplinkRoute ?? fallbackRouteFromType(type);
+  const deeplinkValue = pickString(actorLookup, ["deeplink", "deep_link", "deepLink"]);
+  const actionDeeplinkValue =
+    pickString(actorLookup, ["action_deeplink", "actionDeeplink", "action_deep_link", "actionDeepLink"]) ??
+    deeplinkValue;
+  const deeplinkRoute = resolveRouteFromDeeplink(deeplinkValue);
+  const actionDeeplinkRoute = resolveRouteFromDeeplink(actionDeeplinkValue);
 
   return {
     id,
+    rawType,
     type,
-    createdAt,
+    createdAt: createdDate.toISOString(),
     unread,
     actorName,
     actorUserId,
     actorAnonProfileId,
     actorProfileImageUrl,
-    description: buildNotificationDescription(type, actorLookup),
-    href,
+    postId,
+    commentId,
+    deeplinkRoute,
+    actionDeeplinkRoute,
+    payloadTitle: normalizeOptional(actorLookup.title),
+    payloadBody:
+      normalizeOptional(actorLookup.body) ??
+      normalizeOptional(actorLookup.message) ??
+      normalizeOptional(actorLookup.text),
+    payloadContext: normalizeOptional(actorLookup.context),
+    category: normalizeOptional(payload.category ?? payload.notification_category ?? actorLookup.category)?.toLowerCase(),
+    kind: normalizeOptional(payload.kind ?? payload.notification_kind ?? actorLookup.kind)?.toLowerCase(),
+    verificationStatus: normalizeOptional(payload.status ?? payload.verification_status ?? actorLookup.status)?.toLowerCase(),
+    verificationMethod: normalizeOptional(payload.method ?? payload.verification_method ?? actorLookup.method)?.toLowerCase(),
+    companyId: pickString(actorLookup, ["company_id", "companyId"]),
+    communityId: pickString(actorLookup, ["community_id", "communityId"]),
+    communityName: normalizeOptional(payload.community_name ?? payload.communityName ?? actorLookup.community_name ?? actorLookup.communityName),
+    expiresAt: normalizeOptional(payload.expires_at ?? payload.expiresAt ?? actorLookup.expires_at ?? actorLookup.expiresAt),
+    daysRemaining: getNumber(payload.days_remaining ?? payload.daysRemaining ?? actorLookup.days_remaining ?? actorLookup.daysRemaining),
+    eventKey: normalizeOptional(payload.event_key ?? payload.eventKey ?? actorLookup.event_key ?? actorLookup.eventKey),
+    years: getNumber(actorLookup.years),
   };
 }
 
@@ -441,6 +751,7 @@ export function AppNotificationsPage() {
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [status, setStatus] = useState<"idle" | "loading" | "loading-more" | "error">("loading");
   const [error, setError] = useState<string | null>(null);
+  const [selectedSystemNotification, setSelectedSystemNotification] = useState<NotificationView | null>(null);
 
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [followingUserIds, setFollowingUserIds] = useState<Record<string, true>>({});
@@ -613,9 +924,22 @@ export function AppNotificationsPage() {
         });
       }
 
-      if (notification.href) {
-        navigate(notification.href);
+      const action = resolveNotificationTapAction(notification);
+      if (action.kind === "navigate") {
+        navigate(action.href);
+        return;
       }
+
+      if (action.kind === "system_detail") {
+        setSelectedSystemNotification(notification);
+        return;
+      }
+
+      showToast({
+        title: "Notification unavailable",
+        message: action.message,
+        tone: action.tone,
+      });
     },
     [navigate, showToast]
   );
@@ -757,7 +1081,7 @@ export function AppNotificationsPage() {
               ? notification.actorName
               : cachedActor?.name ?? notification.actorName;
           const actorImageUrl = notification.actorProfileImageUrl ?? cachedActor?.avatarUrl;
-          const title = buildNotificationTitle(notification.type, actorName);
+          const presentation = resolveNotificationPresentation(notification, actorName);
 
           const actorUserId = notification.actorUserId;
           const canFollowBack =
@@ -799,13 +1123,13 @@ export function AppNotificationsPage() {
                 <div className="min-w-0 flex-1">
                   <div className="flex items-start justify-between gap-3">
                     <p className={`text-sm ${notification.unread ? "font-semibold text-strong" : "font-medium text-text-primary"}`}>
-                      {title}
+                      {presentation.title}
                     </p>
                     <p className="shrink-0 text-xs text-text-light">
                       {formatTimeAgo(notification.createdAt)}
                     </p>
                   </div>
-                  <p className="mt-1 text-sm text-text-secondary">{notification.description}</p>
+                  <p className="mt-1 text-sm text-text-secondary">{presentation.description}</p>
                   {canFollowBack && actorUserId ? (
                     <button
                       type="button"
@@ -853,6 +1177,43 @@ export function AppNotificationsPage() {
           <div className="px-4 py-5 text-center text-sm text-text-secondary">Loading more...</div>
         ) : null}
       </div>
+
+      {selectedSystemNotification ? (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/45 p-0 sm:items-center sm:p-4"
+          onClick={() => setSelectedSystemNotification(null)}
+        >
+          <div
+            className="w-full rounded-t-2xl border border-border/70 bg-bg p-4 shadow-xl sm:max-w-md sm:rounded-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            {(() => {
+              const presentation = resolveNotificationPresentation(
+                selectedSystemNotification,
+                selectedSystemNotification.actorName
+              );
+
+              return (
+                <>
+                  <div className="mb-2 flex items-start justify-between gap-3">
+                    <h2 className="text-lg font-semibold text-strong">{presentation.title}</h2>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedSystemNotification(null)}
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-bg-muted text-text-secondary transition hover:text-strong"
+                      aria-label="Close notification detail"
+                    >
+                      ×
+                    </button>
+                  </div>
+                  <p className="text-sm leading-relaxed text-text-secondary">{presentation.description}</p>
+                  <p className="mt-3 text-xs text-text-light">{formatTimeAgo(selectedSystemNotification.createdAt)}</p>
+                </>
+              );
+            })()}
+          </div>
+        </div>
+      ) : null}
     </AppLayout>
   );
 }

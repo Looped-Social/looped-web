@@ -1,9 +1,11 @@
 import { type SyntheticEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
 
+import { EntityText } from "@/app/components/EntityText/EntityText";
 import { AppLayout } from "@/app/components/AppLayout/AppLayout";
 import { PostMediaGrid } from "@/app/components/PostMediaGrid/PostMediaGrid";
 import { useToast } from "@/app/components/AppToast/AppToast";
+import { useEntityNavigation } from "@/app/hooks/useEntityNavigation";
 import {
   CommentsApiError,
   createPostComment,
@@ -536,7 +538,9 @@ export function AppPostCommentsPage({ postId, overlayMode = false, onRequestClos
   const navigate = useNavigate();
   const location = useLocation();
   const composerInputRef = useRef<HTMLInputElement>(null);
+  const focusedCommentIdRef = useRef<string | null>(null);
   const { showToast } = useToast();
+  const { openHashtag, openMention } = useEntityNavigation();
   const { user, status: currentUserStatus } = useCurrentUserStore({ autoLoad: true });
 
   const [post, setPost] = useState<PostSummary | null>(null);
@@ -561,6 +565,15 @@ export function AppPostCommentsPage({ postId, overlayMode = false, onRequestClos
   const [reportReason, setReportReason] = useState<(typeof REPORT_REASON_OPTIONS)[number]>("Spam");
   const [reportCustomReason, setReportCustomReason] = useState("");
   const [isReportSubmitting, setIsReportSubmitting] = useState(false);
+  const [highlightedCommentId, setHighlightedCommentId] = useState<string | null>(null);
+
+  const targetCommentId = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    const raw = params.get("commentId") ?? params.get("comment_id");
+    if (!raw) return null;
+    const trimmed = raw.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }, [location.search]);
 
   const loadPostDetail = useCallback(async () => {
     setPostStatus("loading");
@@ -677,9 +690,38 @@ export function AppPostCommentsPage({ postId, overlayMode = false, onRequestClos
     setReportReason("Spam");
     setReportCustomReason("");
     setIsReportSubmitting(false);
+    setHighlightedCommentId(null);
+    focusedCommentIdRef.current = null;
     void loadPostDetail();
     void loadComments({ replace: true });
   }, [loadComments, loadPostDetail]);
+
+  useEffect(() => {
+    if (!targetCommentId) {
+      setHighlightedCommentId(null);
+      focusedCommentIdRef.current = null;
+      return;
+    }
+    if (focusedCommentIdRef.current === targetCommentId) return;
+
+    const element = document.getElementById(`comment-${targetCommentId}`);
+    if (!element) return;
+
+    focusedCommentIdRef.current = targetCommentId;
+    setHighlightedCommentId(targetCommentId);
+
+    const scrollRaf = window.requestAnimationFrame(() => {
+      element.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+    const clearHighlightTimer = window.setTimeout(() => {
+      setHighlightedCommentId((current) => (current === targetCommentId ? null : current));
+    }, 2200);
+
+    return () => {
+      window.cancelAnimationFrame(scrollRaf);
+      window.clearTimeout(clearHighlightTimer);
+    };
+  }, [comments, replyThreads, targetCommentId]);
 
   useEffect(() => {
     if (!post) {
@@ -1233,7 +1275,14 @@ export function AppPostCommentsPage({ postId, overlayMode = false, onRequestClos
                   sizeClassName="h-11 w-11"
                 />
                 <div className="min-w-0 flex-1">
-                  {post.content ? <p className="text-[2rem] leading-tight font-semibold text-strong">{post.content}</p> : null}
+                  {post.content ? (
+                    <EntityText
+                      text={post.content}
+                      className="text-[2rem] leading-tight font-semibold text-strong"
+                      onHashtagPress={openHashtag}
+                      onMentionPress={openMention}
+                    />
+                  ) : null}
                   <p className="mt-2 text-xl text-text-secondary">{post.authorName}</p>
                   {post.createdAtLabel ? <p className="mt-1 text-base text-text-light">{post.createdAtLabel}</p> : null}
                   {post.mediaAssetIds.length > 0 ? (
@@ -1284,7 +1333,13 @@ export function AppPostCommentsPage({ postId, overlayMode = false, onRequestClos
               const showReplies = thread?.open ?? false;
 
               return (
-                <article key={comment.id} className="px-5 py-3.5">
+                <article
+                  key={comment.id}
+                  id={`comment-${comment.id}`}
+                  className={`px-5 py-3.5 transition-colors ${
+                    highlightedCommentId === comment.id ? "rounded-xl bg-brand/10" : ""
+                  }`}
+                >
                   <div className="flex items-start gap-3">
                     <Avatar
                       src={comment.authorProfileImageUrl}
@@ -1294,7 +1349,14 @@ export function AppPostCommentsPage({ postId, overlayMode = false, onRequestClos
                     />
 
                     <div className="min-w-0 flex-1">
-                      {comment.content ? <p className="text-[1.35rem] leading-[1.3] text-strong">{comment.content}</p> : null}
+                      {comment.content ? (
+                        <EntityText
+                          text={comment.content}
+                          className="text-[1.35rem] leading-[1.3] text-strong"
+                          onHashtagPress={openHashtag}
+                          onMentionPress={openMention}
+                        />
+                      ) : null}
                       {comment.mediaAssetIds.length > 0 ? (
                         <PostMediaGrid
                           attachments={orderedResolvedMedia(comment.mediaAssetIds)}
@@ -1357,7 +1419,13 @@ export function AppPostCommentsPage({ postId, overlayMode = false, onRequestClos
                           ) : null}
 
                           {thread?.items.map((reply) => (
-                            <div key={reply.id} className="flex items-start gap-2">
+                            <div
+                              key={reply.id}
+                              id={`comment-${reply.id}`}
+                              className={`flex items-start gap-2 rounded-lg transition-colors ${
+                                highlightedCommentId === reply.id ? "bg-brand/10 px-2 py-1.5" : ""
+                              }`}
+                            >
                               <Avatar
                                 src={reply.authorProfileImageUrl}
                                 alt={`View ${reply.authorName}'s profile`}
@@ -1365,7 +1433,14 @@ export function AppPostCommentsPage({ postId, overlayMode = false, onRequestClos
                                 sizeClassName="h-8 w-8"
                               />
                               <div className="min-w-0 flex-1">
-                                {reply.content ? <p className="text-[1.02rem] leading-[1.3] text-strong">{reply.content}</p> : null}
+                                {reply.content ? (
+                                  <EntityText
+                                    text={reply.content}
+                                    className="text-[1.02rem] leading-[1.3] text-strong"
+                                    onHashtagPress={openHashtag}
+                                    onMentionPress={openMention}
+                                  />
+                                ) : null}
                                 {reply.mediaAssetIds.length > 0 ? (
                                   <PostMediaGrid
                                     attachments={orderedResolvedMedia(reply.mediaAssetIds)}

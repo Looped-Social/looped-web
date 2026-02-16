@@ -16,6 +16,7 @@ export default [
   route('p/:postId', 'routes/marketing/post-share.tsx'),
   route('app', 'routes/app/app.tsx'),
   route('app/search', 'routes/app/search.tsx'),
+  route('app/hashtags/:hashtag', 'routes/app/hashtag.tsx'),
   route('app/messages', 'routes/app/messages.tsx'),
   route('app/messages/conversation/:conversationId', 'routes/app/messages-conversation.tsx'),
   route('app/messages/channel/:channelId', 'routes/app/messages-channel.tsx'),
