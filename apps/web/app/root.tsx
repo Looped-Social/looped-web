@@ -21,7 +21,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <link rel="icon" href="/favicon.svg" type="image/svg+xml" sizes="any" />
+        <meta name="theme-color" content="#ea404a" />
+        <link rel="icon" href="/favicon-48.png" sizes="48x48" type="image/png" />
+        <link rel="icon" href="/favicon-192.png" sizes="192x192" type="image/png" />
+        <link rel="icon" href="/favicon-512.png" sizes="512x512" type="image/png" />
+        <link rel="icon" href="/favicon.svg" sizes="any" type="image/svg+xml" />
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180" />
+        <link rel="manifest" href="/site.webmanifest" />
         <script
           dangerouslySetInnerHTML={{
             __html: `
