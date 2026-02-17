@@ -178,25 +178,16 @@ export async function loader({ params, request }: Route.LoaderArgs) {
         .join(" • ")
     );
 
+    const resolvedPreviewUrl = await resolvePreviewImageFromMedia(apiBase, post);
     const directPreviewUrl = toAbsoluteUrl(
-      pickString(post, [
-        "thumbnail_url",
-        "thumbnailUrl",
-        "cdn_url",
-        "cdnUrl",
-        "media_url",
-        "mediaUrl",
-        "author_profile_image_url",
-        "authorProfileImageUrl",
-      ])
+      pickString(post, ["thumbnail_url", "thumbnailUrl", "cdn_url", "cdnUrl", "media_url", "mediaUrl", "image_url", "imageUrl"])
     );
-    const resolvedPreviewUrl = directPreviewUrl ?? (await resolvePreviewImageFromMedia(apiBase, post));
 
     return {
       title,
       description,
       canonicalUrl: `${origin}/p/${encodeURIComponent(postId)}`,
-      previewImageUrl: resolvedPreviewUrl ?? FALLBACK_IMAGE_URL,
+      previewImageUrl: resolvedPreviewUrl ?? directPreviewUrl ?? FALLBACK_IMAGE_URL,
       iosDeepLink: `looped://post/${encodeURIComponent(postId)}`,
     } satisfies PostShareMeta;
   } catch {
