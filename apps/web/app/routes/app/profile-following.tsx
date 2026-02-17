@@ -1,15 +1,13 @@
 import type { Route } from "./+types/profile-following";
+import { buildAppNoIndexMeta } from "@/lib/seo";
 
 import { AppUserFollowListPage } from "@/app/pages/AppUserFollowListPage/AppUserFollowListPage";
 
 export function meta({}: Route.MetaArgs) {
-  return [
-    { title: "Looped | Following" },
-    {
-      name: "description",
-      content: "Following list.",
-    },
-  ];
+  return buildAppNoIndexMeta({
+    title: "Looped | Following",
+    description: "Following list.",
+  });
 }
 
 export default function ProfileFollowing({ params }: Route.ComponentProps) {

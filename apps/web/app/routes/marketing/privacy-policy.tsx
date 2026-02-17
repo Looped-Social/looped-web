@@ -1,15 +1,13 @@
 import type { Route } from "./+types/privacy-policy";
+import { buildMarketingPageMeta } from "@/lib/seo";
 import { PrivacyPolicyPage } from "@/marketing/pages/PrivacyPolicyPage/PrivacyPolicyPage";
 
 export function meta({}: Route.MetaArgs) {
-  return [
-    { title: "Privacy Policy" },
-    {
-      name: "description",
-      content:
-        "Looped Privacy Policy describing how personal information is collected, used, and shared.",
-    },
-  ];
+  return buildMarketingPageMeta({
+    title: "Privacy Policy",
+    description: "Looped Privacy Policy describing how personal information is collected, used, and shared.",
+    path: "/privacy-policy",
+  });
 }
 
 export default function PrivacyPolicy() {

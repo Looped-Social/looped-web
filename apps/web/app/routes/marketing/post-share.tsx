@@ -206,6 +206,7 @@ export function meta({ data }: Route.MetaArgs) {
   return [
     { title },
     { name: "description", content: description },
+    { name: "robots", content: "index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1" },
     { tagName: "link", rel: "canonical", href: canonicalUrl },
     { property: "og:type", content: "article" },
     { property: "og:site_name", content: "Looped" },

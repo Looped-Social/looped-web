@@ -1,15 +1,13 @@
 import type { Route } from './+types/messages';
+import { buildAppNoIndexMeta } from "@/lib/seo";
 
 import { AppMessagesPage } from '@/app/pages/AppMessagesPage/AppMessagesPage';
 
 export function meta({}: Route.MetaArgs) {
-  return [
-    { title: 'Looped | Messages' },
-    {
-      name: 'description',
-      content: 'Your Looped messages.',
-    },
-  ];
+  return buildAppNoIndexMeta({
+    title: 'Looped | Messages',
+    description: 'Your Looped messages.',
+  });
 }
 
 export default function Messages() {
