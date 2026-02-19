@@ -18,6 +18,7 @@ import {
 import { getCommunityPermissions, type CommunityPermissions } from "@/lib/communityPermissionsApi";
 import { type ResolvedMediaAsset, resolveMediaAssets } from "@/lib/mediaApi";
 import { extractMediaAssetIds } from "@/lib/postMediaIds";
+import { normalizePostPoll, type PostPoll } from "@/lib/postPoll";
 import { PostActionsApiError, reportEntity } from "@/lib/postActionsApi";
 import { useCurrentUserStore } from "@/stores/currentUserStore";
 
@@ -56,6 +57,7 @@ type PostSummary = {
   createdAtLabel: string;
   commentsCount: number;
   isAnonymous: boolean;
+  poll?: PostPoll;
   mediaAssetIds: string[];
 };
 
@@ -181,6 +183,43 @@ function formatCompactTimeAgo(value: unknown): string {
   return `${Math.max(1, diffYears)}y`;
 }
 
+function normalizeForComparison(value: string): string {
+  return value.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+function clampPercent(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(100, value));
+}
+
+function isPollOpen(poll: PostPoll): boolean {
+  if (poll.status.toUpperCase() !== "OPEN") return false;
+  if (!poll.closesAt) return true;
+  const closesAtMs = new Date(poll.closesAt).getTime();
+  if (Number.isNaN(closesAtMs)) return true;
+  return Date.now() < closesAtMs;
+}
+
+function formatEndsInLabel(closesAt: string): string {
+  const closesAtMs = new Date(closesAt).getTime();
+  if (Number.isNaN(closesAtMs)) return "No end";
+  const diffMs = closesAtMs - Date.now();
+  if (diffMs <= 0) return "Final results";
+
+  const diffMinutes = Math.max(1, Math.floor(diffMs / 60_000));
+  if (diffMinutes < 60) return `Ends in ${diffMinutes}m`;
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) return `Ends in ${diffHours}h`;
+  const diffDays = Math.floor(diffHours / 24);
+  return `Ends in ${Math.max(1, diffDays)}d`;
+}
+
+function pollStatusLabel(poll: PostPoll): string {
+  if (!isPollOpen(poll)) return "Final results";
+  if (!poll.closesAt) return "No end";
+  return formatEndsInLabel(poll.closesAt);
+}
+
 function appendIfMissing(existing: CommentView[], incoming: CommentView[]): CommentView[] {
   if (incoming.length === 0) return existing;
   const seen = new Set(existing.map((item) => item.id));
@@ -285,6 +324,7 @@ function normalizePostDetail(payload: unknown): PostSummary | null {
     createdAtLabel: compact ? `${compact} ago` : "",
     commentsCount: pickNumber(payload, ["comments_count", "commentsCount", "comment_count", "commentCount"]) ?? 0,
     isAnonymous,
+    poll: normalizePostPoll(payload),
     mediaAssetIds: extractMediaAssetIds(payload),
   };
 }
@@ -1221,6 +1261,14 @@ export function AppPostCommentsPage({ postId, overlayMode = false, onRequestClos
   const hasComposerDraft = composerText.trim().length > 0;
   const reportRequiresCustomReason = reportReason === "Something Else";
   const isReportInvalid = reportRequiresCustomReason && reportCustomReason.trim().length === 0;
+  const trimmedPostContent = post?.content.trim() ?? "";
+  const shouldHidePostTextForPoll = Boolean(
+    post?.poll &&
+      trimmedPostContent.length > 0 &&
+      normalizeForComparison(trimmedPostContent) === normalizeForComparison(post.poll.question)
+  );
+  const shouldRenderPostText = trimmedPostContent.length > 0 && !shouldHidePostTextForPoll;
+  const postMediaTopSpacingClass = post?.poll || shouldRenderPostText ? "mt-3" : "mt-2";
 
   const content = (
     <div className="flex min-h-screen flex-col bg-bg">
@@ -1275,7 +1323,7 @@ export function AppPostCommentsPage({ postId, overlayMode = false, onRequestClos
                   sizeClassName="h-11 w-11"
                 />
                 <div className="min-w-0 flex-1">
-                  {post.content ? (
+                  {shouldRenderPostText ? (
                     <EntityText
                       text={post.content}
                       className="text-[2rem] leading-tight font-semibold text-strong"
@@ -1283,12 +1331,48 @@ export function AppPostCommentsPage({ postId, overlayMode = false, onRequestClos
                       onMentionPress={openMention}
                     />
                   ) : null}
+                  {post.poll ? (
+                    <section className={`${shouldRenderPostText ? "mt-3" : "mt-1"} pt-1`}>
+                      <div className="space-y-2.5">
+                        <p className="text-[1.02rem] font-medium leading-snug text-text-primary">{post.poll.question}</p>
+                        <div className="space-y-2">
+                          {post.poll.options.map((option) => {
+                            const percent = clampPercent(option.votePercent);
+                            return (
+                              <div
+                                key={option.id}
+                                className="relative w-full overflow-hidden rounded-xl border border-border/70 px-3 py-2.5"
+                              >
+                                <span
+                                  className="absolute inset-y-0 left-0 bg-bg-muted/70"
+                                  style={{ width: `${percent}%` }}
+                                  aria-hidden="true"
+                                />
+                                <span className="relative z-10 flex items-center justify-between gap-2">
+                                  <span className="text-sm font-medium text-text-primary">{option.text}</span>
+                                  <span className="text-xs font-semibold text-text-secondary tabular-nums">
+                                    {Math.round(percent)}%
+                                  </span>
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        <div className="flex items-center justify-between text-[0.85rem] text-text-light">
+                          <span>{pollStatusLabel(post.poll)}</span>
+                          <span>
+                            {post.poll.totalVotes} {post.poll.totalVotes === 1 ? "vote" : "votes"}
+                          </span>
+                        </div>
+                      </div>
+                    </section>
+                  ) : null}
                   <p className="mt-2 text-xl text-text-secondary">{post.authorName}</p>
                   {post.createdAtLabel ? <p className="mt-1 text-base text-text-light">{post.createdAtLabel}</p> : null}
                   {post.mediaAssetIds.length > 0 ? (
                     <PostMediaGrid
                       attachments={orderedResolvedMedia(post.mediaAssetIds)}
-                      className={post.content ? "mt-3" : "mt-2"}
+                      className={postMediaTopSpacingClass}
                     />
                   ) : null}
                 </div>
