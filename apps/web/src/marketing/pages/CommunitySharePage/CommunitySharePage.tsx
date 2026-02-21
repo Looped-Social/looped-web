@@ -146,16 +146,6 @@ function formatKindLabel(value?: string): string | null {
     .join(" ");
 }
 
-function initialsFromName(value: string): string {
-  const words = value
-    .trim()
-    .split(/\s+/)
-    .filter((token) => token.length > 0)
-    .slice(0, 2);
-  if (words.length === 0) return "#";
-  return words.map((word) => word[0]!.toUpperCase()).join("");
-}
-
 function handleAvatarError(event: SyntheticEvent<HTMLImageElement>) {
   const image = event.currentTarget;
   if (image.dataset.fallbackApplied === "true") return;
@@ -435,28 +425,12 @@ export function CommunitySharePage({ communityId }: CommunitySharePageProps) {
                 ) : null}
 
                 <div className="px-4 py-5 sm:px-5">
-                  <div className={`flex gap-3 ${community.bannerImageUrl ? "-mt-12 items-end" : "items-start"}`}>
-                    <div
-                      className={`flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-border/70 bg-bg-muted text-xl font-semibold text-brand ${
-                        community.bannerImageUrl ? "ring-4 ring-bg shadow-sm" : ""
-                      }`}
-                    >
-                      {community.iconUrl ? (
-                        <img src={community.iconUrl} alt="" className="h-full w-full object-cover" loading="lazy" />
-                      ) : community.iconGlyph ? (
-                        <span aria-hidden="true">{community.iconGlyph}</span>
-                      ) : (
-                        <span aria-hidden="true">{initialsFromName(community.shortName ?? community.name)}</span>
-                      )}
-                    </div>
-
-                    <div className="min-w-0 flex-1 pt-1">
-                      <h1 className="truncate text-[1.8rem] leading-[1.15] font-semibold text-strong">{community.name}</h1>
-                      <p className="mt-1 text-[1rem] text-text-secondary">
-                        {formatCount(community.membersCount)} {community.membersCount === 1 ? "member" : "members"}
-                        {kindLabel ? ` • ${kindLabel}` : ""}
-                      </p>
-                    </div>
+                  <div className="min-w-0">
+                    <h1 className="truncate text-[1.8rem] leading-[1.15] font-semibold text-strong">{community.name}</h1>
+                    <p className="mt-1 text-[1rem] text-text-secondary">
+                      {formatCount(community.membersCount)} {community.membersCount === 1 ? "member" : "members"}
+                      {kindLabel ? ` • ${kindLabel}` : ""}
+                    </p>
                   </div>
 
                   {community.description ? (
