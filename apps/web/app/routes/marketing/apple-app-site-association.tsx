@@ -4,7 +4,7 @@ const body = {
     details: [
       {
         appID: 'RAB89P8X48.com.mylooped.looped',
-        paths: ['/p/*', '/u/*', '/app/*', '/login*', '/'],
+        paths: ['/p/*', '/u/*', '/c/*', '/app/*', '/login*', '/'],
       },
     ],
   },

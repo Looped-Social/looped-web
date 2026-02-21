@@ -441,6 +441,7 @@ export function AppCommunityPage({ communityId }: AppCommunityPageProps) {
   const [joinLimitInfo, setJoinLimitInfo] = useState<JoinLimitInfo>({});
   const [followLoading, setFollowLoading] = useState(false);
   const [joinLoading, setJoinLoading] = useState(false);
+  const [shareLoading, setShareLoading] = useState(false);
 
   const [activeTab, setActiveTab] = useState<CommunityTabId>("posts");
   const [posts, setPosts] = useState<PostData[]>([]);
@@ -617,6 +618,16 @@ export function AppCommunityPage({ communityId }: AppCommunityPageProps) {
     return permissions.can_post || Boolean(permissions.canPost);
   }, [permissions]);
 
+  const sharePath = useMemo(() => {
+    const id = (community?.id ?? communityId).toString().trim();
+    return `/c/${encodeURIComponent(id)}`;
+  }, [community?.id, communityId]);
+
+  const shareUrl = useMemo(() => {
+    if (typeof window === "undefined") return `https://mylooped.app${sharePath}`;
+    return `${window.location.origin}${sharePath}`;
+  }, [sharePath]);
+
   const writeGateReason = useMemo(() => {
     if (!permissions || canWrite) return null;
     if (permissions.requires_verification) return "Verification required. Verify in iOS app.";
@@ -681,6 +692,43 @@ export function AppCommunityPage({ communityId }: AppCommunityPageProps) {
       setJoinLoading(false);
     }
   }, [joinLimitInfo.canJoin, community, joinLoading, showToast]);
+
+  const handleShare = useCallback(async () => {
+    if (shareLoading) return;
+    setShareLoading(true);
+
+    try {
+      const communityName = community?.name ?? "this community";
+      if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
+        await navigator.share({
+          title: `${communityName} on Looped`,
+          text: `Check out ${communityName} on Looped.`,
+          url: shareUrl,
+        });
+      } else if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(shareUrl);
+        showToast({
+          title: "Community link copied",
+          message: shareUrl,
+        });
+      } else {
+        showToast({
+          title: "Share unavailable",
+          message: shareUrl,
+          tone: "error",
+        });
+      }
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      showToast({
+        title: "Couldn't share community",
+        message: error instanceof Error ? error.message : "Try again.",
+        tone: "error",
+      });
+    } finally {
+      setShareLoading(false);
+    }
+  }, [community?.name, shareLoading, shareUrl, showToast]);
 
   const communityHasImage = isImageUrl(community?.icon);
   const specializationLabel = community?.kind === "major" ? "Major" : community?.kind === "field" ? "Field" : undefined;
@@ -756,18 +804,28 @@ export function AppCommunityPage({ communityId }: AppCommunityPageProps) {
                 <p className="text-[1rem] font-semibold text-text-secondary">
                   {community.membersCount ?? 0} {(community.membersCount ?? 0) === 1 ? "Member" : "Members"}
                 </p>
-                <button
-                  type="button"
-                  onClick={() => void handleFollowToggle()}
-                  disabled={followLoading}
-                  className={`min-w-[136px] rounded-full px-6 py-2 text-base font-semibold transition ${
-                    community.isFollowing
-                      ? "bg-bg-muted text-strong hover:text-strong"
-                      : "bg-brand text-white hover:bg-brand-hover"
-                  } disabled:opacity-60`}
-                >
-                  {followLoading ? "Updating..." : community.isFollowing ? "Following" : "Follow"}
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void handleShare()}
+                    disabled={shareLoading}
+                    className="rounded-full border border-border/70 bg-bg px-4 py-2 text-sm font-semibold text-text-secondary transition hover:text-strong disabled:opacity-60"
+                  >
+                    {shareLoading ? "Sharing..." : "Share"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleFollowToggle()}
+                    disabled={followLoading}
+                    className={`min-w-[136px] rounded-full px-6 py-2 text-base font-semibold transition ${
+                      community.isFollowing
+                        ? "bg-bg-muted text-strong hover:text-strong"
+                        : "bg-brand text-white hover:bg-brand-hover"
+                    } disabled:opacity-60`}
+                  >
+                    {followLoading ? "Updating..." : community.isFollowing ? "Following" : "Follow"}
+                  </button>
+                </div>
               </div>
 
               {community.isSpecialization ? (

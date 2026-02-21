@@ -21,6 +21,7 @@ const RESERVED_MARKETING_SLUGS = new Set([
   "delete-account",
   "app",
   "p",
+  "c",
 ]);
 
 function isIOSDevice(): boolean {
@@ -43,6 +44,9 @@ function isLikelyProfileSlug(pathname: string): string | null {
 }
 
 function deepLinkForPath(pathname: string): string {
+  const communityMatch = pathname.match(/^\/c\/([^/]+)$/);
+  if (communityMatch?.[1]) return `looped://community/${encodeURIComponent(decodeURIComponent(communityMatch[1]))}`;
+
   const postMatch = pathname.match(/^\/p\/([^/]+)$/);
   if (postMatch?.[1]) return `looped://post/${encodeURIComponent(decodeURIComponent(postMatch[1]))}`;
 

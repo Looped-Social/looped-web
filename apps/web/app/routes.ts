@@ -14,6 +14,7 @@ export default [
   route('faq', 'routes/marketing/faq.tsx'),
   route('attributions', 'routes/marketing/attributions.tsx'),
   route('p/:postId', 'routes/marketing/post-share.tsx'),
+  route('c/:communityId', 'routes/marketing/community-share.tsx'),
   route('app', 'routes/app/app.tsx'),
   route('app/search', 'routes/app/search.tsx'),
   route('app/hashtags/:hashtag', 'routes/app/hashtag.tsx'),

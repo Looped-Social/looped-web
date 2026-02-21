@@ -227,6 +227,10 @@ function resolveRouteFromLoopedPath(path: string, searchParams?: URLSearchParams
     return routeToPost(second);
   }
 
+  if (first === "community" && second) {
+    return `/app/community/${encodeURIComponent(second)}`;
+  }
+
   if (first === "comment" && second) {
     const postId = safePathSegment(searchParams?.get("post_id") ?? undefined);
     if (!postId) return "/app/notifications";
@@ -290,6 +294,10 @@ function resolveRouteFromDeeplink(value: string | undefined): string | undefined
       const postId = safePathSegment(trimmed.replace(/^\/p\//, ""));
       return postId ? routeToPost(postId) : undefined;
     }
+    if (trimmed.startsWith("/c/")) {
+      const communityId = safePathSegment(trimmed.replace(/^\/c\//, ""));
+      return communityId ? `/c/${encodeURIComponent(communityId)}` : undefined;
+    }
     if (trimmed.startsWith("/u/")) {
       const slug = safePathSegment(trimmed.replace(/^\/u\//, ""));
       return slug ? `/u/${encodeURIComponent(slug)}` : undefined;
@@ -307,6 +315,11 @@ function resolveRouteFromDeeplink(value: string | undefined): string | undefined
     if (parsed.pathname.startsWith("/p/")) {
       const postId = safePathSegment(parsed.pathname.replace(/^\/p\//, ""));
       return postId ? routeToPost(postId) : undefined;
+    }
+
+    if (parsed.pathname.startsWith("/c/")) {
+      const communityId = safePathSegment(parsed.pathname.replace(/^\/c\//, ""));
+      return communityId ? `/c/${encodeURIComponent(communityId)}` : undefined;
     }
 
     if (parsed.pathname.startsWith("/u/")) {
