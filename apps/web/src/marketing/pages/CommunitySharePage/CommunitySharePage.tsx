@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { type SyntheticEvent, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router";
 
 import { useUserSession } from "@/hooks/useUserSession";
@@ -18,21 +18,27 @@ type SharedCommunity = {
   name: string;
   shortName?: string;
   description?: string;
+  bannerImageUrl?: string;
   iconUrl?: string;
   iconGlyph?: string;
   membersCount: number;
   kind?: string;
+  specializationType?: string;
 };
 
 type SharedCommunityPost = {
   id: string;
   authorName: string;
+  authorProfileImageUrl?: string;
+  communityName?: string;
   content: string;
   createdAtLabel: string;
   likesCount: number;
   commentsCount: number;
   sharesCount: number;
 };
+
+const DEFAULT_PROFILE_IMAGE_SRC = "/ios-icons/pfp2.svg";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -129,15 +135,47 @@ function formatCount(value: number): string {
   return String(Math.max(0, value));
 }
 
+function formatKindLabel(value?: string): string | null {
+  if (!value) return null;
+  const normalized = value.trim();
+  if (!normalized) return null;
+  return normalized
+    .split(/[_\-\s]+/)
+    .filter((token) => token.length > 0)
+    .map((token) => token[0].toUpperCase() + token.slice(1).toLowerCase())
+    .join(" ");
+}
+
+function initialsFromName(value: string): string {
+  const words = value
+    .trim()
+    .split(/\s+/)
+    .filter((token) => token.length > 0)
+    .slice(0, 2);
+  if (words.length === 0) return "#";
+  return words.map((word) => word[0]!.toUpperCase()).join("");
+}
+
+function handleAvatarError(event: SyntheticEvent<HTMLImageElement>) {
+  const image = event.currentTarget;
+  if (image.dataset.fallbackApplied === "true") return;
+  image.dataset.fallbackApplied = "true";
+  image.src = DEFAULT_PROFILE_IMAGE_SRC;
+}
+
 function normalizeSharedCommunity(payload: unknown, fallbackId: string): SharedCommunity | null {
   if (!isRecord(payload)) return null;
   const node = isRecord(payload.community) ? payload.community : payload;
 
   const id = pickString(node, ["id", "community_id", "communityId", "specialization_id", "specializationId"]) ?? fallbackId;
-  const name = pickString(node, ["short_name", "shortName", "name", "display_name", "displayName", "title"]) ?? "Community";
+  const shortName = pickString(node, ["short_name", "shortName"]);
+  const name = shortName ?? pickString(node, ["name", "display_name", "displayName", "title"]) ?? "Community";
   const iconPayload = isRecord(node.icon) ? node.icon : null;
+  const bannerImageUrl =
+    pickString(node, ["banner_image_url", "bannerImageUrl", "cover_image_url", "coverImageUrl", "header_image_url", "headerImageUrl"]) ??
+    pickString(node, ["image_url", "imageUrl"]);
   const iconUrl =
-    pickString(node, ["image_url", "imageUrl", "icon_url", "iconUrl"]) ??
+    pickString(node, ["icon_url", "iconUrl", "logo_url", "logoUrl", "avatar_url", "avatarUrl"]) ??
     (iconPayload ? pickString(iconPayload, ["url", "image_url", "imageUrl"]) : undefined);
   const iconGlyph =
     pickString(node, ["emoji", "icon_emoji", "iconEmoji"]) ??
@@ -149,14 +187,16 @@ function normalizeSharedCommunity(payload: unknown, fallbackId: string): SharedC
   return {
     id,
     name,
-    shortName: pickString(node, ["short_name", "shortName"]),
+    shortName,
     description: pickString(node, ["description", "about", "bio"]),
+    bannerImageUrl,
     iconUrl,
     iconGlyph,
     membersCount:
       pickNumber(node, ["member_count", "memberCount", "members_count", "membersCount", "follower_count", "followers_count"]) ??
       0,
     kind: kindRaw ? kindRaw.toLowerCase() : undefined,
+    specializationType: pickString(node, ["specialization_type", "specializationType"]),
   };
 }
 
@@ -179,6 +219,8 @@ function normalizeSharedCommunityPost(payload: unknown): SharedCommunityPost | n
   return {
     id,
     authorName,
+    authorProfileImageUrl: pickString(node, ["author_profile_image_url", "authorProfileImageUrl"]),
+    communityName: pickString(node, ["community_short_name", "communityShortName", "community_name", "communityName"]),
     content: pickString(node, ["content", "text", "body", "message"]) ?? "",
     createdAtLabel: formatTimeAgo(node.created_at ?? node.createdAt ?? node.timestamp ?? node.created),
     likesCount: pickNumber(node, ["likes_count", "likesCount", "like_count", "likeCount"]) ?? 0,
@@ -222,6 +264,11 @@ export function CommunitySharePage({ communityId }: CommunitySharePageProps) {
   const [posts, setPosts] = useState<SharedCommunityPost[]>([]);
   const [postsStatus, setPostsStatus] = useState<"idle" | "loading" | "error">("idle");
   const [postsError, setPostsError] = useState<string | null>(null);
+
+  const kindLabel = useMemo(
+    () => formatKindLabel(community?.kind ?? community?.specializationType),
+    [community?.kind, community?.specializationType]
+  );
 
   useEffect(() => {
     if (sessionStatus !== "authenticated" || !rawId) return;
@@ -321,123 +368,183 @@ export function CommunitySharePage({ communityId }: CommunitySharePageProps) {
   }, [community, viewStatus]);
 
   return (
-    <div className="min-h-screen bg-bg text-text-primary">
+    <div className="min-h-screen bg-shell-bg text-text-primary">
       <Navbar />
 
-      <main className="mx-auto w-full max-w-2xl px-4 py-10 sm:px-6">
-        {viewStatus === "loading" ? (
-          <div className="space-y-3 rounded-2xl border border-border/70 bg-bg p-5 shadow-sm">
-            <div className="h-6 w-2/3 animate-pulse rounded-full bg-bg-muted" />
-            <div className="h-4 w-1/2 animate-pulse rounded-full bg-bg-muted" />
-            <div className="h-4 w-full animate-pulse rounded-full bg-bg-muted" />
-          </div>
-        ) : null}
+      <main className="mx-auto w-full max-w-3xl pb-16 pt-4 sm:pt-6">
+        <div className="flex flex-col items-start gap-1 px-4 py-3 sm:flex-row sm:items-center sm:gap-3 sm:px-5">
+          <p className="whitespace-nowrap text-[1.38rem] font-semibold leading-tight text-strong">Shared Community</p>
+          {sessionStatus !== "authenticated" ? (
+            <Link
+              to={`/login?next=${encodeURIComponent(appDestination)}`}
+              className="text-[0.95rem] text-text-secondary underline-offset-2 transition hover:text-strong hover:underline"
+            >
+              <span className="underline decoration-current underline-offset-2">Sign in</span> to follow, post, and view full community.
+            </Link>
+          ) : (
+            <p className="text-[0.95rem] text-text-secondary">Opening full community...</p>
+          )}
+        </div>
 
-        {viewStatus === "error" ? (
-          <section className="rounded-2xl border border-border/70 bg-bg p-5 shadow-sm">
-            <h1 className="text-2xl font-semibold text-strong">
-              {errorKind === "not-found"
-                ? "Community not found"
-                : errorKind === "unavailable"
-                  ? "Community unavailable"
-                  : "Community preview unavailable"}
-            </h1>
-            <p className="mt-2 text-sm text-text-secondary">{errorMessage ?? "Try again later."}</p>
-            <div className="mt-5 flex flex-wrap gap-2">
-              <Link
-                to={`/login?next=${encodeURIComponent(appDestination)}`}
-                className="inline-flex items-center justify-center rounded-full bg-brand px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-hover"
-              >
-                Log in to open
-              </Link>
-              <Link
-                to="/"
-                className="inline-flex items-center justify-center rounded-full border border-border/70 bg-bg px-4 py-2 text-sm font-semibold text-text-secondary transition hover:text-strong"
-              >
-                Back home
-              </Link>
-            </div>
-          </section>
-        ) : null}
-
-        {viewStatus === "ready" && community ? (
-          <>
-            <section className="rounded-2xl border border-border/70 bg-bg p-5 shadow-sm">
-              <div className="flex items-start gap-3">
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-bg-muted text-xl font-semibold text-brand">
-                  {community.iconUrl ? (
-                    <img src={community.iconUrl} alt="" className="h-full w-full object-cover" loading="lazy" />
-                  ) : community.iconGlyph ? (
-                    <span aria-hidden="true">{community.iconGlyph}</span>
-                  ) : (
-                    <span aria-hidden="true">#</span>
-                  )}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <h1 className="truncate text-2xl font-semibold text-strong">{community.name}</h1>
-                  <p className="mt-1 text-sm text-text-secondary">
-                    {formatCount(community.membersCount)} {community.membersCount === 1 ? "member" : "members"}
-                    {community.kind ? ` • ${community.kind}` : ""}
-                  </p>
-                </div>
+        <section className="overflow-hidden border border-border/70 bg-bg sm:rounded-2xl">
+          {viewStatus === "loading" ? (
+            <div className="px-5 py-5">
+              <div className="animate-pulse space-y-3">
+                <div className="h-36 w-full rounded-2xl bg-bg-muted" />
+                <div className="h-4 w-1/2 rounded-full bg-bg-muted" />
+                <div className="h-4 w-2/3 rounded-full bg-bg-muted" />
+                <div className="h-4 w-full rounded-full bg-bg-muted" />
               </div>
+            </div>
+          ) : null}
 
-              {community.description ? (
-                <p className="mt-4 whitespace-pre-wrap text-sm leading-relaxed text-text-secondary">{community.description}</p>
-              ) : null}
-
-              <div className="mt-5 flex flex-wrap gap-2">
+          {viewStatus === "error" ? (
+            <div className="px-5 py-5">
+              <p className="text-sm font-semibold text-strong">
+                {errorKind === "not-found"
+                  ? "Community not found"
+                  : errorKind === "unavailable"
+                    ? "Community unavailable"
+                    : "Community preview unavailable"}
+              </p>
+              <p className="mt-1 text-sm text-text-secondary">{errorMessage ?? "Try again later."}</p>
+              <div className="mt-4 flex flex-wrap gap-2">
                 <Link
                   to={`/login?next=${encodeURIComponent(appDestination)}`}
                   className="inline-flex items-center justify-center rounded-full bg-brand px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-hover"
                 >
-                  Open in Looped
+                  Log in to open
                 </Link>
-                <a
-                  href="https://apps.apple.com/us/app/looped-social/id6758413180"
-                  target="_blank"
-                  rel="noopener noreferrer"
+                <Link
+                  to="/"
                   className="inline-flex items-center justify-center rounded-full border border-border/70 bg-bg px-4 py-2 text-sm font-semibold text-text-secondary transition hover:text-strong"
                 >
-                  Get iOS app
-                </a>
+                  Back home
+                </Link>
               </div>
-            </section>
+            </div>
+          ) : null}
 
-            <section className="mt-5 rounded-2xl border border-border/70 bg-bg shadow-sm">
-              <div className="border-b border-border/70 px-5 py-3">
-                <h2 className="text-sm font-semibold text-strong">Recent posts</h2>
-              </div>
-
-              {postsStatus === "loading" ? <p className="px-5 py-4 text-sm text-text-secondary">Loading posts...</p> : null}
-              {postsStatus === "error" ? (
-                <p className="px-5 py-4 text-sm text-text-secondary">{postsError ?? "Unable to load shared posts."}</p>
-              ) : null}
-
-              {postsStatus === "idle" && posts.length === 0 ? (
-                <p className="px-5 py-4 text-sm text-text-secondary">Recent posts are available in the app.</p>
-              ) : null}
-
-              {posts.map((post, index) => (
-                <article
-                  key={post.id}
-                  className={`px-5 py-4 ${index !== posts.length - 1 ? "border-b border-border/70" : ""}`}
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="truncate text-sm font-semibold text-strong">{post.authorName}</p>
-                    <p className="shrink-0 text-xs text-text-light">{post.createdAtLabel}</p>
+          {viewStatus === "ready" && community ? (
+            <>
+              <article className="bg-bg">
+                {community.bannerImageUrl ? (
+                  <div className="h-40 w-full overflow-hidden border-b border-border/70 bg-bg-muted sm:h-48">
+                    <img src={community.bannerImageUrl} alt="" className="h-full w-full object-cover" loading="lazy" />
                   </div>
-                  {post.content ? (
-                    <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-text-secondary">{post.content}</p>
+                ) : null}
+
+                <div className="px-4 py-5 sm:px-5">
+                  <div className={`flex gap-3 ${community.bannerImageUrl ? "-mt-12 items-end" : "items-start"}`}>
+                    <div
+                      className={`flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-border/70 bg-bg-muted text-xl font-semibold text-brand ${
+                        community.bannerImageUrl ? "ring-4 ring-bg shadow-sm" : ""
+                      }`}
+                    >
+                      {community.iconUrl ? (
+                        <img src={community.iconUrl} alt="" className="h-full w-full object-cover" loading="lazy" />
+                      ) : community.iconGlyph ? (
+                        <span aria-hidden="true">{community.iconGlyph}</span>
+                      ) : (
+                        <span aria-hidden="true">{initialsFromName(community.shortName ?? community.name)}</span>
+                      )}
+                    </div>
+
+                    <div className="min-w-0 flex-1 pt-1">
+                      <h1 className="truncate text-[1.8rem] leading-[1.15] font-semibold text-strong">{community.name}</h1>
+                      <p className="mt-1 text-[1rem] text-text-secondary">
+                        {formatCount(community.membersCount)} {community.membersCount === 1 ? "member" : "members"}
+                        {kindLabel ? ` • ${kindLabel}` : ""}
+                      </p>
+                    </div>
+                  </div>
+
+                  {community.description ? (
+                    <p className="mt-4 whitespace-pre-wrap text-[1.02rem] leading-[1.45] text-text-secondary">{community.description}</p>
                   ) : null}
-                  <p className="mt-3 text-xs text-text-light">
-                    {formatCount(post.likesCount)} likes · {formatCount(post.commentsCount)} comments · {formatCount(post.sharesCount)} shares
-                  </p>
-                </article>
-              ))}
-            </section>
-          </>
-        ) : null}
+
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <Link
+                      to={`/login?next=${encodeURIComponent(appDestination)}`}
+                      className="inline-flex items-center justify-center rounded-full bg-brand px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-hover"
+                    >
+                      Open in Looped
+                    </Link>
+                    <a
+                      href="https://apps.apple.com/us/app/looped-social/id6758413180"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center justify-center rounded-full border border-border/70 bg-bg px-4 py-2 text-sm font-semibold text-text-secondary transition hover:text-strong"
+                    >
+                      Get iOS app
+                    </a>
+                  </div>
+                </div>
+              </article>
+
+              <section className="border-t border-border/70">
+                <div className="px-4 py-3 sm:px-5">
+                  <h2 className="text-[1.03rem] font-semibold text-strong">Recent posts</h2>
+                </div>
+
+                {postsStatus === "loading" ? (
+                  <div className="border-t border-border/70 px-4 py-5 text-sm text-text-secondary sm:px-5">Loading posts...</div>
+                ) : null}
+
+                {postsStatus === "error" ? (
+                  <div className="border-t border-border/70 px-4 py-5 text-sm text-text-secondary sm:px-5">
+                    {postsError ?? "Unable to load shared posts."}
+                  </div>
+                ) : null}
+
+                {postsStatus === "idle" && posts.length === 0 ? (
+                  <div className="border-t border-border/70 px-4 py-5 text-sm text-text-secondary sm:px-5">
+                    Recent posts are available in the app.
+                  </div>
+                ) : null}
+
+                {posts.length > 0 ? (
+                  <div className="divide-y divide-border/70 border-t border-border/70">
+                    {posts.map((post) => (
+                      <article key={post.id} className="px-4 py-4 sm:px-5">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0 flex flex-1 items-start gap-3">
+                            <img
+                              src={post.authorProfileImageUrl ?? DEFAULT_PROFILE_IMAGE_SRC}
+                              alt=""
+                              className="h-10 w-10 shrink-0 rounded-full object-cover"
+                              loading="lazy"
+                              onError={handleAvatarError}
+                            />
+                            <div className="min-w-0">
+                              <p className="truncate text-[1.1rem] font-semibold leading-tight text-strong">{post.authorName}</p>
+                              {post.communityName ? (
+                                <p className="mt-0.5 text-[0.95rem] leading-tight text-text-secondary">Posted in {post.communityName}</p>
+                              ) : null}
+                            </div>
+                          </div>
+                          {post.createdAtLabel ? (
+                            <p className="shrink-0 text-[0.95rem] text-text-light">{post.createdAtLabel}</p>
+                          ) : null}
+                        </div>
+
+                        {post.content ? (
+                          <p className="mt-3 whitespace-pre-wrap text-[1.05rem] leading-[1.42] text-text-primary">{post.content}</p>
+                        ) : (
+                          <p className="mt-3 text-[0.95rem] text-text-secondary">Post content is available in the app.</p>
+                        )}
+
+                        <p className="mt-3 text-[0.92rem] text-text-light">
+                          {formatCount(post.likesCount)} likes · {formatCount(post.commentsCount)} comments · {formatCount(post.sharesCount)} shares
+                        </p>
+                      </article>
+                    ))}
+                  </div>
+                ) : null}
+              </section>
+            </>
+          ) : null}
+        </section>
       </main>
     </div>
   );
