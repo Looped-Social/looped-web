@@ -16,22 +16,19 @@ const logos = [
 
 export function CompanyLogos() {
   return (
-    <section className="bg-bg-muted py-10 md:py-12">
-      <div className="mx-auto max-w-6xl px-4">
-        <div className="flex flex-col items-start gap-6 lg:flex-row lg:items-center lg:gap-10">
-          <p className="text-sm font-semibold uppercase tracking-wide text-text-light">
-            Trusted by people everywhere
-          </p>
+    <section className="border-y border-border bg-bg py-10 md:py-12">
+      <div className="mx-auto max-w-6xl px-4 md:px-6 lg:px-8">
+        <p className="text-sm font-medium text-text-secondary">People on Looped come from teams like</p>
 
-          <div className="group relative w-full overflow-hidden">
-            <div className="flex min-w-max items-center gap-10 [animation:marquee_28s_linear_infinite] group-hover:[animation-play-state:paused]">
-              {[...logos, ...logos].map((logo, index) => (
-                <div key={`${logo.alt}-${index}`} className="flex h-14 min-w-[120px] items-center justify-center">
-                  <img src={logo.src} alt={logo.alt} className="max-h-full max-w-[140px] object-contain" />
-                </div>
-              ))}
+        <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 md:gap-4 lg:grid-cols-6">
+          {logos.map((logo) => (
+            <div
+              key={logo.alt}
+              className="flex h-16 items-center justify-center rounded-xl border border-border bg-bg-muted/45 p-3"
+            >
+              <img src={logo.src} alt={logo.alt} className="max-h-9 w-auto max-w-[130px] object-contain" />
             </div>
-          </div>
+          ))}
         </div>
       </div>
     </section>

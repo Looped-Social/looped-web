@@ -57,7 +57,7 @@ export function captureFeedScrollRestore(pathname: string, scrollY: number, opti
 export function consumeFeedScrollRestore(pathname: string): { scrollY: number; postId?: string } | null {
   if (typeof window === "undefined") return null;
 
-  let parsed: FeedScrollRestoreRecord | null = null;
+  let parsed: FeedScrollRestoreRecord | null;
   try {
     parsed = parseRecord(window.sessionStorage.getItem(FEED_SCROLL_RESTORE_STORAGE_KEY));
   } catch {

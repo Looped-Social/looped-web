@@ -2,7 +2,10 @@
   "name": "looped-web",
   "private": true,
   "type": "module",
-  "workspaces": ["apps/*", "packages/*"],
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
     "dev": "npm run -w apps/web dev",
     "dev:staging": "npm run -w apps/web dev:staging",
@@ -13,5 +16,13 @@
     "lint": "npm run --ws --if-present lint",
     "format": "prettier --write \"apps/**/{app,src,public}/**/*.{ts,tsx,js,jsx,json,css,md}\" \"packages/**/src/**/*.{ts,tsx,css}\"",
     "format:check": "prettier --check \"apps/**/{app,src,public}/**/*.{ts,tsx,js,jsx,json,css,md}\" \"packages/**/src/**/*.{ts,tsx,css}\""
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.0.1",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-react-hooks": "^7.1.0-canary-ab18f33d-20260220",
+    "globals": "^15.15.0",
+    "typescript-eslint": "^8.56.1-alpha.3"
   }
 }

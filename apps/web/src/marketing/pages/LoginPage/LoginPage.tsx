@@ -15,16 +15,18 @@ function resolvePostSignInDestination(rawSearch: string): string {
   const rawNext = params.get("next");
   if (!rawNext) return "/app";
 
-  let next = rawNext;
-  try {
-    next = decodeURIComponent(rawNext);
-  } catch {
-    next = rawNext;
-  }
-
+  const next = decodeURIComponentSafely(rawNext);
   if (!next.startsWith("/") || next.startsWith("//")) return "/app";
   if (next.startsWith("/login")) return "/app";
   return next;
+}
+
+function decodeURIComponentSafely(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
 }
 
 type LoginStatusCode = "delete-pending" | "onboarding-required" | "account-deleted";

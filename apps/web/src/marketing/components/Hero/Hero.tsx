@@ -30,47 +30,49 @@ export function Hero() {
     };
   }, []);
 
-
   return (
-    <section id="get-looped" className="bg-bg py-6 sm:py-8">
-      <div className="mx-auto grid max-w-7xl grid-cols-1 items-center gap-6 px-4 md:grid-cols-[1.25fr_0.75fr] md:px-10 lg:px-14">
-        <div className="flex flex-col gap-3 md:gap-5 md:pl-0">
-          <h1 className="flex flex-col text-[60px] font-semibold leading-[1.05] text-strong md:text-[72px] md:leading-[1.05]">
+    <section id="get-looped" className="bg-bg pb-12 pt-8 md:pb-16 md:pt-12">
+      <div className="mx-auto grid w-full max-w-6xl grid-cols-1 items-center gap-10 px-4 md:grid-cols-[1.12fr_0.88fr] md:px-6 lg:px-8">
+        <div className="max-w-2xl">
+          <h1 className="flex flex-col text-5xl font-semibold leading-[1.05] text-strong sm:text-6xl lg:text-7xl">
             <span className="block leading-[1.05]">Your</span>
-            <span className="block min-h-[4.2rem] leading-[1.05] md:min-h-[5rem]">
+            <span className="block min-h-[4.1rem] leading-[1.05] sm:min-h-[4.8rem] lg:min-h-[5.5rem]">
               <span
-                className={`inline-block min-w-[10rem] text-[60px] font-semibold leading-[1.05] transition-all duration-[500ms] ease-in-out md:min-w-[12rem] md:text-[72px] md:leading-[1.05] ${
-                  isFading ? "-translate-y-2 opacity-0" : "translate-y-0 opacity-100"
+                className={`inline-block min-w-[10.5rem] transition-all duration-[500ms] ease-in-out sm:min-w-[12.5rem] ${
+                  isFading ? "translate-y-2 opacity-0" : "translate-y-0 opacity-100"
                 }`}
               >
                 {rotatingWords[currentWordIndex]}
               </span>
-              <span>,</span>
+              ,
             </span>
             <span className="block text-brand">Verified.</span>
           </h1>
 
-          <p className="mt-2 max-w-none text-[24px] font-normal leading-relaxed text-text-primary md:text-[28px]">
-            Looped is where real employees and students speak freely
+          <p className="mt-5 max-w-xl text-lg leading-8 text-text-secondary md:text-xl">
+            Looped is where verified employees and students share honest perspective with people who understand their
+            context.
           </p>
 
-          <div id="download" className="mt-2">
-            <AppStoreButton size={6.2} />
+          <div id="download" className="mt-6 flex flex-wrap items-center gap-4">
+            <AppStoreButton size={5.8} />
+            <p className="text-sm text-text-secondary">iOS first. Signed-in members can also use web.</p>
           </div>
         </div>
 
-        <div className="relative flex justify-center md:justify-end md:pr-0">
-          <div className="absolute inset-0 -z-10 rounded-[28px] bg-gradient-to-br from-bg via-bg to-brand/5 blur-2xl dark:to-white/10" />
-          <img
-            src={heroLightImage}
-            alt="Looped app interface"
-            className="w-[80%] min-w-[260px] max-w-[440px] rounded-[24px] ring-1 ring-black/5 shadow-[0_20px_60px_rgba(0,0,0,0.18)] dark:hidden sm:w-[65%] md:w-[75%] lg:w-[80%]"
-          />
-          <img
-            src={heroDarkImage}
-            alt="Looped app interface"
-            className="hidden w-[80%] min-w-[260px] max-w-[440px] rounded-[24px] ring-1 ring-white/15 shadow-[0_20px_80px_rgba(0,0,0,0.75)] dark:block sm:w-[65%] md:w-[75%] lg:w-[80%]"
-          />
+        <div className="flex justify-center md:justify-end">
+          <div className="w-full max-w-[430px] rounded-3xl border border-border bg-bg-muted/35 p-3 shadow-[0_12px_34px_rgba(15,23,42,0.14)]">
+            <img
+              src={heroLightImage}
+              alt="Looped app interface"
+              className="block h-auto w-full rounded-2xl ring-1 ring-black/5 dark:hidden"
+            />
+            <img
+              src={heroDarkImage}
+              alt="Looped app interface"
+              className="hidden h-auto w-full rounded-2xl ring-1 ring-white/15 dark:block"
+            />
+          </div>
         </div>
       </div>
     </section>
