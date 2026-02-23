@@ -66,7 +66,7 @@ export function FeatureSections() {
               className="grid items-center gap-6 lg:grid-cols-[auto_auto] lg:justify-center lg:gap-6"
             >
               <div className={`flex justify-center ${mediaOrder}`}>
-                <div className="relative w-full max-w-[480px] rounded-[32px] bg-bg-muted/50 p-4 ring-1 ring-black/5 dark:bg-white/5 dark:ring-white/10">
+                <div className="relative w-full max-w-[480px]">
                   <div className="absolute inset-0 -z-10 rounded-[28px] bg-gradient-to-br from-bg via-bg to-brand/5 blur-2xl dark:to-white/10" />
                   <img
                     src={section.lightImage}
