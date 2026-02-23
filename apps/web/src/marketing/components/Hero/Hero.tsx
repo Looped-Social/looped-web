@@ -4,9 +4,9 @@ import heroDarkImage from "~/assets/landing-page/hero/home-page-sample-dark.PNG"
 import heroLightImage from "~/assets/landing-page/hero/main-feed-light.PNG";
 import { AppStoreButton } from "../AppStoreButton/AppStoreButton";
 
-const rotatingWords = ["college", "community", "workspace", "colleagues", "team", "office"];
+const rotatingWords = ["community", "workplace", "college", "colleagues", "team", "office"];
 const rotationFadeDurationMs = 500;
-const rotationIntervalMs = 3000;
+const rotationIntervalMs = 2400;
 
 export function Hero() {
   const [currentWordIndex, setCurrentWordIndex] = useState(0);

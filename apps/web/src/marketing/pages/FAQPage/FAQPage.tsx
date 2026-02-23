@@ -154,7 +154,6 @@ export function FAQPage() {
     <PageShell>
       <div className="mx-auto flex max-w-4xl flex-col gap-10">
         <header className="space-y-3 text-center">
-          <p className="text-sm font-semibold uppercase tracking-wide text-brand">FAQ</p>
           <h1 className="text-4xl font-semibold tracking-tight text-strong md:text-5xl">
             Frequently Asked Questions
           </h1>

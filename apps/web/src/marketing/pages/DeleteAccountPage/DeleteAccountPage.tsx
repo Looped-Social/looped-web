@@ -80,7 +80,7 @@ export function DeleteAccountPage() {
     return (
       <PageShell>
         <div className="mx-auto flex max-w-3xl flex-col gap-6 text-center">
-          <div className="inline-flex items-center justify-center rounded-full bg-brand/10 px-4 py-1 text-xs font-semibold uppercase tracking-wide text-brand">
+          <div className="inline-flex items-center justify-center rounded-full bg-emerald-50 px-4 py-1 text-xs font-semibold text-emerald-700">
             Request completed
           </div>
           <h1 className="text-3xl font-semibold text-strong md:text-4xl">{completion.title}</h1>
@@ -133,7 +133,6 @@ export function DeleteAccountPage() {
     <PageShell>
       <div className="mx-auto flex max-w-4xl flex-col gap-8">
         <header className="space-y-3 text-center">
-          <p className="text-sm font-semibold uppercase tracking-wide text-brand">Account deletion</p>
           <h1 className="text-4xl font-semibold tracking-tight text-strong md:text-5xl">
             Manage your Looped data
           </h1>

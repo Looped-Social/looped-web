@@ -1,6 +1,7 @@
 import { Link } from "react-router";
 
 import { AppStoreButton } from "../AppStoreButton/AppStoreButton";
+import { SocialIconLinks } from "../SocialIconLinks/SocialIconLinks";
 import { LoopedMoto, LoopedMotoDark, useTheme } from "@looped/ui";
 
 const APP_STORE_URL = "https://apps.apple.com/us/app/looped-social/id6758413180";
@@ -68,45 +69,8 @@ export function Footer() {
                   Contact
                 </Link>
               </li>
-              <li>
-                <a
-                  className="transition hover:text-strong"
-                  href="https://twitter.com/loopedsm"
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Twitter
-                </a>
-              </li>
-              <li>
-                <a
-                  className="transition hover:text-strong"
-                  href="https://instagram.com/loopedsm"
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Instagram
-                </a>
-              </li>
-              <li>
-                <a
-                  className="transition hover:text-strong"
-                  href="https://tiktok.com/@loopedsm"
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  TikTok
-                </a>
-              </li>
-              <li>
-                <a
-                  className="transition hover:text-strong"
-                  href="https://www.linkedin.com/company/loopedsm"
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  LinkedIn
-                </a>
+              <li className="pt-1">
+                <SocialIconLinks className="gap-3" />
               </li>
             </ul>
           </div>

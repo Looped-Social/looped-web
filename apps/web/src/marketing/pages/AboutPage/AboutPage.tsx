@@ -50,7 +50,6 @@ export function AboutPage() {
     <PageShell>
       <div className="mx-auto flex max-w-5xl flex-col gap-14">
         <header className="space-y-4 text-center">
-          <p className="text-sm font-semibold uppercase tracking-wide text-brand">About</p>
           <h1 className="text-4xl font-semibold tracking-tight text-strong md:text-5xl">
             Every verified community deserves a better conversation
           </h1>

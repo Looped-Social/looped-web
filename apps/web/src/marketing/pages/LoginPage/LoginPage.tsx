@@ -97,9 +97,6 @@ export function LoginPage() {
     <PageShell>
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-10 lg:flex-row lg:items-start lg:gap-16">
         <div className="flex-1 space-y-6">
-          <div className="inline-flex items-center gap-2 rounded-full bg-brand/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-brand">
-            Account access
-          </div>
           <h1 className="text-4xl font-semibold tracking-tight text-strong md:text-5xl">Sign in to Looped</h1>
           <p className="text-lg leading-8 text-text-secondary">
             <span className="font-semibold text-brand">Web sign-up is not supported.</span> Create your account in the

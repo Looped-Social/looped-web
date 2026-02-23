@@ -103,7 +103,6 @@ export function CommunityRequestPage() {
     <PageShell>
       <div className="mx-auto flex max-w-5xl flex-col gap-10">
         <header className="space-y-3 text-center">
-          <p className="text-sm font-semibold uppercase tracking-wide text-brand">Community request</p>
           <h1 className="text-4xl font-semibold tracking-tight text-strong md:text-5xl">
             Request a new Looped community
           </h1>

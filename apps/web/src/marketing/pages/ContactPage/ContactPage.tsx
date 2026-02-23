@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router";
 
 import { PageShell } from "@/marketing/components/PageShell/PageShell";
+import { SocialIconLinks } from "@/marketing/components/SocialIconLinks/SocialIconLinks";
 import { FeedbackApiError, submitFeedback } from "@/lib/feedbackApi";
 
 const contacts = [
@@ -11,12 +12,19 @@ const contacts = [
   { icon: "🤝", title: "Business & partnerships", copy: "Interested in partnering with Looped?", email: "business@looped.app" },
 ];
 
+const feedbackSuccessMessages = [
+  "Thanks for your message. It just landed with our team.",
+  "Got it, thank you. We read every note and this helps a lot.",
+  "Message received. Thanks for helping us make Looped better.",
+];
+
 export function ContactPage() {
   const [title, setTitle] = useState("");
   const [message, setMessage] = useState("");
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<"idle" | "submitting" | "success" | "error">("idle");
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState(feedbackSuccessMessages[0]);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -36,6 +44,7 @@ export function ContactPage() {
       });
       setStatus("success");
       setSubmitError(null);
+      setSuccessMessage(feedbackSuccessMessages[Math.floor(Math.random() * feedbackSuccessMessages.length)]);
       setTitle("");
       setMessage("");
       setEmail("");
@@ -49,7 +58,6 @@ export function ContactPage() {
     <PageShell>
       <div className="mx-auto flex max-w-5xl flex-col gap-12">
         <header className="space-y-3 text-center">
-          <p className="text-sm font-semibold uppercase tracking-wide text-brand">Contact</p>
           <h1 className="text-4xl font-semibold tracking-tight text-strong md:text-5xl">Get in touch</h1>
           <p className="text-lg leading-8 text-text-secondary">
             We'd love to hear from you. Reach out with questions, feedback, or just to say hello.
@@ -62,7 +70,6 @@ export function ContactPage() {
         >
           <div className="space-y-6">
             <div className="space-y-2 text-center">
-              <p className="text-sm font-semibold uppercase tracking-wide text-brand">Feedback</p>
               <h2 className="text-2xl font-semibold text-strong">Send us a message</h2>
               <p className="text-sm text-text-secondary">
                 Share feedback, ideas, or issues. If you include your email, we can reply.
@@ -119,8 +126,13 @@ export function ContactPage() {
             )}
 
             {status === "success" && (
-              <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-                Thanks for the feedback. We have received your message.
+              <div
+                className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700"
+                role="status"
+                aria-live="polite"
+              >
+                <p className="font-medium">{successMessage}</p>
+                <p className="mt-1 text-emerald-600">If you shared an email, we can follow up there.</p>
               </div>
             )}
 
@@ -161,40 +173,7 @@ export function ContactPage() {
             <p className="text-base leading-7 text-text-secondary">
               Follow us on social for updates, news, and community highlights.
             </p>
-            <div className="flex flex-wrap gap-3">
-              <a
-                className="inline-flex items-center gap-2 rounded-full border border-border px-4 py-2 text-sm font-semibold text-text-primary transition hover:border-brand hover:text-brand"
-                href="https://twitter.com/loopedsm"
-                target="_blank"
-                rel="noreferrer"
-              >
-                Twitter
-              </a>
-              <a
-                className="inline-flex items-center gap-2 rounded-full border border-border px-4 py-2 text-sm font-semibold text-text-primary transition hover:border-brand hover:text-brand"
-                href="https://instagram.com/loopedsm"
-                target="_blank"
-                rel="noreferrer"
-              >
-                Instagram
-              </a>
-              <a
-                className="inline-flex items-center gap-2 rounded-full border border-border px-4 py-2 text-sm font-semibold text-text-primary transition hover:border-brand hover:text-brand"
-                href="https://tiktok.com/@loopedsm"
-                target="_blank"
-                rel="noreferrer"
-              >
-                TikTok
-              </a>
-              <a
-                className="inline-flex items-center gap-2 rounded-full border border-border px-4 py-2 text-sm font-semibold text-text-primary transition hover:border-brand hover:text-brand"
-                href="https://www.linkedin.com/company/loopedsm"
-                target="_blank"
-                rel="noreferrer"
-              >
-                LinkedIn
-              </a>
-            </div>
+            <SocialIconLinks />
           </div>
 
           <div className="space-y-3">
