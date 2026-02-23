@@ -54,6 +54,24 @@ function pickNumber(source: Record<string, unknown>, keys: string[]): number | u
   return undefined;
 }
 
+function preferredDisplayName(value: unknown): string | undefined {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : undefined;
+  }
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  if (typeof value !== "object" || value === null) return undefined;
+  return pickString(value as Record<string, unknown>, [
+    "short_name",
+    "shortName",
+    "name",
+    "display_name",
+    "displayName",
+    "label",
+    "title",
+  ]);
+}
+
 function toAbsoluteUrl(value: string | undefined): string | undefined {
   if (!value) return undefined;
   try {
@@ -125,8 +143,16 @@ export async function loader({ params, request }: Route.LoaderArgs) {
     const publicUsername = normalizeSlug(pickString(profile, ["username", "handle"]) ?? username);
     const displayName = pickString(profile, ["display_name", "displayName", "name"]) ?? `@${publicUsername}`;
     const bio = pickString(profile, ["bio", "about", "description"]);
-    const displayCommunity = pickString(profile, ["display_community_name", "displayCommunityName"]);
-    const displaySpecialization = pickString(profile, ["display_specialization_name", "displaySpecializationName"]);
+    const displayCommunity =
+      pickString(profile, ["display_community_name", "displayCommunityName", "display_community", "displayCommunity"]) ??
+      preferredDisplayName(profile.display_community ?? profile.displayCommunity);
+    const displaySpecialization =
+      pickString(profile, [
+        "display_specialization_name",
+        "displaySpecializationName",
+        "display_specialization",
+        "displaySpecialization",
+      ]) ?? preferredDisplayName(profile.display_specialization ?? profile.displaySpecialization);
     const showFollowerCount = pickBoolean(profile, ["show_follower_count", "showFollowerCount"]) ?? true;
     const followers = pickNumber(profile, ["followers_count", "followersCount"]) ?? 0;
     const following = pickNumber(profile, ["following_count", "followingCount"]) ?? 0;
@@ -135,9 +161,9 @@ export async function loader({ params, request }: Route.LoaderArgs) {
       displayCommunity && displaySpecialization
         ? `${displaySpecialization} @ ${displayCommunity}`
         : displayCommunity ?? displaySpecialization;
-    const countsLine = showFollowerCount ? `${followers} followers · ${following} following` : "";
-    const fallbackDescription = [detailLine, countsLine].filter(Boolean).join(" • ");
-    const baseDescription = bio ?? (fallbackDescription || `Check out ${displayName}'s public Looped profile.`);
+    const countsLine = showFollowerCount && (followers > 0 || following > 0) ? `${followers} followers · ${following} following` : "";
+    const descriptionParts = [detailLine, bio, bio ? undefined : countsLine].filter(Boolean);
+    const baseDescription = descriptionParts.join(" • ") || `Check out ${displayName}'s public Looped profile.`;
     const description = sanitizeMetaText(truncate(baseDescription, 180));
 
     return {

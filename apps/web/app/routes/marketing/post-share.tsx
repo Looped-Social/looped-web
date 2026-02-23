@@ -49,6 +49,16 @@ function pickNumber(source: Record<string, unknown>, keys: string[]): number | u
   return undefined;
 }
 
+function preferredDisplayName(value: unknown): string | undefined {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : undefined;
+  }
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  if (typeof value !== "object" || value === null) return undefined;
+  return pickString(value as Record<string, unknown>, ["short_name", "shortName", "name", "display_name", "displayName", "label", "title"]);
+}
+
 function toAbsoluteUrl(value: string | undefined): string | undefined {
   if (!value) return undefined;
   try {
@@ -157,6 +167,16 @@ export async function loader({ params, request }: Route.LoaderArgs) {
     const authorName = isAnonymous
       ? "Anonymous"
       : pickString(post, ["author_display_name", "authorDisplayName", "author_handle", "authorHandle"]) ?? "Looped member";
+    const authorDisplayCommunity = preferredDisplayName(post.author_display_community ?? post.authorDisplayCommunity);
+    const authorDisplaySpecialization = preferredDisplayName(
+      post.author_display_specialization ?? post.authorDisplaySpecialization
+    );
+    const memberLine =
+      isAnonymous
+        ? undefined
+        : authorDisplayCommunity && authorDisplaySpecialization
+          ? `${authorDisplaySpecialization} @ ${authorDisplayCommunity}`
+          : authorDisplayCommunity ?? authorDisplaySpecialization;
     const communityName =
       pickString(post, ["community_short_name", "communityShortName"]) ??
       pickString(post, ["community_name", "communityName"]);
@@ -169,6 +189,7 @@ export async function loader({ params, request }: Route.LoaderArgs) {
     const title = communityName ? `${authorName} in ${communityName} | Looped` : `${authorName} on Looped`;
     const description = sanitizeMetaText(
       [
+        memberLine,
         content
           ? truncate(content, 150)
           : `View this shared post from ${authorName}${communityName ? ` in ${communityName}` : ""} on Looped.`,
