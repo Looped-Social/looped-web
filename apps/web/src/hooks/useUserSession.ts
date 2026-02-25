@@ -15,7 +15,7 @@ import {
 } from "@/lib/firebaseClient";
 
 export type UserSessionStatus = "loading" | "unauthenticated" | "checking" | "authenticated" | "error";
-export type UserAccessState = "signed_out" | "signed_in_blocked" | "active" | "deleted";
+export type UserAccessState = "signed_out" | "signed_in_blocked" | "active" | "deleted" | "delete_pending";
 
 type UserSessionState = {
   status: UserSessionStatus;
@@ -38,6 +38,9 @@ let lastEligibilityCheck: { uid: string; at: number } | null = null;
 const SESSION_RECHECK_WINDOW_MS = 15_000;
 
 function authGateMessage(code: AuthGateCode): string {
+  if (code === "account_delete_pending") {
+    return "Your account deletion is still processing. Try again shortly.";
+  }
   if (code === "account_deleted") {
     return "This account was deleted. Contact support if you need help restoring access.";
   }
@@ -109,7 +112,8 @@ export function useUserSession() {
             if (
               error.code === "user_not_provisioned" ||
               error.code === "onboarding_incomplete" ||
-              error.code === "account_deleted"
+              error.code === "account_deleted" ||
+              error.code === "account_delete_pending"
             ) {
               pendingAuthGateCode = error.code;
               pendingOnboardingStep = error.onboardingStep ?? null;
@@ -251,6 +255,7 @@ export function useUserSession() {
 
 function statusToAccessState(status: UserSessionStatus, authGateCode: AuthGateCode | null): UserAccessState {
   if (status === "authenticated") return "active";
+  if (authGateCode === "account_delete_pending") return "delete_pending";
   if (authGateCode === "account_deleted") return "deleted";
   if (authGateCode === "user_not_provisioned" || authGateCode === "onboarding_incomplete") {
     return "signed_in_blocked";

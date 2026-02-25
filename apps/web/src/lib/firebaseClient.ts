@@ -237,6 +237,9 @@ export class WebAccessError extends Error {
 }
 
 function resolveWebAccessMessage(code: AuthGateCode): string {
+  if (code === "account_delete_pending") {
+    return "Your account deletion is still in progress. Please wait before signing in again.";
+  }
   if (code === "account_deleted") {
     return "This account was deleted. Contact support if you need help restoring access.";
   }

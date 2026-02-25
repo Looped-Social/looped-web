@@ -2,13 +2,16 @@ import { type SyntheticEvent, useCallback, useEffect, useMemo, useRef, useState 
 import { useNavigate } from "react-router";
 
 import { AppLayout } from "@/app/components/AppLayout/AppLayout";
+import { PeopleRecommendationRail } from "@/app/components/PeopleRecommendationRail/PeopleRecommendationRail";
 import { useToast } from "@/app/components/AppToast/AppToast";
 import { PostCard, type PostData } from "@/app/components/PostCard/PostCard";
+import { usePeopleRecommendations } from "@/app/hooks/usePeopleRecommendations";
 import { resolveCommunityLabel, usePreferCommunityShortNames } from "@/lib/communityDisplayPreference";
 import { useContentPreferences } from "@/lib/contentPreferences";
 import { fetchPostDetail } from "@/lib/commentsApi";
 import { fetchFollowedCommunities } from "@/lib/feedApi";
 import { resolveMediaAssets } from "@/lib/mediaApi";
+import type { PeopleRecommendationItem } from "@/lib/peopleRecommendationsApi";
 import { extractMediaAssetIds } from "@/lib/postMediaIds";
 import { normalizePostPoll } from "@/lib/postPoll";
 import { extractViewerCapabilitiesFromPost } from "@/lib/postViewerCapabilities";
@@ -997,6 +1000,21 @@ export function AppSearchPage() {
   const { showToast } = useToast();
   const { hideAnonymousPosts } = useContentPreferences();
   const preferCommunityShortNames = usePreferCommunityShortNames();
+  const {
+    status: peopleRecommendationsStatus,
+    rail: peopleRecommendationsRail,
+    error: peopleRecommendationsError,
+    isLoadingMore: isLoadingMorePeopleRecommendations,
+    loadMoreRecommendations,
+    retryRecommendations,
+    canFollowRecommendation,
+    isConnectingRecommendationUser,
+    followRecommendation,
+    trackRecommendationProfileOpen,
+    hideRecommendation,
+    lessLikeThisRecommendation,
+    trackRecommendationVisibility,
+  } = usePeopleRecommendations();
 
   const [isResultsOpen, setIsResultsOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -1958,6 +1976,21 @@ export function AppSearchPage() {
     [navigate]
   );
 
+  const handlePeopleRecommendationProfileTap = useCallback(
+    (item: PeopleRecommendationItem) => {
+      trackRecommendationProfileOpen(item);
+      navigate(`/app/profile/${item.user.id}`);
+    },
+    [navigate, trackRecommendationProfileOpen]
+  );
+
+  const handlePeopleRecommendationFollowTap = useCallback(
+    (item: PeopleRecommendationItem) => {
+      void followRecommendation(item);
+    },
+    [followRecommendation]
+  );
+
   const setCommunityLastCardRef = useCallback((node: HTMLButtonElement | null) => {
     lastCommunityCardRef.current = node;
   }, []);
@@ -2123,6 +2156,50 @@ export function AppSearchPage() {
                 )
               ) : null}
             </section>
+
+            {peopleRecommendationsStatus === "loading" && !peopleRecommendationsRail ? (
+              <section className="space-y-3">
+                <SectionHeader title="Recommended for you" />
+                <div className="rounded-2xl border border-border/70 bg-bg px-4 py-3">
+                  <p className="text-sm text-text-secondary">Loading recommendations...</p>
+                </div>
+              </section>
+            ) : null}
+
+            {peopleRecommendationsRail && peopleRecommendationsRail.items.length > 0 ? (
+              <PeopleRecommendationRail
+                rail={peopleRecommendationsRail}
+                isLoadingMore={isLoadingMorePeopleRecommendations}
+                canFollow={canFollowRecommendation}
+                isConnecting={isConnectingRecommendationUser}
+                onProfileTap={handlePeopleRecommendationProfileTap}
+                onFollowTap={handlePeopleRecommendationFollowTap}
+                onHideTap={hideRecommendation}
+                onLessLikeThisTap={lessLikeThisRecommendation}
+                onCardVisibilityChange={trackRecommendationVisibility}
+                onReachEnd={() => void loadMoreRecommendations()}
+              />
+            ) : null}
+
+            {peopleRecommendationsStatus === "error" &&
+            (!peopleRecommendationsRail || peopleRecommendationsRail.items.length === 0) ? (
+              <section className="space-y-3">
+                <SectionHeader title="Recommended for you" />
+                <div className="space-y-2 rounded-2xl border border-border/70 bg-bg px-4 py-3">
+                  <p className="text-sm font-semibold text-strong">Recommendations are unavailable right now.</p>
+                  {peopleRecommendationsError ? (
+                    <p className="text-sm text-text-secondary">{peopleRecommendationsError}</p>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => void retryRecommendations()}
+                    className="rounded-full bg-brand px-3 py-1.5 text-xs font-semibold text-white"
+                  >
+                    Retry
+                  </button>
+                </div>
+              </section>
+            ) : null}
 
             <section className="space-y-4">
               <div className="flex items-center justify-between gap-3">

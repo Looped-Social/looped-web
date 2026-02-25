@@ -9,7 +9,11 @@ export class ApiError extends Error {
   }
 }
 
-export type AuthGateCode = "user_not_provisioned" | "onboarding_incomplete" | "account_deleted";
+export type AuthGateCode =
+  | "user_not_provisioned"
+  | "onboarding_incomplete"
+  | "account_deleted"
+  | "account_delete_pending";
 
 export const AUTH_GATE_EVENT = "looped:auth-gate";
 
@@ -19,7 +23,7 @@ export type AuthGateEventDetail = {
   source?: string;
 };
 
-type LoginStatusCode = "onboarding-required" | "account-deleted";
+type LoginStatusCode = "delete-pending" | "onboarding-required" | "account-deleted";
 
 function normalizeOptional(value: unknown): string | null {
   if (typeof value !== "string") return null;
@@ -45,13 +49,19 @@ function parseErrorCode(details?: string): string | null {
 export function getAuthGateCode(status: number, details?: string): AuthGateCode | null {
   if (status !== 409) return null;
   const code = parseErrorCode(details);
-  if (code === "user_not_provisioned" || code === "onboarding_incomplete" || code === "account_deleted") {
+  if (
+    code === "user_not_provisioned" ||
+    code === "onboarding_incomplete" ||
+    code === "account_deleted" ||
+    code === "account_delete_pending"
+  ) {
     return code;
   }
   return null;
 }
 
 export function loginStatusFromAuthGateCode(code: AuthGateCode): LoginStatusCode {
+  if (code === "account_delete_pending") return "delete-pending";
   if (code === "account_deleted") return "account-deleted";
   return "onboarding-required";
 }

@@ -30,10 +30,16 @@ async function userFetch<T>(path: string, init?: RequestInit): Promise<T> {
   if (init?.body !== undefined && init.body !== null && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
-  const response = await fetch(`${base}${path}`, {
-    ...init,
-    headers,
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${base}${path}`, {
+      ...init,
+      headers,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Network request failed.";
+    throw new UserApiError(0, message, message);
+  }
 
   if (!response.ok) {
     const details = await response.text();
@@ -222,11 +228,28 @@ export async function deactivateUser(): Promise<void> {
   await userFetch("/v1/users/me/deactivate", { method: "POST" });
 }
 
+export type DeletionStatus = "none" | "in_progress" | "pending" | "completed" | "failed";
+
 export type DeleteUserResponse = {
   status?: string;
+  deletion_status?: DeletionStatus;
+  operation_id?: string;
+  status_endpoint?: string;
+  error?: string;
   firebase_status?: "ok" | "skipped" | "failed" | "not_requested";
   firebase_deleted?: boolean;
   delete_pending?: boolean;
+};
+
+export type DeleteUserStatusResponse = {
+  deletion_status?: DeletionStatus;
+  delete_pending?: boolean;
+  operation_id?: string;
+  status_endpoint?: string;
+  requested_at?: string;
+  updated_at?: string;
+  completed_at?: string;
+  error?: string;
 };
 
 export type SlugAvailabilityResponse = {
@@ -260,6 +283,66 @@ export type UnlinkProviderResponse = {
 
 export async function deleteUser(): Promise<DeleteUserResponse> {
   return userFetch<DeleteUserResponse>("/v1/users/me/delete", { method: "POST" });
+}
+
+function normalizeDeletionStatus(value: unknown): DeletionStatus | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toLowerCase();
+  if (
+    normalized === "none" ||
+    normalized === "in_progress" ||
+    normalized === "pending" ||
+    normalized === "completed" ||
+    normalized === "failed"
+  ) {
+    return normalized;
+  }
+  return null;
+}
+
+export function resolveDeletionStatus(response: {
+  deletion_status?: unknown;
+  delete_pending?: unknown;
+}): DeletionStatus | null {
+  const explicitStatus = normalizeDeletionStatus(response.deletion_status);
+  if (explicitStatus) return explicitStatus;
+  if (response.delete_pending === true) return "pending";
+  if (response.delete_pending === false) return "completed";
+  return null;
+}
+
+export function isDeleteInProgress(status: DeletionStatus | null | undefined): boolean {
+  return status === "pending" || status === "in_progress";
+}
+
+export function isDeleteCompleted(status: DeletionStatus | null | undefined): boolean {
+  return status === "completed";
+}
+
+const DEFAULT_DELETE_STATUS_PATH = "/v1/users/me/delete-status";
+
+function resolveDeleteStatusPath(statusEndpoint?: string): string {
+  const normalized = normalizeString(statusEndpoint);
+  if (!normalized) return DEFAULT_DELETE_STATUS_PATH;
+
+  if (normalized.startsWith("/")) return normalized;
+
+  if (normalized.startsWith("http://") || normalized.startsWith("https://")) {
+    try {
+      const endpointUrl = new URL(normalized);
+      const apiBaseUrl = new URL(getApiBase());
+      if (endpointUrl.origin !== apiBaseUrl.origin) return DEFAULT_DELETE_STATUS_PATH;
+      return `${endpointUrl.pathname}${endpointUrl.search}` || DEFAULT_DELETE_STATUS_PATH;
+    } catch {
+      return DEFAULT_DELETE_STATUS_PATH;
+    }
+  }
+
+  return `/${normalized.replace(/^\/+/, "")}`;
+}
+
+export async function fetchDeleteUserStatus(statusEndpoint?: string): Promise<DeleteUserStatusResponse> {
+  return userFetch<DeleteUserStatusResponse>(resolveDeleteStatusPath(statusEndpoint));
 }
 
 export async function fetchSlugAvailability(slug: string): Promise<SlugAvailabilityResponse> {

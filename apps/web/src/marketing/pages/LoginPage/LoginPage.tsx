@@ -65,7 +65,8 @@ export function LoginPage() {
   const effectiveStatusCode = gateStatusCode ?? statusCode;
   const isOnboardingBlocked = effectiveStatusCode === "onboarding-required" || accessState === "signed_in_blocked";
   const isDeletedBlocked = effectiveStatusCode === "account-deleted" || accessState === "deleted";
-  const shouldShowBlockingCard = status !== "authenticated" && (isOnboardingBlocked || isDeletedBlocked);
+  const isDeletePendingBlocked = effectiveStatusCode === "delete-pending" || accessState === "delete_pending";
+  const shouldShowBlockingCard = status !== "authenticated" && (isOnboardingBlocked || isDeletedBlocked || isDeletePendingBlocked);
 
   useEffect(() => {
     if (status === "authenticated") {
@@ -161,18 +162,24 @@ export function LoginPage() {
               ) : null}
               {shouldShowBlockingCard ? (
                 <AuthCard
-                  title={isDeletedBlocked ? "Account unavailable" : "Finish account setup on iOS"}
+                  title={isDeletePendingBlocked ? "Deletion in progress" : isDeletedBlocked ? "Account unavailable" : "Finish account setup on iOS"}
                   description={
-                    isDeletedBlocked
+                    isDeletePendingBlocked
+                      ? "Your account is still being deleted. Sign-in is blocked until processing completes."
+                      : isDeletedBlocked
                       ? "This account was deleted. If this is unexpected, contact support."
                       : "Finish account setup in the Looped iOS app before using web."
                   }
                 >
                   <div className="space-y-4">
-                    {!isDeletedBlocked ? (
+                    {!isDeletedBlocked && !isDeletePendingBlocked ? (
                       <div className="rounded-lg border border-border bg-bg-muted px-4 py-3 text-sm text-text-secondary">
                         Finish account setup on iOS to continue.
                         {onboardingStep ? ` Current step: ${onboardingStep}.` : ""}
+                      </div>
+                    ) : isDeletePendingBlocked ? (
+                      <div className="rounded-lg border border-border bg-bg-muted px-4 py-3 text-sm text-text-secondary">
+                        Account deletion is still processing. Try signing in again in a few minutes.
                       </div>
                     ) : (
                       <div className="rounded-lg border border-border bg-bg-muted px-4 py-3 text-sm text-text-secondary">
@@ -181,12 +188,12 @@ export function LoginPage() {
                     )}
 
                     <div className="space-y-3">
-                      {!isDeletedBlocked ? <AppStoreButton size={5.5} /> : null}
+                      {!isDeletedBlocked && !isDeletePendingBlocked ? <AppStoreButton size={5.5} /> : null}
                       <Link
-                        to={isDeletedBlocked ? "/contact" : "/faq"}
+                        to={isDeletedBlocked || isDeletePendingBlocked ? "/contact" : "/faq"}
                         className="inline-flex w-full items-center justify-center rounded-lg border border-border px-4 py-2.5 text-sm font-semibold text-text-primary transition hover:bg-bg-muted"
                       >
-                        {isDeletedBlocked ? "Contact support" : "Need help?"}
+                        {isDeletedBlocked || isDeletePendingBlocked ? "Contact support" : "Need help?"}
                       </Link>
                       <Link
                         to="/login"

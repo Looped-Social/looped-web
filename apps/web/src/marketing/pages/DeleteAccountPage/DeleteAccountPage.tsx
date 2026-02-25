@@ -1,20 +1,43 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 
 import { PageShell } from "@/marketing/components/PageShell/PageShell";
 import { AuthCard } from "@/marketing/components/Auth/AuthCard";
 import { useUserSession } from "@/hooks/useUserSession";
-import { deactivateUser, deleteUser, parseUserApiError, UserApiError } from "@/lib/userApi";
+import {
+  deactivateUser,
+  deleteUser,
+  fetchDeleteUserStatus,
+  isDeleteCompleted,
+  isDeleteInProgress,
+  parseUserApiError,
+  resolveDeletionStatus,
+  UserApiError,
+} from "@/lib/userApi";
 
 type CompletionState = {
   title: string;
   message: string;
 };
 
+const POLL_DELAYS_MS = [2_000, 3_000, 5_000];
+const LONG_RUNNING_THRESHOLD_MS = 60_000;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
 export function DeleteAccountPage() {
   const { status, user, error, signOut } = useUserSession();
+  const isMountedRef = useRef(true);
   const [completion, setCompletion] = useState<CompletionState | null>(null);
   const [action, setAction] = useState<"idle" | "deactivate" | "delete">("idle");
+  const [deleteState, setDeleteState] = useState<"idle" | "submitting" | "polling">("idle");
+  const [deleteStatusMessage, setDeleteStatusMessage] = useState("Deleting your account.");
+  const [deleteOperationId, setDeleteOperationId] = useState<string | null>(null);
+  const [deleteLongRunning, setDeleteLongRunning] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [isDeactivateModalOpen, setIsDeactivateModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -25,6 +48,13 @@ export function DeleteAccountPage() {
   const normalizedEmail = (user?.email ?? "").toLowerCase();
   const isDeleteConfirmed =
     deletePhraseInput.trim() === deletePhrase && deleteEmailInput.trim().toLowerCase() === normalizedEmail;
+  const isDeleteBusy = action === "delete" && deleteState !== "idle";
+
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   const handleDeactivate = async () => {
     setAction("deactivate");
@@ -46,35 +76,132 @@ export function DeleteAccountPage() {
             : "Unable to deactivate your account.";
       setActionError(message);
     } finally {
-      setAction("idle");
+      if (isMountedRef.current) {
+        setAction("idle");
+      }
     }
   };
 
   const handleDelete = async () => {
     setAction("delete");
+    setDeleteState("submitting");
+    setDeleteStatusMessage("Starting account deletion request...");
+    setDeleteOperationId(null);
+    setDeleteLongRunning(false);
     setActionError(null);
+
+    const startedAt = Date.now();
+    let statusEndpoint: string | undefined;
+    let pollAttempt = 0;
+    let pollNetworkFailures = 0;
 
     try {
       const response = await deleteUser();
-      const isDeletePending = response.delete_pending === true;
-      setCompletion({
-        title: isDeletePending ? "Delete in progress" : "Account deleted",
-        message: isDeletePending
-          ? "Your account deletion is in progress. You have been signed out."
-          : "Your account and data have been deleted. You have been signed out.",
-      });
-      try {
-        await signOut();
-      } catch {
-        // delete is terminal; keep completion state and do not retry sign-out here
+      if (!isMountedRef.current) return;
+
+      setDeleteOperationId(response.operation_id ?? null);
+      statusEndpoint = response.status_endpoint;
+
+      const deleteStatus = resolveDeletionStatus(response);
+      if (isDeleteCompleted(deleteStatus)) {
+        setCompletion({
+          title: "Account deleted",
+          message: "Your account and data have been deleted. You have been signed out.",
+        });
+        try {
+          await signOut();
+        } catch {
+          // delete is terminal; keep completion state and do not retry sign-out here
+        }
+        setDeleteState("idle");
+        setAction("idle");
+        return;
+      }
+
+      if (!isDeleteInProgress(deleteStatus)) {
+        throw new Error("Unable to confirm account deletion status. Please try again.");
+      }
+
+      setDeleteState("polling");
+      setDeleteStatusMessage("Deleting your account. This can take up to a minute.");
+
+      while (true) {
+        if (Date.now() - startedAt >= LONG_RUNNING_THRESHOLD_MS) {
+          setDeleteLongRunning(true);
+          setDeleteStatusMessage("Still processing your deletion request. Keep this page open.");
+        }
+
+        const delayMs = POLL_DELAYS_MS[Math.min(pollAttempt, POLL_DELAYS_MS.length - 1)];
+        await sleep(delayMs);
+        if (!isMountedRef.current) return;
+
+        let pollResponse: Awaited<ReturnType<typeof fetchDeleteUserStatus>>;
+        try {
+          pollResponse = await fetchDeleteUserStatus(statusEndpoint);
+          pollNetworkFailures = 0;
+        } catch (pollError) {
+          const parsed = parseUserApiError(pollError);
+          if (parsed.status === 0 && pollNetworkFailures < 3) {
+            pollNetworkFailures += 1;
+            setDeleteStatusMessage("This is taking longer than expected. Retrying status check...");
+            pollAttempt += 1;
+            continue;
+          }
+          throw pollError;
+        }
+
+        if (!isMountedRef.current) return;
+
+        statusEndpoint = pollResponse.status_endpoint ?? statusEndpoint;
+        if (pollResponse.operation_id) {
+          setDeleteOperationId(pollResponse.operation_id);
+        }
+
+        const pollStatus = resolveDeletionStatus(pollResponse);
+        if (isDeleteCompleted(pollStatus)) {
+          setCompletion({
+            title: "Account deleted",
+            message: "Your account and data have been deleted. You have been signed out.",
+          });
+          try {
+            await signOut();
+          } catch {
+            // delete is terminal; keep completion state and do not retry sign-out here
+          }
+          setDeleteState("idle");
+          setAction("idle");
+          return;
+        }
+
+        if (pollStatus === "failed") {
+          throw new Error("Account deletion failed. Please try again or contact support.");
+        }
+
+        if (!isDeleteInProgress(pollStatus)) {
+          throw new Error("Unable to confirm account deletion status. Please try again.");
+        }
+
+        pollAttempt += 1;
       }
     } catch (err) {
-      const message = getDeleteErrorMessage(err);
-      setActionError(message);
+      if (!isMountedRef.current) return;
+      setDeleteState("idle");
+      setDeleteOperationId(null);
+      setDeleteLongRunning(false);
+      setActionError(getDeleteErrorMessage(err));
     } finally {
-      setAction("idle");
+      if (isMountedRef.current) {
+        setAction("idle");
+      }
     }
   };
+
+  const deleteActionLabel =
+    deleteState === "submitting"
+      ? "Submitting request..."
+      : deleteState === "polling"
+        ? "Processing delete..."
+        : "Delete all data";
 
   if (completion) {
     return (
@@ -183,7 +310,7 @@ export function DeleteAccountPage() {
               disabled={action !== "idle"}
               className="inline-flex items-center justify-center rounded-lg bg-brand px-4 py-2.5 text-sm font-semibold text-white transition hover:-translate-y-px hover:bg-brand/90 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {action === "delete" ? "Deleting..." : "Delete all data"}
+              {deleteActionLabel}
             </button>
           </div>
         </div>
@@ -194,6 +321,24 @@ export function DeleteAccountPage() {
           </div>
         )}
       </div>
+
+      {isDeleteBusy ? (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/55 px-4">
+          <div className="w-full max-w-md rounded-2xl border border-border bg-bg p-6 text-center shadow-xl">
+            <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-border border-t-brand" />
+            <h2 className="mt-4 text-lg font-semibold text-strong">Processing account deletion</h2>
+            <p className="mt-2 text-sm text-text-secondary">{deleteStatusMessage}</p>
+            {deleteLongRunning ? (
+              <p className="mt-3 rounded-lg border border-border bg-bg-muted px-3 py-2 text-xs text-text-secondary">
+                Deletion can take longer than expected. We'll keep checking until it completes.
+              </p>
+            ) : null}
+            {deleteOperationId ? (
+              <p className="mt-3 text-xs text-text-light">Operation ID: {deleteOperationId}</p>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
 
       {isDeactivateModalOpen ? (
         <div
@@ -320,6 +465,10 @@ function getDeleteErrorMessage(error: unknown): string {
     const code = (parsed.code ?? "").toLowerCase();
     const reason = (parsed.reason ?? "").toLowerCase();
 
+    if (code === "account_delete_pending") {
+      return "Account deletion is already in progress. Please wait a moment and try again.";
+    }
+
     if (code === "account_not_actionable") {
       if (reason === "backend_user_missing") {
         return "This account is missing in backend and cannot be deleted from web.";
@@ -335,17 +484,14 @@ function getDeleteErrorMessage(error: unknown): string {
     if (code === "account_disabled" || parsed.status === 403) {
       return "This account is disabled and cannot be changed.";
     }
-    if (code === "firebase_admin_error" || parsed.status === 502) {
-      return "Account deletion is temporarily unavailable. Please try again.";
+    if (code === "firebase_delete_failed" || parsed.status === 502) {
+      return "We couldn't complete account deletion right now. Please try again.";
     }
     if (code === "firebase_admin_not_configured" || parsed.status === 503) {
-      return "Account deletion is temporarily unavailable.";
+      return "Account deletion is temporarily unavailable. Please contact support.";
     }
-    if (code === "firebase_delete_failed") {
-      return "We deleted your account, but Firebase cleanup failed. Contact support if you need help signing out everywhere.";
-    }
-    if (code === "firebase_admin_not_configured") {
-      return "We deleted your account, but Firebase cleanup is not configured yet.";
+    if (parsed.status === 0) {
+      return "Deletion is taking longer than expected due to network issues. Please try again.";
     }
 
     return parsed.message || "Unable to delete your account.";

@@ -52,6 +52,7 @@ Deep details are in `ANON_PROTOCOL.md`.
 - Common auth errors:
   - `401 { error: "unauthorized" }`
   - `409 { error: "user_not_provisioned" }` (onboarding incomplete)
+  - `409 { error: "account_delete_pending" }` (account deletion still in progress)
 
 ### Idempotency
 - `POST /v1/posts` (user actor) requires `Idempotency-Key: <uuid>`.
@@ -82,6 +83,7 @@ Backend: `looped-services/apps/api/src/main/java/com/looped/settings/AppConfigCo
     - Provisioning state (`provisioned`)
     - `user` payload when provisioned
   - Special cases:
+    - `409 { error: "account_delete_pending", account_delete_pending: true, provisioned: false }` while deletion is active
     - `account_deleted: true` can be returned after retention purge logic.
 
 Backend: `looped-services/apps/api/src/main/java/com/looped/auth/MeController.java`
@@ -95,6 +97,7 @@ Used by iOS: `looped-iOS/looped-iOS/Services/UserService.swift`
   - Responses:
     - `201` on success
     - `409` for conflicts (e.g., username taken)
+    - `409 { error: "account_delete_pending" }` when prior delete is still active for the account
     - `422` for invalid inputs
 - `PUT /v1/users/me/onboarding` (auth required)
   - Body: `{ step: "profile_setup|select_company|verification|verification_notifications" }`
@@ -172,7 +175,22 @@ Backend: `looped-services/apps/api/src/main/java/com/looped/users/UsersControlle
 - Soft delete (hide profile):
   - `POST /v1/users/me/deactivate` → `204`
 - Hard delete:
-  - `POST /v1/users/me/delete` → `{ status:"deleted", firebase_status, firebase_deleted }`
+  - `POST /v1/users/me/delete`
+  - Key response fields:
+    - `deletion_status: "completed" | "pending" | "in_progress" | "failed" | "none"` (primary client signal)
+    - `delete_pending: boolean` (legacy fallback signal)
+    - `operation_id?: string`
+    - `status_endpoint?: string` (may be relative path)
+    - `firebase_status?: "ok" | "skipped" | "failed" | "not_requested"`
+    - `firebase_deleted?: boolean`
+  - Common outcomes:
+    - `200` completed: `deletion_status: "completed", delete_pending: false`
+    - `200` async pending: `deletion_status: "pending", delete_pending: true`
+    - `502 { error: "firebase_delete_failed", deletion_status: "failed", operation_id }`
+    - `503 { error: "firebase_admin_not_configured", deletion_status: "failed", operation_id }`
+- Delete status polling:
+  - `GET /v1/users/me/delete-status` (auth required)
+  - Response fields include `deletion_status`, `delete_pending`, `operation_id`, timestamps (`requested_at`, `updated_at`, `completed_at?`), and optional `error`
 - Alternate (HTTP DELETE):
   - `DELETE /v1/users/me?mode=soft|hard`
 
@@ -284,6 +302,13 @@ Backend: `looped-services/apps/api/src/main/java/com/looped/comments/CommentsCon
 ### Discovery
 - `GET /v1/communities/search?query&kind&limit&cursor`
 - `GET /v1/communities/recommended?kind&limit&cursor`
+- People recommendations (auth required):
+  - `GET /v1/recommendations/people/rails?surface=search&rails=pymk&limit_per_rail=10[&community_id=...]`
+  - `GET /v1/recommendations/people/pymk?surface=search&limit=20&cursor=...`
+  - `POST /v1/recommendations/people/feedback`
+    - Body: `{ events: [{ event_id, type, recommendation_id, tracking_token, position, client_ts, metadata? }] }`
+    - Event types used on web: `impression`, `profile_open`, `connect_request_sent`, `hide`, `less_like_this`
+    - Response may include `suppressed_candidate_ids` to remove from current rail
 - `GET /v1/communities/{id}`
 - `GET /v1/communities/{id}/domains`
 - Followed communities (feed filter chips):
