@@ -779,9 +779,10 @@ export function AppCommunityPage({ communityId }: AppCommunityPageProps) {
               <button
                 type="button"
                 onClick={() => navigate(-1)}
-                className="mb-3 hidden text-sm font-semibold text-text-secondary transition hover:text-strong lg:inline-flex"
+                className="mb-3 hidden items-center gap-1 text-sm font-semibold text-text-secondary transition hover:text-strong lg:inline-flex"
               >
-                Back
+                <BackIcon className="h-4 w-4" />
+                <span>Back</span>
               </button>
 
               <div className="mt-5 flex flex-col items-center text-center">

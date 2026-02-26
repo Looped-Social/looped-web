@@ -6,6 +6,7 @@ import { AppLayout } from "@/app/components/AppLayout/AppLayout";
 import { PostMediaGrid } from "@/app/components/PostMediaGrid/PostMediaGrid";
 import { useToast } from "@/app/components/AppToast/AppToast";
 import { useEntityNavigation } from "@/app/hooks/useEntityNavigation";
+import { resolveCommunityLabel, usePreferCommunityShortNames } from "@/lib/communityDisplayPreference";
 import {
   CommentsApiError,
   createPostComment,
@@ -50,11 +51,18 @@ type PostSummary = {
   id: string;
   communityId?: string;
   communityName?: string;
+  communityKind?: string;
+  communityHref?: string;
+  postedInLabel?: string;
+  authorDisplayLine?: string;
   content: string;
   authorName: string;
   authorProfileHref?: string;
   authorProfileImageUrl?: string;
   createdAtLabel: string;
+  likesCount: number;
+  repostsCount: number;
+  sharesCount: number;
   commentsCount: number;
   isAnonymous: boolean;
   poll?: PostPoll;
@@ -71,6 +79,8 @@ type CommentView = {
   likesCount: number;
   replyCount: number;
   userLiked: boolean;
+  isDeleted: boolean;
+  isUnderReview: boolean;
   parentId?: string;
   mediaAssetIds: string[];
 };
@@ -79,6 +89,7 @@ type ReplyThreadState = {
   open: boolean;
   loading: boolean;
   loadingMore: boolean;
+  hasFetched: boolean;
   items: CommentView[];
   nextCursor: string | null;
   error?: string;
@@ -187,6 +198,25 @@ function normalizeForComparison(value: string): string {
   return value.trim().replace(/\s+/g, " ").toLowerCase();
 }
 
+function capitalize(value: string): string {
+  if (!value) return "";
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function displayCommunityPreferredName(value: unknown, preferShortNames: boolean): string | undefined {
+  if (!isRecord(value)) return undefined;
+  return resolveCommunityLabel({
+    name: pickString(value, ["name"]),
+    shortName: pickString(value, ["short_name", "shortName"]),
+    preferShortNames,
+    fallback: undefined,
+  });
+}
+
+function formatLikesLabel(likesCount: number): string {
+  return `${likesCount} like${likesCount === 1 ? "" : "s"}`;
+}
+
 function clampPercent(value: number): number {
   if (!Number.isFinite(value)) return 0;
   return Math.max(0, Math.min(100, value));
@@ -293,7 +323,7 @@ function resolveProfileHref({
   return undefined;
 }
 
-function normalizePostDetail(payload: unknown): PostSummary | null {
+function normalizePostDetail(payload: unknown, preferCommunityShortNames: boolean): PostSummary | null {
   if (!isRecord(payload)) return null;
 
   const id = pickString(payload, ["id", "post_id", "postId"]);
@@ -310,11 +340,46 @@ function normalizePostDetail(payload: unknown): PostSummary | null {
 
   const createdRaw = pickString(payload, ["created_at", "createdAt", "timestamp", "created"]);
   const compact = formatCompactTimeAgo(createdRaw);
+  const statsRecord =
+    (isRecord(payload.stats) ? payload.stats : null) ??
+    (isRecord(payload.counts) ? payload.counts : null) ??
+    (isRecord(payload.engagement) ? payload.engagement : null) ??
+    null;
+  const communityId = pickString(payload, ["community_id", "communityId"]);
+  const communityName = resolveCommunityLabel({
+    name: pickString(payload, ["community_name", "communityName"]),
+    shortName: pickString(payload, ["community_short_name", "communityShortName"]),
+    preferShortNames: preferCommunityShortNames,
+    fallback: undefined,
+  });
+  const communityKind = pickString(payload, ["community_kind", "communityKind"]);
+  const displaySpecializationName = displayCommunityPreferredName(
+    payload.author_display_specialization ?? payload.authorDisplaySpecialization,
+    preferCommunityShortNames
+  );
+  const displayCommunityName = displayCommunityPreferredName(
+    payload.author_display_community ?? payload.authorDisplayCommunity,
+    preferCommunityShortNames
+  );
+  const authorDisplayLine = isAnonymous
+    ? undefined
+    : displayCommunityName
+      ? `${displaySpecializationName ?? "Member"} @ ${displayCommunityName}`
+      : displaySpecializationName;
+  const postedInLabel = communityName
+    ? `Posted in ${communityName}`
+    : communityKind
+      ? `Posted in ${capitalize(communityKind)}`
+      : undefined;
 
   return {
     id,
-    communityId: pickString(payload, ["community_id", "communityId"]),
-    communityName: pickString(payload, ["community_short_name", "communityShortName", "community_name", "communityName"]),
+    communityId,
+    communityName,
+    communityKind,
+    communityHref: communityId ? `/app/community/${communityId}` : undefined,
+    postedInLabel,
+    authorDisplayLine,
     content: pickString(payload, ["content", "text", "body", "message"]) ?? "",
     authorName: resolveAuthorName(payload, author, isAnonymous),
     authorProfileHref: resolveProfileHref({ isAnonymous, authorId, anonProfileId }),
@@ -322,7 +387,24 @@ function normalizePostDetail(payload: unknown): PostSummary | null {
       (author ? pickString(author, ["profile_image_url", "profileImageUrl", "avatar_url", "avatarUrl"]) : undefined) ??
       pickString(payload, ["author_profile_image_url", "authorProfileImageUrl"]),
     createdAtLabel: compact ? `${compact} ago` : "",
-    commentsCount: pickNumber(payload, ["comments_count", "commentsCount", "comment_count", "commentCount"]) ?? 0,
+    likesCount:
+      pickNumber(payload, ["likes_count", "likesCount", "like_count", "likeCount"]) ??
+      (statsRecord ? pickNumber(statsRecord, ["likes_count", "likesCount", "like_count", "likeCount"]) : undefined) ??
+      0,
+    repostsCount:
+      pickNumber(payload, ["reposts_count", "repostsCount", "repost_count", "repostCount"]) ??
+      (statsRecord
+        ? pickNumber(statsRecord, ["reposts_count", "repostsCount", "repost_count", "repostCount"])
+        : undefined) ??
+      0,
+    sharesCount:
+      pickNumber(payload, ["shares_count", "sharesCount", "share_count", "shareCount"]) ??
+      (statsRecord ? pickNumber(statsRecord, ["shares_count", "sharesCount", "share_count", "shareCount"]) : undefined) ??
+      0,
+    commentsCount:
+      pickNumber(payload, ["comments_count", "commentsCount", "comment_count", "commentCount"]) ??
+      (statsRecord ? pickNumber(statsRecord, ["comments_count", "commentsCount", "comment_count", "commentCount"]) : undefined) ??
+      0,
     isAnonymous,
     poll: normalizePostPoll(payload),
     mediaAssetIds: extractMediaAssetIds(payload),
@@ -362,6 +444,8 @@ function normalizeComment(payload: unknown): CommentView | null {
     likesCount: pickNumber(payload, ["likes_count", "likesCount"]) ?? 0,
     replyCount: pickNumber(payload, ["reply_count", "replyCount"]) ?? 0,
     userLiked: pickBoolean(payload, ["user_liked", "userLiked"]) ?? false,
+    isDeleted,
+    isUnderReview,
     parentId: pickString(payload, ["parent_id", "parentId"]),
     mediaAssetIds: isDeleted || isUnderReview ? [] : extractMediaAssetIds(payload),
   };
@@ -433,6 +517,7 @@ function initialReplyThread(): ReplyThreadState {
     open: false,
     loading: false,
     loadingMore: false,
+    hasFetched: false,
     items: [],
     nextCursor: null,
   };
@@ -477,6 +562,23 @@ function HeartIcon({ filled, className }: { filled: boolean; className?: string 
     >
       <path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1.1 1.1L12 21.2l7.7-7.7 1.1-1.1a5.5 5.5 0 0 0 0-7.8z" />
     </svg>
+  );
+}
+
+function RepostIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 640 640" className={className} fill="currentColor" aria-hidden="true">
+      <path d="M150.6 105.4C138.1 92.9 117.8 92.9 105.3 105.4L41.3 169.4C32.1 178.6 29.4 192.3 34.4 204.3C39.4 216.3 51.1 224 64 224L96 224L96 448C96 501 139 544 192 544L320 544C337.7 544 352 529.7 352 512C352 494.3 337.7 480 320 480L192 480C174.3 480 160 465.7 160 448L160 224L192 224C204.9 224 216.6 216.2 221.6 204.2C226.6 192.2 223.8 178.5 214.7 169.3L150.7 105.3zM489.4 534.6C501.9 547.1 522.2 547.1 534.7 534.6L598.7 470.6C607.9 461.4 610.6 447.7 605.6 435.7C600.6 423.7 588.9 416 576 416L544 416L544 192C544 139 501 96 448 96L320 96C302.3 96 288 110.3 288 128C288 145.7 302.3 160 320 160L448 160C465.7 160 480 174.3 480 192L480 416L448 416C435.1 416 423.4 423.8 418.4 435.8C413.4 447.8 416.2 461.5 425.3 470.7L489.3 534.7z" />
+    </svg>
+  );
+}
+
+function SendIcon({ className }: { className?: string }) {
+  return (
+    <span
+      className={`inline-block bg-current [mask-image:url('/ios-icons/action-send.svg')] [mask-repeat:no-repeat] [mask-position:center] [mask-size:contain] [-webkit-mask-image:url('/ios-icons/action-send.svg')] [-webkit-mask-repeat:no-repeat] [-webkit-mask-position:center] [-webkit-mask-size:contain] ${className ?? ""}`}
+      aria-hidden="true"
+    />
   );
 }
 
@@ -582,6 +684,7 @@ export function AppPostCommentsPage({ postId, overlayMode = false, onRequestClos
   const { showToast } = useToast();
   const { openHashtag, openMention } = useEntityNavigation();
   const { user, status: currentUserStatus } = useCurrentUserStore({ autoLoad: true });
+  const preferCommunityShortNames = usePreferCommunityShortNames();
 
   const [post, setPost] = useState<PostSummary | null>(null);
   const [postStatus, setPostStatus] = useState<"loading" | "idle" | "error">("loading");
@@ -621,7 +724,7 @@ export function AppPostCommentsPage({ postId, overlayMode = false, onRequestClos
 
     try {
       const response = await fetchPostDetail(postId);
-      const normalized = normalizePostDetail(response);
+      const normalized = normalizePostDetail(response, preferCommunityShortNames);
       if (!normalized) throw new Error("Unable to load this post.");
       setPost(normalized);
       setPostStatus("idle");
@@ -630,7 +733,7 @@ export function AppPostCommentsPage({ postId, overlayMode = false, onRequestClos
       setPostError(parsed.message ?? "Unable to load this post.");
       setPostStatus("error");
     }
-  }, [postId]);
+  }, [postId, preferCommunityShortNames]);
 
   const loadComments = useCallback(
     async ({ cursor, replace }: { cursor?: string; replace: boolean }) => {
@@ -647,7 +750,8 @@ export function AppPostCommentsPage({ postId, overlayMode = false, onRequestClos
         const normalized = (response.items ?? [])
           .map(normalizeComment)
           .filter((item): item is CommentView => Boolean(item))
-          .filter((item) => !item.parentId);
+          .filter((item) => !item.parentId)
+          .filter((item) => !item.isDeleted || item.replyCount > 0);
 
         setComments((previous) => (replace ? normalized : appendIfMissing(previous, normalized)));
         setNextCursor(response.next_cursor ?? response.nextCursor ?? null);
@@ -685,7 +789,8 @@ export function AppPostCommentsPage({ postId, overlayMode = false, onRequestClos
 
       const normalized = (response.items ?? [])
         .map(normalizeComment)
-        .filter((item): item is CommentView => Boolean(item));
+        .filter((item): item is CommentView => Boolean(item))
+        .filter((item) => !item.isDeleted || item.replyCount > 0);
 
       setReplyThreads((previous) => {
         const current = previous[commentId] ?? initialReplyThread();
@@ -696,6 +801,7 @@ export function AppPostCommentsPage({ postId, overlayMode = false, onRequestClos
             open: true,
             loading: false,
             loadingMore: false,
+            hasFetched: true,
             items: cursor ? appendIfMissing(current.items, normalized) : normalized,
             nextCursor: response.next_cursor ?? response.nextCursor ?? null,
             error: undefined,
@@ -1075,6 +1181,14 @@ export function AppPostCommentsPage({ postId, overlayMode = false, onRequestClos
     }, 0);
   }, [getInteractionBlocker, showToast]);
 
+  const handleCommentDoubleTap = useCallback(
+    (comment: CommentView) => {
+      if (comment.userLiked) return;
+      void handleCommentLikeToggle(comment);
+    },
+    [handleCommentLikeToggle]
+  );
+
   const closeReportDialog = useCallback(() => {
     if (isReportSubmitting) return;
     setReportTarget(null);
@@ -1269,6 +1383,16 @@ export function AppPostCommentsPage({ postId, overlayMode = false, onRequestClos
   );
   const shouldRenderPostText = trimmedPostContent.length > 0 && !shouldHidePostTextForPoll;
   const postMediaTopSpacingClass = post?.poll || shouldRenderPostText ? "mt-3" : "mt-2";
+  const composerAvatarUrl = useMemo(() => {
+    const userRecord = user as unknown;
+    if (!isRecord(userRecord)) return undefined;
+    const profileValue = userRecord.profile;
+    const profile = isRecord(profileValue) ? profileValue : null;
+    return (
+      (profile ? pickString(profile, ["profile_image_url", "profileImageUrl", "avatar_url", "avatarUrl"]) : undefined) ??
+      pickString(userRecord, ["profile_image_url", "profileImageUrl", "avatar_url", "avatarUrl"])
+    );
+  }, [user]);
 
   const content = (
     <div className="flex min-h-screen flex-col bg-bg">
@@ -1284,7 +1408,13 @@ export function AppPostCommentsPage({ postId, overlayMode = false, onRequestClos
             </button>
 
             <h1 className="text-center text-2xl font-semibold text-strong">{title}</h1>
-            <div aria-hidden="true" />
+            <button
+              type="button"
+              aria-label="Comment options"
+              className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-bg-muted/70 text-text-secondary"
+            >
+              <MoreHorizontalIcon className="h-5 w-5" />
+            </button>
           </div>
         </header>
 
@@ -1314,19 +1444,62 @@ export function AppPostCommentsPage({ postId, overlayMode = false, onRequestClos
           ) : null}
 
           {post ? (
-            <section className="border-b border-border/70 px-5 py-5">
+            <section className="border-b border-border/70 px-5 py-4">
               <div className="flex items-start gap-3">
                 <Avatar
                   src={post.authorProfileImageUrl}
                   alt={`View ${post.authorName}'s profile`}
                   href={post.authorProfileHref}
-                  sizeClassName="h-11 w-11"
+                  sizeClassName="h-10 w-10"
                 />
                 <div className="min-w-0 flex-1">
+                  <div className="flex min-w-0 items-baseline gap-1 leading-tight">
+                    {post.authorProfileHref ? (
+                      <Link
+                        to={post.authorProfileHref}
+                        className={`shrink-0 text-[1.12rem] font-semibold transition hover:opacity-90 ${
+                          post.isAnonymous ? "text-secondary" : "text-strong"
+                        }`}
+                      >
+                        {post.authorName}
+                      </Link>
+                    ) : (
+                      <p className={`shrink-0 text-[1.12rem] font-semibold ${post.isAnonymous ? "text-secondary" : "text-strong"}`}>
+                        {post.authorName}
+                      </p>
+                    )}
+                    {post.authorDisplayLine ? (
+                      <>
+                        <span className="shrink-0 text-[1rem] leading-none text-text-light">·</span>
+                        {post.communityHref ? (
+                          <Link
+                            to={post.communityHref}
+                            className="min-w-0 flex-1 truncate text-[1.03rem] text-text-secondary transition hover:text-strong"
+                          >
+                            {post.authorDisplayLine}
+                          </Link>
+                        ) : (
+                          <p className="min-w-0 flex-1 truncate text-[1.03rem] text-text-secondary">{post.authorDisplayLine}</p>
+                        )}
+                      </>
+                    ) : null}
+                  </div>
+                  {post.postedInLabel ? (
+                    post.communityHref ? (
+                      <Link
+                        to={post.communityHref}
+                        className="mt-0.5 block text-[1.03rem] leading-tight text-text-secondary transition hover:text-strong"
+                      >
+                        {post.postedInLabel}
+                      </Link>
+                    ) : (
+                      <p className="mt-0.5 text-[1.03rem] leading-tight text-text-secondary">{post.postedInLabel}</p>
+                    )
+                  ) : null}
                   {shouldRenderPostText ? (
                     <EntityText
                       text={post.content}
-                      className="text-[2rem] leading-tight font-semibold text-strong"
+                      className="mt-2 text-[1.08rem] leading-[1.4] text-strong"
                       onHashtagPress={openHashtag}
                       onMentionPress={openMention}
                     />
@@ -1367,8 +1540,19 @@ export function AppPostCommentsPage({ postId, overlayMode = false, onRequestClos
                       </div>
                     </section>
                   ) : null}
-                  <p className="mt-2 text-xl text-text-secondary">{post.authorName}</p>
-                  {post.createdAtLabel ? <p className="mt-1 text-base text-text-light">{post.createdAtLabel}</p> : null}
+                  {post.createdAtLabel ? <p className="mt-1 text-[1rem] text-text-light">{post.createdAtLabel}</p> : null}
+                  <div className="mt-1.5 flex items-center gap-3 text-text-secondary">
+                    <div className="inline-flex items-center gap-1.5">
+                      <HeartIcon filled={false} className="h-5 w-5" />
+                      <span className="text-[1rem] tabular-nums">{post.likesCount}</span>
+                    </div>
+                    <div className="inline-flex items-center">
+                      <RepostIcon className="h-5 w-5" />
+                    </div>
+                    <div className="inline-flex items-center">
+                      <SendIcon className="h-5 w-5" />
+                    </div>
+                  </div>
                   {post.mediaAssetIds.length > 0 ? (
                     <PostMediaGrid
                       attachments={orderedResolvedMedia(post.mediaAssetIds)}
@@ -1409,7 +1593,10 @@ export function AppPostCommentsPage({ postId, overlayMode = false, onRequestClos
             ) : null}
 
             {!commentsError && commentsStatus !== "loading" && comments.length === 0 ? (
-              <div className="px-5 py-8 text-sm text-text-secondary">No comments yet. Start the conversation.</div>
+              <div className="px-5 py-16 text-center">
+                <p className="text-[2rem] font-semibold text-strong">No comments yet</p>
+                <p className="mt-2 text-[1.4rem] text-text-secondary">Be the first to share your thoughts.</p>
+              </div>
             ) : null}
 
             {comments.map((comment) => {
@@ -1420,6 +1607,7 @@ export function AppPostCommentsPage({ postId, overlayMode = false, onRequestClos
                 <article
                   key={comment.id}
                   id={`comment-${comment.id}`}
+                  onDoubleClick={() => handleCommentDoubleTap(comment)}
                   className={`px-5 py-3.5 transition-colors ${
                     highlightedCommentId === comment.id ? "rounded-xl bg-brand/10" : ""
                   }`}
@@ -1433,10 +1621,20 @@ export function AppPostCommentsPage({ postId, overlayMode = false, onRequestClos
                     />
 
                     <div className="min-w-0 flex-1">
+                      {comment.authorProfileHref ? (
+                        <Link
+                          to={comment.authorProfileHref}
+                          className="text-[1.12rem] font-semibold leading-tight text-strong transition hover:opacity-90"
+                        >
+                          {comment.authorName}
+                        </Link>
+                      ) : (
+                        <p className="text-[1.12rem] font-semibold leading-tight text-strong">{comment.authorName}</p>
+                      )}
                       {comment.content ? (
                         <EntityText
                           text={comment.content}
-                          className="text-[1.35rem] leading-[1.3] text-strong"
+                          className="mt-0.5 text-[1.08rem] leading-[1.38] text-strong"
                           onHashtagPress={openHashtag}
                           onMentionPress={openMention}
                         />
@@ -1447,9 +1645,14 @@ export function AppPostCommentsPage({ postId, overlayMode = false, onRequestClos
                           className={comment.content ? "mt-2" : "mt-0.5"}
                         />
                       ) : null}
-                      <p className="mt-0.5 text-[1.05rem] font-medium text-text-secondary">{comment.authorName}</p>
-                      <div className="mt-0.5 flex items-center gap-2.5 text-[0.95rem] text-text-light">
+                      <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[0.95rem] text-text-light">
                         {comment.createdAtLabel ? <span>{comment.createdAtLabel}</span> : null}
+                        <span>{formatLikesLabel(comment.likesCount)}</span>
+                        {comment.isUnderReview ? (
+                          <span className="rounded-full bg-bg-muted px-2 py-0.5 text-[0.8rem] font-medium text-text-secondary">
+                            Under review
+                          </span>
+                        ) : null}
                         <button
                           type="button"
                           onClick={() => handleReplyClick(comment)}
@@ -1457,34 +1660,49 @@ export function AppPostCommentsPage({ postId, overlayMode = false, onRequestClos
                         >
                           Reply
                         </button>
-                        {comment.replyCount > 0 ? (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (thread?.open) {
-                                setReplyThreads((previous) => {
-                                  const current = previous[comment.id] ?? initialReplyThread();
-                                  return {
-                                    ...previous,
-                                    [comment.id]: {
-                                      ...current,
-                                      open: false,
-                                    },
-                                  };
-                                });
-                                return;
-                              }
-                              void loadReplies(comment.id);
-                            }}
-                            className="font-medium text-text-secondary transition hover:text-strong"
-                          >
-                            {showReplies ? "Hide replies" : `View replies (${comment.replyCount})`}
-                          </button>
-                        ) : null}
                       </div>
+                      {comment.replyCount > 0 ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (thread?.open) {
+                              setReplyThreads((previous) => {
+                                const current = previous[comment.id] ?? initialReplyThread();
+                                return {
+                                  ...previous,
+                                  [comment.id]: {
+                                    ...current,
+                                    open: false,
+                                  },
+                                };
+                              });
+                              return;
+                            }
+
+                            if (thread?.hasFetched) {
+                              setReplyThreads((previous) => {
+                                const current = previous[comment.id] ?? initialReplyThread();
+                                return {
+                                  ...previous,
+                                  [comment.id]: {
+                                    ...current,
+                                    open: true,
+                                  },
+                                };
+                              });
+                              return;
+                            }
+
+                            void loadReplies(comment.id);
+                          }}
+                          className="mt-1 text-[0.95rem] font-medium text-text-secondary transition hover:text-strong"
+                        >
+                          {showReplies ? "Hide replies" : `View replies (${comment.replyCount})`}
+                        </button>
+                      ) : null}
 
                       {showReplies ? (
-                        <div className="mt-2.5 space-y-2.5 border-l border-border/60 pl-4">
+                        <div className="mt-2.5 space-y-[10px] border-l border-border/60 pl-4">
                           {thread?.loading ? (
                             <p className="text-sm text-text-light">Loading replies…</p>
                           ) : null}
@@ -1506,8 +1724,9 @@ export function AppPostCommentsPage({ postId, overlayMode = false, onRequestClos
                             <div
                               key={reply.id}
                               id={`comment-${reply.id}`}
-                              className={`flex items-start gap-2 rounded-lg transition-colors ${
-                                highlightedCommentId === reply.id ? "bg-brand/10 px-2 py-1.5" : ""
+                              onDoubleClick={() => handleCommentDoubleTap(reply)}
+                              className={`flex items-start gap-2 rounded-lg py-2.5 transition-colors ${
+                                highlightedCommentId === reply.id ? "bg-brand/10 px-2 py-2.5" : ""
                               }`}
                             >
                               <Avatar
@@ -1517,10 +1736,20 @@ export function AppPostCommentsPage({ postId, overlayMode = false, onRequestClos
                                 sizeClassName="h-8 w-8"
                               />
                               <div className="min-w-0 flex-1">
+                                {reply.authorProfileHref ? (
+                                  <Link
+                                    to={reply.authorProfileHref}
+                                    className="text-[1rem] font-semibold leading-tight text-strong transition hover:opacity-90"
+                                  >
+                                    {reply.authorName}
+                                  </Link>
+                                ) : (
+                                  <p className="text-[1rem] font-semibold leading-tight text-strong">{reply.authorName}</p>
+                                )}
                                 {reply.content ? (
                                   <EntityText
                                     text={reply.content}
-                                    className="text-[1.02rem] leading-[1.3] text-strong"
+                                    className="mt-0.5 text-[1.02rem] leading-[1.35] text-strong"
                                     onHashtagPress={openHashtag}
                                     onMentionPress={openMention}
                                   />
@@ -1531,20 +1760,24 @@ export function AppPostCommentsPage({ postId, overlayMode = false, onRequestClos
                                     className={reply.content ? "mt-2" : "mt-0.5"}
                                   />
                                 ) : null}
-                                <div className="mt-0.5 flex items-center gap-2.5 text-[0.85rem] text-text-light">
-                                  <span className="font-medium text-text-secondary">{reply.authorName}</span>
+                                <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[0.85rem] text-text-light">
                                   {reply.createdAtLabel ? <span>{reply.createdAtLabel}</span> : null}
+                                  <span>{formatLikesLabel(reply.likesCount)}</span>
+                                  {reply.isUnderReview ? (
+                                    <span className="rounded-full bg-bg-muted px-2 py-0.5 text-[0.75rem] font-medium text-text-secondary">
+                                      Under review
+                                    </span>
+                                  ) : null}
                                 </div>
                               </div>
                               <div className="flex items-center gap-1.5">
                                 <button
                                   type="button"
                                   onClick={() => void handleCommentLikeToggle(reply)}
-                                  className={`inline-flex items-center gap-1 text-sm ${reply.userLiked ? "text-brand" : "text-text-light"}`}
+                                  className={`inline-flex items-center ${reply.userLiked ? "text-brand" : "text-text-light"}`}
                                   aria-label={reply.userLiked ? "Unlike reply" : "Like reply"}
                                 >
-                                  <HeartIcon filled={reply.userLiked} className="h-4 w-4" />
-                                  {reply.likesCount > 0 ? <span>{reply.likesCount}</span> : null}
+                                  <HeartIcon filled={reply.userLiked} className="h-5 w-5" />
                                 </button>
                                 <button
                                   type="button"
@@ -1565,24 +1798,23 @@ export function AppPostCommentsPage({ postId, overlayMode = false, onRequestClos
                               disabled={thread.loadingMore}
                               className="text-sm font-semibold text-text-secondary transition hover:text-strong disabled:opacity-60"
                             >
-                              {thread.loadingMore ? "Loading more…" : "Load more replies"}
+                              {thread.loadingMore ? "Loading more…" : "View more replies"}
                             </button>
                           ) : null}
                         </div>
                       ) : null}
                     </div>
 
-                    <div className="flex items-center gap-1.5 self-center">
+                    <div className="mt-0.5 flex items-center gap-1.5 self-start">
                       <button
                         type="button"
                         onClick={() => void handleCommentLikeToggle(comment)}
-                        className={`inline-flex items-center gap-1 text-sm ${
+                        className={`inline-flex items-center ${
                           comment.userLiked ? "text-brand" : "text-text-light"
                         }`}
                         aria-label={comment.userLiked ? "Unlike comment" : "Like comment"}
                       >
                         <HeartIcon filled={comment.userLiked} className="h-5 w-5" />
-                        {comment.likesCount > 0 ? <span>{comment.likesCount}</span> : null}
                       </button>
                       <button
                         type="button"
@@ -1637,31 +1869,40 @@ export function AppPostCommentsPage({ postId, overlayMode = false, onRequestClos
                   void handleCreateComment();
                 }}
               >
-                <div className="flex items-center gap-2 rounded-[24px] bg-bg-muted px-4 py-2.5">
+                <div className="flex items-center gap-2.5">
+                  <div className="inline-flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-bg-muted text-text-secondary">
+                    <img
+                      src={composerAvatarUrl ?? DEFAULT_PROFILE_IMAGE_SRC}
+                      alt=""
+                      className="h-full w-full object-cover"
+                      onError={handleProfileImageError}
+                    />
+                  </div>
                   <div className="inline-flex h-8 w-8 shrink-0 items-center justify-center text-brand">
                     <span className="text-[2.2rem] leading-none">+</span>
                   </div>
+                  <div className="flex min-w-0 flex-1 items-center gap-2 rounded-[24px] bg-bg-muted px-4 py-2.5">
+                    <input
+                      ref={composerInputRef}
+                      value={composerText}
+                      onChange={(event) => setComposerText(event.target.value)}
+                      placeholder={replyTarget ? `Reply to ${replyTarget.authorName}...` : "Add a comment..."}
+                      className="h-8 min-w-0 flex-1 bg-transparent text-[1.2rem] text-strong placeholder:text-text-light focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-70"
+                      disabled={isSubmitting}
+                      maxLength={2000}
+                    />
 
-                  <input
-                    ref={composerInputRef}
-                    value={composerText}
-                    onChange={(event) => setComposerText(event.target.value)}
-                    placeholder={replyTarget ? `Reply to ${replyTarget.authorName}...` : "Add a comment..."}
-                    className="h-8 min-w-0 flex-1 bg-transparent text-[1.2rem] text-strong placeholder:text-text-light focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-70"
-                    disabled={isSubmitting}
-                    maxLength={2000}
-                  />
-
-                  {isSubmitting || hasComposerDraft ? (
-                    <button
-                      type="submit"
-                      disabled={isSubmitting || !hasComposerDraft}
-                      className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-brand text-white transition hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-60"
-                      aria-label={isSubmitting ? "Posting comment" : "Post comment"}
-                    >
-                      <ArrowUpIcon className="h-5 w-5" />
-                    </button>
-                  ) : null}
+                    {isSubmitting || hasComposerDraft ? (
+                      <button
+                        type="submit"
+                        disabled={isSubmitting || !hasComposerDraft}
+                        className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-brand text-white transition hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-60"
+                        aria-label={isSubmitting ? "Posting comment" : "Post comment"}
+                      >
+                        <ArrowUpIcon className="h-5 w-5" />
+                      </button>
+                    ) : null}
+                  </div>
                 </div>
               </form>
             </>

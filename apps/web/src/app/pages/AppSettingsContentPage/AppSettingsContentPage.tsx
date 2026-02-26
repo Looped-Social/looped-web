@@ -391,31 +391,41 @@ function ReplyRow({ reply }: { reply: ReplyItem }) {
     };
   }, [previewStatus, reply.postId]);
 
-  return (
-    <article ref={ref} className="border-b border-border/60 bg-bg px-4 py-3 last:border-b-0">
+  const body = (
+    <>
       <p className="text-sm font-semibold text-strong">
         {reply.authorName}
-        {reply.authorHandle ? <span className="font-normal text-text-secondary"> @{reply.authorHandle.replace(/^@/, "")}</span> : null}
+        {reply.authorHandle ? (
+          <span className="font-normal text-text-secondary"> @{reply.authorHandle.replace(/^@/, "")}</span>
+        ) : null}
       </p>
-      {reply.content ? <p className="mt-1 text-sm text-strong">{reply.content}</p> : null}
       {reply.postId ? (
         <div className="mt-2 rounded-xl bg-bg-muted px-3 py-2 text-xs text-text-secondary">
-          {previewStatus === "idle" || previewStatus === "loading" ? <p>Loading post preview…</p> : null}
-          {previewStatus === "ready" ? <p className="line-clamp-2">{previewContent}</p> : null}
-          {previewStatus === "unavailable" ? <p>Post unavailable</p> : null}
-          {previewStatus === "error" ? <p>Unable to load post preview.</p> : null}
+          <p className="font-medium text-text-light">In reply to</p>
+          {previewStatus === "idle" || previewStatus === "loading" ? <p className="mt-1">Loading post preview…</p> : null}
+          {previewStatus === "ready" ? <p className="mt-1 line-clamp-2">{previewContent}</p> : null}
+          {previewStatus === "unavailable" ? <p className="mt-1">Post unavailable</p> : null}
+          {previewStatus === "error" ? <p className="mt-1">Unable to load post preview.</p> : null}
         </div>
       ) : null}
-      <div className="mt-2 flex items-center gap-4 text-xs text-text-secondary">
-        <span>{reply.likesCount} likes</span>
-        <span>{reply.replyCount} replies</span>
-        <span>{reply.createdAtLabel}</span>
-      </div>
-      {reply.postId ? (
-        <Link to={`/app/post/${reply.postId}/comments`} className="mt-2 inline-flex text-xs font-semibold text-secondary">
-          Open thread
+      {reply.content ? <p className="mt-2 text-sm leading-snug text-strong">{reply.content}</p> : null}
+      <p className="mt-2 text-xs text-text-secondary">{reply.createdAtLabel}</p>
+    </>
+  );
+
+  if (reply.postId) {
+    return (
+      <div ref={ref} className="border-b border-border/60 bg-bg px-4 py-3 last:border-b-0">
+        <Link to={`/app/post/${reply.postId}/comments`} className="block transition hover:bg-bg-muted/30">
+          {body}
         </Link>
-      ) : null}
+      </div>
+    );
+  }
+
+  return (
+    <article ref={ref} className="border-b border-border/60 bg-bg px-4 py-3 last:border-b-0">
+      {body}
     </article>
   );
 }

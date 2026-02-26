@@ -638,30 +638,29 @@ function SettingsIcon({ className }: { className?: string }) {
 }
 
 function ReplyContentCard({ item }: { item: ReplyFeedData }) {
-  return (
-    <article className="bg-bg px-4 py-4">
+  const body = (
+    <>
       <div className="rounded-xl bg-bg-muted/70 px-3 py-2.5">
         <p className="text-[0.95rem] font-medium text-text-light">In reply to</p>
-        <p className="mt-1 text-[1.05rem] leading-snug text-text-secondary">
+        <p className="mt-1 line-clamp-2 text-[1.05rem] leading-snug text-text-secondary">
           {item.parentSnippet ?? "Original post unavailable."}
         </p>
       </div>
 
-      <p className="mt-3 text-[1.35rem] leading-[1.28] font-semibold text-strong">{item.content}</p>
-
-      <div className="mt-2 flex items-center justify-between gap-3">
-        <p className="text-[0.95rem] text-text-light">{item.time}</p>
-        {item.postId ? (
-          <Link
-            to={`/app/post/${item.postId}/comments`}
-            className="text-[0.9rem] font-semibold text-text-secondary transition hover:text-strong"
-          >
-            View thread
-          </Link>
-        ) : null}
-      </div>
-    </article>
+      <p className="mt-3 text-[1.18rem] leading-[1.35] text-strong">{item.content}</p>
+      <p className="mt-2 text-[0.95rem] text-text-light">{item.time}</p>
+    </>
   );
+
+  if (item.postId) {
+    return (
+      <Link to={`/app/post/${item.postId}/comments`} className="block bg-bg px-4 py-4 transition hover:bg-bg-muted/30">
+        {body}
+      </Link>
+    );
+  }
+
+  return <article className="bg-bg px-4 py-4">{body}</article>;
 }
 
 export function AppProfilePage({ profileUserId }: AppProfilePageProps) {
