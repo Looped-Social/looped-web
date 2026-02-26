@@ -275,7 +275,7 @@ export function PeopleRecommendationRail({
               onClick={handlePrev}
               disabled={!canScrollPrev}
               className={`inline-flex h-11 w-11 items-center justify-center transition ${
-                canScrollPrev ? "text-strong hover:text-brand" : "text-text-light/70"
+                canScrollPrev ? "text-strong hover:text-brand" : "text-text-light/45"
               }`}
               aria-label="Previous recommendations"
             >
@@ -286,7 +286,7 @@ export function PeopleRecommendationRail({
               onClick={handleNext}
               disabled={!canScrollNext}
               className={`inline-flex h-11 w-11 items-center justify-center transition ${
-                canScrollNext ? "text-strong hover:text-brand" : "text-text-light/70"
+                canScrollNext ? "text-strong hover:text-brand" : "text-text-light/45"
               }`}
               aria-label="Next recommendations"
             >
