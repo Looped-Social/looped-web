@@ -30,7 +30,7 @@ export function EntityText({
   if (!text) return null;
 
   return (
-    <p className={joinClasses("whitespace-pre-wrap break-words", className)}>
+    <p className={joinClasses("min-w-0 whitespace-pre-wrap break-words [overflow-wrap:anywhere]", className)}>
       {segments.map((segment, index) => {
         const key = `${segment.type}-${index}`;
 
@@ -56,7 +56,7 @@ export function EntityText({
         if (entity.type === "hashtag") {
           if (!onHashtagPress) {
             return (
-              <span key={key} className={hashtagClassName}>
+              <span key={key} className={joinClasses("break-words [overflow-wrap:anywhere]", hashtagClassName)}>
                 {entity.text}
               </span>
             );
@@ -70,7 +70,7 @@ export function EntityText({
                 void onHashtagPress(entity.text);
               }}
               className={joinClasses(
-                "inline cursor-pointer border-0 bg-transparent p-0 text-left font-[inherit] leading-[inherit]",
+                "inline max-w-full cursor-pointer border-0 bg-transparent p-0 text-left font-[inherit] leading-[inherit] whitespace-normal break-words [overflow-wrap:anywhere]",
                 hashtagClassName
               )}
             >
@@ -81,7 +81,7 @@ export function EntityText({
 
         if (!onMentionPress) {
           return (
-            <span key={key} className={mentionClassName}>
+            <span key={key} className={joinClasses("break-words [overflow-wrap:anywhere]", mentionClassName)}>
               {entity.text}
             </span>
           );
@@ -95,7 +95,7 @@ export function EntityText({
             void onMentionPress(entity.text);
           }}
           className={joinClasses(
-            "inline cursor-pointer border-0 bg-transparent p-0 text-left font-[inherit] leading-[inherit]",
+            "inline max-w-full cursor-pointer border-0 bg-transparent p-0 text-left font-[inherit] leading-[inherit] whitespace-normal break-words [overflow-wrap:anywhere]",
             mentionClassName
           )}
         >
