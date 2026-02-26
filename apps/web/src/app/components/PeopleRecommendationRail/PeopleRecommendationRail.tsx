@@ -1,4 +1,4 @@
-import { type CSSProperties, type SyntheticEvent, useEffect, useMemo, useRef, useState } from "react";
+import { type CSSProperties, type SyntheticEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { PeopleRecommendationItem, PeopleRecommendationRailPage, PeopleRecommendationReason } from "@/lib/peopleRecommendationsApi";
 
@@ -85,6 +85,40 @@ function handleAvatarError(event: SyntheticEvent<HTMLImageElement>) {
   image.src = DEFAULT_PROFILE_IMAGE_SRC;
 }
 
+function ChevronLeftIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+    >
+      <path d="M15 18l-6-6 6-6" />
+    </svg>
+  );
+}
+
+function ChevronRightIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+    >
+      <path d="M9 18l6-6-6-6" />
+    </svg>
+  );
+}
+
 export function PeopleRecommendationRail({
   rail,
   isLoadingMore,
@@ -98,6 +132,8 @@ export function PeopleRecommendationRail({
   onReachEnd,
 }: PeopleRecommendationRailProps) {
   const [openMenuRecommendationId, setOpenMenuRecommendationId] = useState<string | null>(null);
+  const [canScrollPrev, setCanScrollPrev] = useState(false);
+  const [canScrollNext, setCanScrollNext] = useState(false);
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const cardElementsRef = useRef(new Map<string, HTMLButtonElement>());
 
@@ -110,6 +146,23 @@ export function PeopleRecommendationRail({
   }, [rail.items]);
 
   const lastRecommendationId = rail.items[rail.items.length - 1]?.recommendationId ?? null;
+
+  const updateScrollControls = useCallback(
+    (container?: HTMLDivElement | null) => {
+      const scroller = container ?? scrollerRef.current;
+      if (!scroller) {
+        setCanScrollPrev(false);
+        setCanScrollNext(false);
+        return;
+      }
+      const maxScrollLeft = Math.max(scroller.scrollWidth - scroller.clientWidth, 0);
+      const canPrev = scroller.scrollLeft > 4;
+      const canNextFromScroll = scroller.scrollLeft < maxScrollLeft - 4;
+      setCanScrollPrev(canPrev);
+      setCanScrollNext(canNextFromScroll || rail.hasMore);
+    },
+    [rail.hasMore]
+  );
 
   useEffect(() => {
     if (!openMenuRecommendationId) return;
@@ -128,6 +181,17 @@ export function PeopleRecommendationRail({
   }, [openMenuRecommendationId]);
 
   useEffect(() => {
+    updateScrollControls();
+    const handleResize = () => {
+      updateScrollControls();
+    };
+    window.addEventListener("resize", handleResize);
+    return () => {
+      window.removeEventListener("resize", handleResize);
+    };
+  }, [rail.items.length, updateScrollControls]);
+
+  useEffect(() => {
     const root = scrollerRef.current;
     if (!root || rail.items.length === 0) return;
 
@@ -143,11 +207,11 @@ export function PeopleRecommendationRail({
           const item = itemsByRecommendationId.get(recommendationId);
           if (!item) continue;
 
-          onCardVisibilityChange(item, entry.isIntersecting);
+            onCardVisibilityChange(item, entry.isIntersecting);
 
-          if (entry.isIntersecting && rail.hasMore && recommendationId === lastRecommendationId) {
-            onReachEnd();
-          }
+            if (entry.isIntersecting && rail.hasMore && recommendationId === lastRecommendationId) {
+              onReachEnd();
+            }
         }
       },
       {
@@ -167,22 +231,74 @@ export function PeopleRecommendationRail({
     };
   }, [itemsByRecommendationId, lastRecommendationId, onCardVisibilityChange, onReachEnd, rail.hasMore, rail.items]);
 
+  const handleScroll = useCallback(
+    (event: SyntheticEvent<HTMLDivElement>) => {
+      updateScrollControls(event.currentTarget);
+    },
+    [updateScrollControls]
+  );
+
+  const handlePrev = useCallback(() => {
+    const scroller = scrollerRef.current;
+    if (!scroller || !canScrollPrev) return;
+    const distance = Math.max(scroller.clientWidth * 0.8, 200);
+    scroller.scrollBy({ left: -distance, behavior: "smooth" });
+  }, [canScrollPrev]);
+
+  const handleNext = useCallback(() => {
+    const scroller = scrollerRef.current;
+    if (!scroller) return;
+    const maxScrollLeft = Math.max(scroller.scrollWidth - scroller.clientWidth, 0);
+    const remaining = maxScrollLeft - scroller.scrollLeft;
+
+    if (remaining > 4) {
+      const distance = Math.max(scroller.clientWidth * 0.8, 200);
+      scroller.scrollBy({ left: distance, behavior: "smooth" });
+      return;
+    }
+
+    if (rail.hasMore) {
+      onReachEnd();
+    }
+  }, [onReachEnd, rail.hasMore]);
+
   return (
     <section className="space-y-3" style={railCssVariables}>
-      <div className="px-4">
-        <h3
-          className="text-[1.15rem] leading-tight"
-          style={{
-            color: "var(--text-primary)",
-            font: "var(--font-title)",
-          }}
-        >
+      <div className="flex items-center justify-between gap-3 px-4">
+        <h3 className="text-[2rem] leading-[1.2] font-semibold text-strong sm:text-2xl">
           {rail.title || "Recommended for you"}
         </h3>
+        {rail.items.length > 0 ? (
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handlePrev}
+              disabled={!canScrollPrev}
+              className={`inline-flex h-11 w-11 items-center justify-center transition ${
+                canScrollPrev ? "text-strong hover:text-brand" : "text-text-light/70"
+              }`}
+              aria-label="Previous recommendations"
+            >
+              <ChevronLeftIcon className="h-7 w-7" />
+            </button>
+            <button
+              type="button"
+              onClick={handleNext}
+              disabled={!canScrollNext}
+              className={`inline-flex h-11 w-11 items-center justify-center transition ${
+                canScrollNext ? "text-strong hover:text-brand" : "text-text-light/70"
+              }`}
+              aria-label="Next recommendations"
+            >
+              <ChevronRightIcon className="h-7 w-7" />
+            </button>
+          </div>
+        ) : null}
       </div>
 
       <div
         ref={scrollerRef}
+        onScroll={handleScroll}
         className="flex snap-x snap-mandatory gap-[10px] overflow-x-auto px-4 py-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
         {rail.items.map((item) => {
@@ -205,11 +321,10 @@ export function PeopleRecommendationRail({
               data-recommendation-id={recommendationId}
               type="button"
               onClick={() => onProfileTap(item)}
-              className="relative h-[248px] w-[160px] shrink-0 snap-start overflow-visible text-left"
+              className="relative h-[248px] w-[160px] shrink-0 snap-start overflow-visible border border-border/70 text-left"
               style={{
                 background: "var(--bg)",
                 borderRadius: "var(--radius-card)",
-                border: "1px solid color-mix(in srgb, var(--text-secondary) 25%, transparent)",
                 boxShadow: "0 2px 10px color-mix(in srgb, var(--text-primary) 8%, transparent)",
               }}
             >
