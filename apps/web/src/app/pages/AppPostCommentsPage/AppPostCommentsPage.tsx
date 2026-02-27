@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from "react-router";
 
 import { EntityText } from "@/app/components/EntityText/EntityText";
 import { AppLayout } from "@/app/components/AppLayout/AppLayout";
+import { CommentThreadRails } from "@/app/components/CommentThreadLines/CommentThreadLines";
 import { PostMediaGrid } from "@/app/components/PostMediaGrid/PostMediaGrid";
 import { useToast } from "@/app/components/AppToast/AppToast";
 import { useEntityNavigation } from "@/app/hooks/useEntityNavigation";
@@ -1449,131 +1450,176 @@ export function AppPostCommentsPage({ postId, overlayMode = false, onRequestClos
     );
   }, [user]);
 
-  const renderReplyNode = (reply: CommentView, threadRootId: string) => {
+  const renderReplyNode = (
+    reply: CommentView,
+    threadRootId: string,
+    {
+      depth,
+      ancestorHasNext,
+      isLast,
+    }: {
+      depth: number;
+      ancestorHasNext: boolean[];
+      isLast: boolean;
+    }
+  ) => {
     const childThread = replyThreads[reply.id];
     const showChildReplies = childThread?.open ?? false;
     const visibleChildReplyCount = reply.replyCount > 0 ? reply.replyCount : (childThread?.items.length ?? 0);
+    const shouldShowLines = depth > 0;
+    const leftGutterPx = 40;
+    const avatarSizePx = 32;
+    const leftWidthPx = leftGutterPx + avatarSizePx;
 
     return (
       <div
         key={reply.id}
         id={`comment-${reply.id}`}
-        onDoubleClick={() => handleCommentDoubleTap(reply)}
-        className={`flex items-start gap-2 rounded-lg py-2.5 transition-colors ${
-          highlightedCommentId === reply.id ? "bg-brand/10 px-2 py-2.5" : ""
-        }`}
+        className={`relative rounded-lg transition-colors ${highlightedCommentId === reply.id ? "bg-brand/10" : ""}`}
       >
-        <Avatar
-          src={reply.authorProfileImageUrl}
-          alt={`View ${reply.authorName}'s profile`}
-          href={reply.authorProfileHref}
-          sizeClassName="h-8 w-8"
-        />
-        <div className="min-w-0 flex-1">
-          {reply.authorProfileHref ? (
-            <Link
-              to={reply.authorProfileHref}
-              className="text-[15px] font-semibold leading-tight text-strong transition hover:opacity-90"
-            >
-              {reply.authorName}
-            </Link>
-          ) : (
-            <p className="text-[15px] font-semibold leading-tight text-strong">{reply.authorName}</p>
-          )}
-          {reply.content ? (
-            <EntityText
-              text={reply.content}
-              className="mt-0.5 text-[15px] leading-[1.35] text-strong"
-              onHashtagPress={openHashtag}
-              onMentionPress={openMention}
-            />
-          ) : null}
-          {reply.mediaAssetIds.length > 0 ? (
-            <PostMediaGrid
-              attachments={orderedResolvedMedia(reply.mediaAssetIds)}
-              className={reply.content ? "mt-2" : "mt-0.5"}
-            />
-          ) : null}
-          <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[12px] text-text-light">
-            {reply.createdAtLabel ? <span>{reply.createdAtLabel}</span> : null}
-            <span>{formatLikesLabel(reply.likesCount)}</span>
-            {reply.isUnderReview ? (
-              <span className="rounded-full bg-bg-muted px-2 py-0.5 text-[0.75rem] font-medium text-text-secondary">
-                Under review
-              </span>
-            ) : null}
-            {!reply.isDeleted ? (
-              <button
-                type="button"
-                onClick={() => handleReplyClick(reply, threadRootId)}
-                className="font-medium text-text-secondary transition hover:text-strong"
-              >
-                Reply
-              </button>
-            ) : null}
+        {shouldShowLines ? (
+          <CommentThreadRails
+            depth={depth}
+            ancestorHasNext={ancestorHasNext}
+            isLast={isLast}
+            avatarSizePx={avatarSizePx}
+            gapPx={10}
+            showChildTrunk={showChildReplies}
+            gutterPx={leftGutterPx}
+            rowTopInsetPx={10}
+            maxColumns={1}
+          />
+        ) : null}
+
+        <div
+          onDoubleClick={() => handleCommentDoubleTap(reply)}
+          className={`relative flex items-start py-2.5 ${highlightedCommentId === reply.id ? "px-2" : ""}`}
+        >
+          <div className="relative shrink-0" style={{ width: leftWidthPx }}>
+            <div aria-hidden="true" className="h-8" style={{ width: leftGutterPx }} />
+            <div style={{ marginLeft: leftGutterPx }}>
+              <Avatar
+                src={reply.authorProfileImageUrl}
+                alt={`View ${reply.authorName}'s profile`}
+                href={reply.authorProfileHref}
+                sizeClassName="h-8 w-8"
+              />
+            </div>
           </div>
-          {visibleChildReplyCount > 0 ? (
-            <button
-              type="button"
-              onClick={() => toggleReplyThread(reply.id)}
-              className="mt-1 text-[12px] font-medium text-text-secondary transition hover:text-strong"
-            >
-              {showChildReplies ? "Hide replies" : `View replies (${visibleChildReplyCount})`}
-            </button>
-          ) : null}
 
-          {showChildReplies ? (
-            <div className="mt-2.5 -ml-10 space-y-[10px]">
-              {childThread?.loading ? (
-                <p className="text-sm text-text-light">Loading replies…</p>
+          <div className="ml-2 min-w-0 flex-1">
+            {reply.authorProfileHref ? (
+              <Link
+                to={reply.authorProfileHref}
+                className="text-[15px] font-semibold leading-tight text-strong transition hover:opacity-90"
+              >
+                {reply.authorName}
+              </Link>
+            ) : (
+              <p className="text-[15px] font-semibold leading-tight text-strong">{reply.authorName}</p>
+            )}
+            {reply.content ? (
+              <EntityText
+                text={reply.content}
+                className="mt-0.5 text-[15px] leading-[1.35] text-strong"
+                onHashtagPress={openHashtag}
+                onMentionPress={openMention}
+              />
+            ) : null}
+            {reply.mediaAssetIds.length > 0 ? (
+              <PostMediaGrid
+                attachments={orderedResolvedMedia(reply.mediaAssetIds)}
+                className={reply.content ? "mt-2" : "mt-0.5"}
+              />
+            ) : null}
+            <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[12px] text-text-light">
+              {reply.createdAtLabel ? <span>{reply.createdAtLabel}</span> : null}
+              <span>{formatLikesLabel(reply.likesCount)}</span>
+              {reply.isUnderReview ? (
+                <span className="rounded-full bg-bg-muted px-2 py-0.5 text-[0.75rem] font-medium text-text-secondary">
+                  Under review
+                </span>
               ) : null}
-
-              {childThread?.error ? (
-                <div>
-                  <p className="text-sm text-text-secondary">{childThread.error}</p>
-                  <button
-                    type="button"
-                    onClick={() => void loadReplies(reply.id)}
-                    className="mt-1 text-sm font-semibold text-brand"
-                  >
-                    Retry
-                  </button>
-                </div>
-              ) : null}
-
-              {childThread?.items.map((childReply) => renderReplyNode(childReply, threadRootId))}
-
-              {childThread?.nextCursor ? (
+              {!reply.isDeleted ? (
                 <button
                   type="button"
-                  onClick={() => void loadReplies(reply.id, childThread.nextCursor ?? undefined)}
-                  disabled={childThread.loadingMore}
-                  className="text-sm font-semibold text-text-secondary transition hover:text-strong disabled:opacity-60"
+                  onClick={() => handleReplyClick(reply, threadRootId)}
+                  className="font-medium text-text-secondary transition hover:text-strong"
                 >
-                  {childThread.loadingMore ? "Loading more…" : "View more replies"}
+                  Reply
                 </button>
               ) : null}
             </div>
-          ) : null}
+            {visibleChildReplyCount > 0 ? (
+              <button
+                type="button"
+                onClick={() => toggleReplyThread(reply.id)}
+                className="mt-1 text-[12px] font-medium text-text-secondary transition hover:text-strong"
+              >
+                {showChildReplies ? "Hide replies" : `View replies (${visibleChildReplyCount})`}
+              </button>
+            ) : null}
+          </div>
+
+          <div className="ml-2 flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => void handleCommentLikeToggle(reply)}
+              className={`inline-flex items-center ${reply.userLiked ? "text-brand" : "text-text-light"}`}
+              aria-label={reply.userLiked ? "Unlike reply" : "Like reply"}
+            >
+              <HeartIcon filled={reply.userLiked} className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => handleReportClick(reply)}
+              className="inline-flex h-8 w-8 items-center justify-center text-text-light transition hover:text-strong"
+              aria-label="Report reply"
+            >
+              <MoreHorizontalIcon className="h-4 w-4" />
+            </button>
+          </div>
         </div>
-        <div className="flex items-center gap-1.5">
-          <button
-            type="button"
-            onClick={() => void handleCommentLikeToggle(reply)}
-            className={`inline-flex items-center ${reply.userLiked ? "text-brand" : "text-text-light"}`}
-            aria-label={reply.userLiked ? "Unlike reply" : "Like reply"}
-          >
-            <HeartIcon filled={reply.userLiked} className="h-4 w-4" />
-          </button>
-          <button
-            type="button"
-            onClick={() => handleReportClick(reply)}
-            className="inline-flex h-8 w-8 items-center justify-center text-text-light transition hover:text-strong"
-            aria-label="Report reply"
-          >
-            <MoreHorizontalIcon className="h-4 w-4" />
-          </button>
-        </div>
+
+        {showChildReplies ? (
+          <div className={`space-y-[10px] ${highlightedCommentId === reply.id ? "px-2 pb-2" : ""}`}>
+            {childThread?.loading ? <p className="pl-[80px] text-sm text-text-light">Loading replies…</p> : null}
+
+            {childThread?.error ? (
+              <div className="pl-[80px]">
+                <p className="text-sm text-text-secondary">{childThread.error}</p>
+                <button
+                  type="button"
+                  onClick={() => void loadReplies(reply.id)}
+                  className="mt-1 text-sm font-semibold text-brand"
+                >
+                  Retry
+                </button>
+              </div>
+            ) : null}
+
+            {childThread?.items.map((childReply, index) => {
+              const hasMore = Boolean(childThread?.nextCursor);
+              const isLastChild = index === (childThread?.items.length ?? 0) - 1 && !hasMore;
+              return renderReplyNode(childReply, threadRootId, {
+                depth: depth + 1,
+                ancestorHasNext: [...ancestorHasNext, !isLast],
+                isLast: isLastChild,
+              });
+            })}
+
+            {childThread?.nextCursor ? (
+              <button
+                type="button"
+                onClick={() => void loadReplies(reply.id, childThread.nextCursor ?? undefined)}
+                disabled={childThread.loadingMore}
+                className="pl-[80px] text-sm font-semibold text-text-secondary transition hover:text-strong disabled:opacity-60"
+              >
+                {childThread.loadingMore ? "Loading more…" : "View more replies"}
+              </button>
+            ) : null}
+          </div>
+        ) : null}
       </div>
     );
   };
@@ -1797,122 +1843,130 @@ export function AppPostCommentsPage({ postId, overlayMode = false, onRequestClos
                     highlightedCommentId === comment.id ? "rounded-xl bg-brand/10" : ""
                   }`}
                 >
-                  <div className="flex items-start gap-3">
-                    <Avatar
-                      src={comment.authorProfileImageUrl}
-                      alt={`View ${comment.authorName}'s profile`}
-                      href={comment.authorProfileHref}
-                      sizeClassName="h-10 w-10"
-                    />
+                  <div className="relative">
+                    <div className="flex items-start gap-3">
+                      <Avatar
+                        src={comment.authorProfileImageUrl}
+                        alt={`View ${comment.authorName}'s profile`}
+                        href={comment.authorProfileHref}
+                        sizeClassName="h-10 w-10"
+                      />
 
-                    <div className="min-w-0 flex-1">
-                      {comment.authorProfileHref ? (
-                        <Link
-                          to={comment.authorProfileHref}
-                          className="text-[16px] font-semibold leading-tight text-strong transition hover:opacity-90"
-                        >
-                          {comment.authorName}
-                        </Link>
-                      ) : (
-                        <p className="text-[16px] font-semibold leading-tight text-strong">{comment.authorName}</p>
-                      )}
-                      {comment.content ? (
-                        <EntityText
-                          text={comment.content}
-                          className="mt-0.5 text-[16px] leading-[1.38] text-strong"
-                          onHashtagPress={openHashtag}
-                          onMentionPress={openMention}
-                        />
-                      ) : null}
-                      {comment.mediaAssetIds.length > 0 ? (
-                        <PostMediaGrid
-                          attachments={orderedResolvedMedia(comment.mediaAssetIds)}
-                          className={comment.content ? "mt-2" : "mt-0.5"}
-                        />
-                      ) : null}
-                      <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[13px] text-text-light">
-                        {comment.createdAtLabel ? <span>{comment.createdAtLabel}</span> : null}
-                        <span>{formatLikesLabel(comment.likesCount)}</span>
-                        {comment.isUnderReview ? (
-                          <span className="rounded-full bg-bg-muted px-2 py-0.5 text-[0.8rem] font-medium text-text-secondary">
-                            Under review
-                          </span>
-                        ) : null}
-                        {!comment.isDeleted ? (
-                          <button
-                            type="button"
-                            onClick={() => handleReplyClick(comment, comment.id)}
-                            className="font-medium text-text-secondary transition hover:text-strong"
+                      <div className="min-w-0 flex-1">
+                        {comment.authorProfileHref ? (
+                          <Link
+                            to={comment.authorProfileHref}
+                            className="text-[16px] font-semibold leading-tight text-strong transition hover:opacity-90"
                           >
-                            Reply
-                          </button>
+                            {comment.authorName}
+                          </Link>
+                        ) : (
+                          <p className="text-[16px] font-semibold leading-tight text-strong">{comment.authorName}</p>
+                        )}
+                        {comment.content ? (
+                          <EntityText
+                            text={comment.content}
+                            className="mt-0.5 text-[16px] leading-[1.38] text-strong"
+                            onHashtagPress={openHashtag}
+                            onMentionPress={openMention}
+                          />
                         ) : null}
-                      </div>
-                      {visibleReplyCount > 0 ? (
-                        <button
-                          type="button"
-                          onClick={() => toggleReplyThread(comment.id)}
-                          className="mt-1 text-[13px] font-medium text-text-secondary transition hover:text-strong"
-                        >
-                          {showReplies ? "Hide replies" : `View replies (${visibleReplyCount})`}
-                        </button>
-                      ) : null}
-
-                      {showReplies ? (
-                        <div className="mt-2.5 space-y-[10px] border-l border-border/60 pl-8">
-                          {thread?.loading ? (
-                            <p className="text-sm text-text-light">Loading replies…</p>
+                        {comment.mediaAssetIds.length > 0 ? (
+                          <PostMediaGrid
+                            attachments={orderedResolvedMedia(comment.mediaAssetIds)}
+                            className={comment.content ? "mt-2" : "mt-0.5"}
+                          />
+                        ) : null}
+                        <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[13px] text-text-light">
+                          {comment.createdAtLabel ? <span>{comment.createdAtLabel}</span> : null}
+                          <span>{formatLikesLabel(comment.likesCount)}</span>
+                          {comment.isUnderReview ? (
+                            <span className="rounded-full bg-bg-muted px-2 py-0.5 text-[0.8rem] font-medium text-text-secondary">
+                              Under review
+                            </span>
                           ) : null}
-
-                          {thread?.error ? (
-                            <div>
-                              <p className="text-sm text-text-secondary">{thread.error}</p>
-                              <button
-                                type="button"
-                                onClick={() => void loadReplies(comment.id)}
-                                className="mt-1 text-sm font-semibold text-brand"
-                              >
-                                Retry
-                              </button>
-                            </div>
-                          ) : null}
-
-                          {thread?.items.map((reply) => renderReplyNode(reply, comment.id))}
-
-                          {thread?.nextCursor ? (
+                          {!comment.isDeleted ? (
                             <button
                               type="button"
-                              onClick={() => void loadReplies(comment.id, thread.nextCursor ?? undefined)}
-                              disabled={thread.loadingMore}
-                              className="text-sm font-semibold text-text-secondary transition hover:text-strong disabled:opacity-60"
+                              onClick={() => handleReplyClick(comment, comment.id)}
+                              className="font-medium text-text-secondary transition hover:text-strong"
                             >
-                              {thread.loadingMore ? "Loading more…" : "View more replies"}
+                              Reply
                             </button>
                           ) : null}
                         </div>
-                      ) : null}
+                        {visibleReplyCount > 0 ? (
+                          <button
+                            type="button"
+                            onClick={() => toggleReplyThread(comment.id)}
+                            className="mt-1 text-[13px] font-medium text-text-secondary transition hover:text-strong"
+                          >
+                            {showReplies ? "Hide replies" : `View replies (${visibleReplyCount})`}
+                          </button>
+                        ) : null}
+                      </div>
+
+                      <div className="mt-0.5 flex items-center gap-1.5 self-start">
+                        <button
+                          type="button"
+                          onClick={() => void handleCommentLikeToggle(comment)}
+                          className={`inline-flex items-center ${
+                            comment.userLiked ? "text-brand" : "text-text-light"
+                          }`}
+                          aria-label={comment.userLiked ? "Unlike comment" : "Like comment"}
+                        >
+                          <HeartIcon filled={comment.userLiked} className="h-5 w-5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleReportClick(comment)}
+                          className="inline-flex h-8 w-8 items-center justify-center text-text-light transition hover:text-strong"
+                          aria-label="Report comment"
+                        >
+                          <MoreHorizontalIcon className="h-4 w-4" />
+                        </button>
+                      </div>
                     </div>
 
-                    <div className="mt-0.5 flex items-center gap-1.5 self-start">
-                      <button
-                        type="button"
-                        onClick={() => void handleCommentLikeToggle(comment)}
-                        className={`inline-flex items-center ${
-                          comment.userLiked ? "text-brand" : "text-text-light"
-                        }`}
-                        aria-label={comment.userLiked ? "Unlike comment" : "Like comment"}
-                      >
-                        <HeartIcon filled={comment.userLiked} className="h-5 w-5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleReportClick(comment)}
-                        className="inline-flex h-8 w-8 items-center justify-center text-text-light transition hover:text-strong"
-                        aria-label="Report comment"
-                      >
-                        <MoreHorizontalIcon className="h-4 w-4" />
-                      </button>
-                    </div>
+                    {showReplies ? (
+                      <div className="mt-2.5 space-y-[10px] pl-2">
+                        {thread?.loading ? <p className="pl-[72px] text-sm text-text-light">Loading replies…</p> : null}
+
+                        {thread?.error ? (
+                          <div className="pl-[72px]">
+                            <p className="text-sm text-text-secondary">{thread.error}</p>
+                            <button
+                              type="button"
+                              onClick={() => void loadReplies(comment.id)}
+                              className="mt-1 text-sm font-semibold text-brand"
+                            >
+                              Retry
+                            </button>
+                          </div>
+                        ) : null}
+
+                        {thread?.items.map((reply, index) => {
+                          const hasMore = Boolean(thread?.nextCursor);
+                          const isLastReply = index === (thread?.items.length ?? 0) - 1 && !hasMore;
+                          return renderReplyNode(reply, comment.id, {
+                            depth: 1,
+                            ancestorHasNext: [],
+                            isLast: isLastReply,
+                          });
+                        })}
+
+                        {thread?.nextCursor ? (
+                          <button
+                            type="button"
+                            onClick={() => void loadReplies(comment.id, thread.nextCursor ?? undefined)}
+                            disabled={thread.loadingMore}
+                            className="pl-[72px] text-sm font-semibold text-text-secondary transition hover:text-strong disabled:opacity-60"
+                          >
+                            {thread.loadingMore ? "Loading more…" : "View more replies"}
+                          </button>
+                        ) : null}
+                      </div>
+                    ) : null}
                   </div>
                 </article>
               );
