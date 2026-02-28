@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { RiVerifiedBadgeFill } from "react-icons/ri";
 import { useNavigate } from "react-router";
 
@@ -686,28 +686,6 @@ export function AppCommunityPage({ communityId }: AppCommunityPageProps) {
     void loadHashtags({ replace: true });
   }, [activeTab, community, detailStatus, loadHashtags, loadPosts]);
 
-  const canWrite = community?.canPost ?? true;
-
-  const writeGateReason = useMemo(() => {
-    if (!community || canWrite) return null;
-    const reason = normalizeCommunityKind(community.cannotPostReason);
-    switch (reason) {
-      case "not_verified":
-      case "community_not_verified":
-      case "user_not_verified":
-      case "specialization_verification_required":
-        return "Verification required. Verify in the iOS app.";
-      case "verification_expired":
-        return "Your verification expired. Re-verify in the iOS app.";
-      case "specialization_not_joined":
-        return "Join this major or field first.";
-      case "community_banned":
-        return "This community is currently unavailable.";
-      default:
-        return "Writing actions are unavailable.";
-    }
-  }, [canWrite, community]);
-
   const handleFollowToggle = useCallback(async () => {
     if (!community || followLoading) return;
     const previous = community.isFollowing;
@@ -899,9 +877,11 @@ export function AppCommunityPage({ communityId }: AppCommunityPageProps) {
                     <div className="min-w-0">
                       <p className="text-base font-semibold text-strong">{verificationInfo.label}</p>
                       <p className="mt-0.5 text-sm text-text-secondary">
-                        {verificationInfo.expiresAt
+                        {verificationInfo.label === "Verified" && verificationInfo.expiresAt
                           ? `Expires ${formatDateMDY(verificationInfo.expiresAt)}`
-                          : "Verification state shown from your community access"}
+                          : verificationInfo.label === "Unverified"
+                            ? "Verification required to post, like, or comment. Verify in the iOS app."
+                            : "Verification state shown from your community access"}
                       </p>
                     </div>
                   </div>
@@ -929,12 +909,6 @@ export function AppCommunityPage({ communityId }: AppCommunityPageProps) {
                 <p className="mt-3 text-left text-sm leading-relaxed text-text-secondary">{community.description}</p>
               ) : null}
 
-              {!canWrite && writeGateReason ? (
-                <div className="mt-3 rounded-2xl border border-border/70 bg-bg-muted/40 px-3 py-2 text-left">
-                  <p className="text-xs font-semibold text-strong">Write actions are gated</p>
-                  <p className="mt-1 text-xs text-text-secondary">{writeGateReason}</p>
-                </div>
-              ) : null}
             </div>
 
             <div className="grid grid-cols-2">
