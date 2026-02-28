@@ -217,7 +217,7 @@ function RepostIcon({ className }: { className?: string }) {
 function ShareIcon({ className }: { className?: string }) {
   return (
     <span
-      className={`inline-block bg-current [mask-image:url('/ios-icons/action-send.svg')] [mask-repeat:no-repeat] [mask-position:center] [mask-size:contain] [-webkit-mask-image:url('/ios-icons/action-send.svg')] [-webkit-mask-repeat:no-repeat] [-webkit-mask-position:center] [-webkit-mask-size:contain] ${className ?? ""}`}
+      className={`inline-block bg-current [mask-image:url('/ios-icons/send-icon.svg')] [mask-repeat:no-repeat] [mask-position:center] [mask-size:contain] [-webkit-mask-image:url('/ios-icons/send-icon.svg')] [-webkit-mask-repeat:no-repeat] [-webkit-mask-position:center] [-webkit-mask-size:contain] ${className ?? ""}`}
       aria-hidden="true"
     />
   );
