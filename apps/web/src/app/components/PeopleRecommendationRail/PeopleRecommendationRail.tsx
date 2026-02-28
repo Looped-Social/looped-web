@@ -21,7 +21,7 @@ const railCssVariables = {
   "--bg": "var(--looped-background)",
   "--text-primary": "var(--looped-text-primary)",
   "--text-secondary": "var(--looped-text-secondary)",
-  "--verified": "var(--looped-verified-badge)",
+  "--verified": "var(--color-verified-badge)",
   "--primary": "var(--looped-primary)",
   "--radius-card": "18px",
   "--font-title": '500 20px "Poppins"',

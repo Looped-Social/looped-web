@@ -7,6 +7,8 @@
   --color-brand: #ea404a;
   --color-brand-hover: #d63841;
   --color-secondary: #15bfb5;
+  --color-verified-badge: #1d9bf0;
+  --color-error: #ef4444;
 
   /* Light defaults */
   --color-contrast: #0f0f0f;
@@ -45,4 +47,6 @@
   --color-shell-border-dark: rgba(255, 255, 255, 0.14);
   --color-shell-text-dark: #f9fafb;
   --color-shell-text-muted-dark: #9ca3af;
+  --color-verified-badge-dark: #3ba7f6;
+  --color-error-dark: #f87171;
 }

@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { RiVerifiedBadgeFill } from "react-icons/ri";
 import { useNavigate } from "react-router";
 
 import { AppLayout } from "@/app/components/AppLayout/AppLayout";
 import { useToast } from "@/app/components/AppToast/AppToast";
 import { PostCard, type PostData } from "@/app/components/PostCard/PostCard";
-import { getCommunityPermissions, type CommunityPermissions } from "@/lib/communityPermissionsApi";
 import { extractMediaAssetIds } from "@/lib/postMediaIds";
 import { normalizePostPoll } from "@/lib/postPoll";
 import { extractViewerCapabilitiesFromPost } from "@/lib/postViewerCapabilities";
@@ -13,9 +13,7 @@ import {
   fetchCommunityDetail,
   fetchCommunityHashtags,
   fetchCommunityPosts,
-  fetchCommunityVerifications,
   fetchSpecializationDetail,
-  fetchSpecializationJoinLimits,
   setCommunityFollowing,
   setSpecializationFollowing,
   setSpecializationJoined,
@@ -35,23 +33,31 @@ type CommunityViewData = {
   shortName?: string;
   description?: string;
   kind?: string;
-  icon?: string;
+  bannerImageUrl?: string;
+  imageUrl?: string;
+  typeLabel: string;
   membersCount?: number;
   isSpecialization: boolean;
   isFollowing: boolean;
   isJoined: boolean;
+  canPost: boolean;
+  cannotPostReason?: string;
+  verificationInfo: VerificationInfo;
+  joinLimitInfo: JoinLimitInfo;
 };
 
 type VerificationLabel = "Verified" | "Pending" | "Rejected" | "Expired" | "Unverified";
 
 type VerificationInfo = {
   label: VerificationLabel;
+  status: "active" | "pending" | "rejected" | "expired" | "none" | "unknown";
   expiresAt?: Date;
 };
 
 type JoinLimitInfo = {
   canJoin?: boolean;
   summary?: string;
+  blockedReason?: string;
 };
 
 function BackIcon({ className }: { className?: string }) {
@@ -68,6 +74,68 @@ function BackIcon({ className }: { className?: string }) {
     >
       <path d="M15 18l-6-6 6-6" />
     </svg>
+  );
+}
+
+function StatusBadgeIcon({
+  icon,
+  tone,
+}: {
+  icon: "check" | "clock" | "x" | "warning";
+  tone: "verified" | "brand" | "error" | "muted";
+}) {
+  const className =
+    tone === "verified"
+      ? "inline-flex h-9 w-9 shrink-0 items-center justify-center"
+      : tone === "brand"
+        ? "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand text-white"
+        : tone === "error"
+          ? "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-bg"
+          : "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-bg text-text-secondary";
+
+  const style =
+    tone === "verified"
+      ? { color: "var(--color-verified-badge)" }
+      : tone === "error"
+        ? { color: "var(--color-error)" }
+        : undefined;
+
+  return (
+    <span className={className} style={style}>
+      {icon === "check" && tone === "verified" ? (
+        <RiVerifiedBadgeFill className="h-7 w-7" aria-hidden="true" />
+      ) : null}
+      {icon === "check" ? (
+        <svg
+          viewBox="0 0 20 20"
+          className={`h-4 w-4 ${tone === "verified" ? "hidden" : ""}`}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.4"
+          aria-hidden="true"
+        >
+          <path d="m4.5 10 3.5 3.5L15.5 6" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      ) : null}
+      {icon === "clock" ? (
+        <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+          <circle cx="10" cy="10" r="6.5" />
+          <path d="M10 6.4v4.1l2.6 1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      ) : null}
+      {icon === "x" ? (
+        <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.1" aria-hidden="true">
+          <path d="m6.2 6.2 7.6 7.6M13.8 6.2l-7.6 7.6" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      ) : null}
+      {icon === "warning" ? (
+        <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+          <path d="M10 5.2v5.2" strokeLinecap="round" />
+          <circle cx="10" cy="13.8" r="0.75" fill="currentColor" stroke="none" />
+          <circle cx="10" cy="10" r="6.5" />
+        </svg>
+      ) : null}
+    </span>
   );
 }
 
@@ -171,18 +239,6 @@ function preferredDisplayName(value: unknown): string | undefined {
   const shortName = normalizeOptional(value.short_name ?? value.shortName);
   const name = normalizeOptional(value.name);
   return shortName ?? name;
-}
-
-function extractItemsArray(payload: unknown): unknown[] {
-  if (Array.isArray(payload)) return payload;
-  if (!isRecord(payload)) return [];
-  const items = payload.items;
-  if (Array.isArray(items)) return items;
-  const data = payload.data;
-  if (Array.isArray(data)) return data;
-  const hashtags = payload.hashtags;
-  if (Array.isArray(hashtags)) return hashtags;
-  return [];
 }
 
 function normalizePostItemToPostData(item: unknown): PostData | null {
@@ -294,18 +350,65 @@ function normalizeCommunityKind(value: unknown): string | undefined {
   return raw ? raw.toLowerCase() : undefined;
 }
 
+function formatCompactCount(value: number | undefined): string {
+  const count = typeof value === "number" && Number.isFinite(value) ? Math.max(Math.round(value), 0) : 0;
+  return new Intl.NumberFormat("en-US", {
+    notation: "compact",
+    maximumFractionDigits: count >= 1_000 ? 1 : 0,
+  }).format(count);
+}
+
+function resolveCommunityTypeLabel(kind?: string, specializationType?: string): string {
+  const resolved = specializationType ?? kind;
+  switch (resolved) {
+    case "company":
+      return "Workplace";
+    case "school":
+      return "School";
+    case "major":
+      return "Major";
+    case "field":
+      return "Field";
+    default:
+      return "Community";
+  }
+}
+
+function resolveVerificationInfoFromViewer(payload: unknown): VerificationInfo {
+  if (!isRecord(payload)) {
+    return { label: "Unverified", status: "unknown" };
+  }
+
+  const status =
+    normalizeCommunityKind(payload.verification_status ?? payload.verificationStatus) as VerificationInfo["status"] | undefined;
+  const expiresAt = asDate(payload.verification_expires_at ?? payload.verificationExpiresAt) ?? undefined;
+
+  if (status === "active") return { label: "Verified", status, expiresAt };
+  if (status === "pending") return { label: "Pending", status, expiresAt };
+  if (status === "rejected") return { label: "Rejected", status, expiresAt };
+  if (status === "expired") return { label: "Expired", status, expiresAt };
+  if (status === "none") return { label: "Unverified", status, expiresAt };
+  return { label: "Unverified", status: "unknown", expiresAt };
+}
+
 function normalizeCommunityView(payload: unknown, fallbackId: string): CommunityViewData | null {
   if (!isRecord(payload)) return null;
   const node = isRecord(payload.community) ? payload.community : payload;
   const id = pickString(node, ["id", "community_id", "communityId", "specialization_id", "specializationId"]) ?? fallbackId;
   const name =
-    pickString(node, ["short_name", "shortName", "name", "display_name", "displayName", "title"]) ??
+    pickString(node, ["name", "display_name", "displayName", "title", "short_name", "shortName"]) ??
     "Community";
   const shortName = pickString(node, ["short_name", "shortName"]) ?? undefined;
-  const kind =
-    normalizeCommunityKind(node.kind ?? node.community_kind ?? node.communityKind ?? node.type ?? node.specialization_type) ??
-    undefined;
-  const isSpecialization = kind === "major" || kind === "field";
+  const rawKind =
+    normalizeCommunityKind(node.kind ?? node.community_kind ?? node.communityKind ?? node.type) ?? undefined;
+  const specializationType = (() => {
+    const value = normalizeCommunityKind(node.specialization_type ?? node.specializationType);
+    if (value === "major" || value === "field") return value;
+    if (rawKind === "major" || rawKind === "field") return rawKind;
+    return undefined;
+  })();
+  const isSpecialization = rawKind === "specialization" || Boolean(specializationType);
+  const viewer = isRecord(node.viewer) ? node.viewer : null;
 
   const isFollowing =
     pickBoolean(node, ["is_following", "isFollowing", "viewer_following", "viewerFollowing", "following", "user_following"]) ??
@@ -314,21 +417,27 @@ function normalizeCommunityView(payload: unknown, fallbackId: string): Community
     pickBoolean(node, ["is_joined", "isJoined", "viewer_joined", "viewerJoined", "joined", "user_joined"]) ??
     false;
 
+  const joinLimitInfo = isSpecialization ? resolveJoinLimitInfo(node.join_limit ?? node.joinLimit) : {};
+
   return {
     id,
     name,
     shortName,
     description: pickString(node, ["description", "about", "bio"]) ?? undefined,
-    kind,
-    icon:
-      pickString(node, ["emoji", "icon_emoji", "iconEmoji", "icon", "icon_url", "iconUrl", "image_url", "imageUrl"]) ??
-      undefined,
+    kind: specializationType ?? rawKind,
+    bannerImageUrl: pickString(node, ["banner_image_url", "bannerImageUrl"]) ?? undefined,
+    imageUrl: pickString(node, ["image_url", "imageUrl", "profile_image_url", "profileImageUrl"]) ?? undefined,
+    typeLabel: resolveCommunityTypeLabel(rawKind, specializationType),
     membersCount:
       pickNumber(node, ["member_count", "memberCount", "members_count", "membersCount", "follower_count", "followers_count"]) ??
       undefined,
     isSpecialization,
     isFollowing,
     isJoined,
+    canPost: pickBoolean(viewer ?? {}, ["can_post", "canPost"]) ?? true,
+    cannotPostReason: pickString(viewer ?? {}, ["cannot_post_reason", "cannotPostReason"]) ?? undefined,
+    verificationInfo: resolveVerificationInfoFromViewer(viewer),
+    joinLimitInfo,
   };
 }
 
@@ -356,9 +465,16 @@ function messageForActionCode(code?: string, fallback = "Action unavailable righ
   switch (code) {
     case "community_not_verified":
     case "user_not_verified":
+    case "specialization_verification_required":
+    case "verification_required":
+    case "verify_school":
       return "Verification required. Verify in the iOS app.";
     case "specialization_not_joined":
       return "Join this major or field first.";
+    case "specialization_join_limit":
+      return "You have reached your current join limit.";
+    case "specialization_join_cooldown":
+      return "You can't rejoin this yet.";
     case "verification_expired":
       return "Your verification expired. Re-verify in the iOS app.";
     case "community_banned":
@@ -368,34 +484,18 @@ function messageForActionCode(code?: string, fallback = "Action unavailable righ
   }
 }
 
-function resolveVerificationInfo(payload: unknown, communityId: string): VerificationInfo {
-  const allItems = extractItemsArray(payload);
-  const found = allItems.find((entry) => {
-    if (!isRecord(entry)) return false;
-    const id = pickString(entry, ["community_id", "communityId", "id"]);
-    return id === communityId;
-  });
-  if (!isRecord(found)) return { label: "Unverified" };
-
-  const status = normalizeCommunityKind(found.status);
-  const expiresAt = asDate(found.expires_at ?? found.expiresAt ?? found.expiration_date ?? found.expirationDate) ?? undefined;
-  if (status === "active") return { label: "Verified", expiresAt };
-  if (status === "pending") return { label: "Pending", expiresAt };
-  if (status === "rejected") return { label: "Rejected", expiresAt };
-  if (status === "expired") return { label: "Expired", expiresAt };
-  return { label: "Unverified", expiresAt };
-}
-
-function resolveJoinLimitInfo(payload: unknown, kind: "major" | "field"): JoinLimitInfo {
+function resolveJoinLimitInfo(payload: unknown): JoinLimitInfo {
   if (!isRecord(payload)) return {};
-
-  const nested = isRecord(payload[kind]) ? payload[kind] : payload;
-  if (!isRecord(nested)) return {};
-
-  const direct = pickBoolean(nested, ["can_join", "canJoin"]);
-  const remaining = pickNumber(nested, ["remaining", "remaining_count", "remainingCount", "remaining_slots", "remainingSlots"]);
-  const max = pickNumber(nested, ["max", "max_count", "maxCount", "max_joined", "maxJoined"]);
-  const joined = pickNumber(nested, ["joined", "joined_count", "joinedCount", "current", "current_count", "currentCount"]);
+  const direct = pickBoolean(payload, ["can_join", "canJoin"]);
+  const remaining = pickNumber(payload, ["remaining", "remaining_count", "remainingCount", "remaining_slots", "remainingSlots"]);
+  const max =
+    pickNumber(payload, ["limit", "max", "max_count", "maxCount", "max_joined", "maxJoined"]) ?? undefined;
+  const joined = pickNumber(payload, ["joined", "joined_count", "joinedCount", "current", "current_count", "currentCount"]);
+  const cooldownActive = pickBoolean(payload, ["cooldown_active", "cooldownActive"]) ?? false;
+  const cooldownDaysRemaining = pickNumber(payload, ["cooldown_days_remaining", "cooldownDaysRemaining"]);
+  const cooldownEndsAt = asDate(payload.cooldown_ends_at ?? payload.cooldownEndsAt) ?? undefined;
+  const blockedReason =
+    pickString(payload, ["join_blocked_reason", "joinBlockedReason", "blocked_reason", "blockedReason"]) ?? undefined;
 
   let canJoin = direct;
   if (canJoin === undefined && remaining !== undefined) {
@@ -406,14 +506,22 @@ function resolveJoinLimitInfo(payload: unknown, kind: "major" | "field"): JoinLi
   }
 
   let summary: string | undefined;
-  if (remaining !== undefined && max !== undefined) {
+  if (blockedReason === "verification_required" || blockedReason === "verify_school") {
+    summary = "Verification required to join";
+  } else if (cooldownActive) {
+    summary = cooldownDaysRemaining
+      ? `${cooldownDaysRemaining} day${cooldownDaysRemaining === 1 ? "" : "s"} remaining`
+      : cooldownEndsAt
+        ? `Available ${formatDateMDY(cooldownEndsAt)}`
+        : "Join cooldown active";
+  } else if (remaining !== undefined && max !== undefined) {
     summary = `${remaining}/${max} joins left`;
   } else if (max !== undefined && joined !== undefined) {
     const nextRemaining = Math.max(max - joined, 0);
     summary = `${nextRemaining}/${max} joins left`;
   }
 
-  return { canJoin, summary };
+  return { canJoin, summary, blockedReason };
 }
 
 function formatDateMDY(value: Date): string {
@@ -436,12 +544,8 @@ export function AppCommunityPage({ communityId }: AppCommunityPageProps) {
   const [detailStatus, setDetailStatus] = useState<DetailStatus>("loading");
   const [detailError, setDetailError] = useState<string | null>(null);
   const [community, setCommunity] = useState<CommunityViewData | null>(null);
-  const [verificationInfo, setVerificationInfo] = useState<VerificationInfo>({ label: "Unverified" });
-  const [permissions, setPermissions] = useState<CommunityPermissions | null>(null);
-  const [joinLimitInfo, setJoinLimitInfo] = useState<JoinLimitInfo>({});
   const [followLoading, setFollowLoading] = useState(false);
   const [joinLoading, setJoinLoading] = useState(false);
-  const [shareLoading, setShareLoading] = useState(false);
 
   const [activeTab, setActiveTab] = useState<CommunityTabId>("posts");
   const [posts, setPosts] = useState<PostData[]>([]);
@@ -477,7 +581,17 @@ export function AppCommunityPage({ communityId }: AppCommunityPageProps) {
             communityPayload.communityKind ??
             communityPayload.type
         );
-        if (communityKind === "major" || communityKind === "field") {
+        const specializationType = normalizeCommunityKind(
+          communityPayload.specialization_type ?? communityPayload.specializationType
+        );
+        const looksLikeSpecialization =
+          communityKind === "specialization" ||
+          communityKind === "major" ||
+          communityKind === "field" ||
+          specializationType === "major" ||
+          specializationType === "field";
+
+        if (looksLikeSpecialization) {
           try {
             specializationPayload = await fetchSpecializationDetail(communityId);
           } catch (error) {
@@ -505,47 +619,6 @@ export function AppCommunityPage({ communityId }: AppCommunityPageProps) {
   useEffect(() => {
     void loadCommunity();
   }, [loadCommunity]);
-
-  useEffect(() => {
-    if (detailStatus !== "ready" || !community) return;
-    let active = true;
-
-    (async () => {
-      try {
-        const permissionResponse = await getCommunityPermissions(community.id);
-        if (!active) return;
-        setPermissions(permissionResponse);
-      } catch {
-        if (!active) return;
-        setPermissions(null);
-      }
-
-      if (community.isSpecialization) {
-        try {
-          const kind = community.kind === "major" ? "major" : "field";
-          const limitResponse = await fetchSpecializationJoinLimits(kind);
-          if (!active) return;
-          setJoinLimitInfo(resolveJoinLimitInfo(limitResponse, kind));
-        } catch {
-          if (!active) return;
-          setJoinLimitInfo({});
-        }
-      } else {
-        try {
-          const verifications = await fetchCommunityVerifications();
-          if (!active) return;
-          setVerificationInfo(resolveVerificationInfo(verifications, community.id));
-        } catch {
-          if (!active) return;
-          setVerificationInfo({ label: "Unverified" });
-        }
-      }
-    })();
-
-    return () => {
-      active = false;
-    };
-  }, [community, detailStatus]);
 
   const loadPosts = useCallback(
     async ({ cursor, replace }: { cursor?: string; replace: boolean }) => {
@@ -613,27 +686,27 @@ export function AppCommunityPage({ communityId }: AppCommunityPageProps) {
     void loadHashtags({ replace: true });
   }, [activeTab, community, detailStatus, loadHashtags, loadPosts]);
 
-  const canWrite = useMemo(() => {
-    if (!permissions) return true;
-    return permissions.can_post || Boolean(permissions.canPost);
-  }, [permissions]);
-
-  const sharePath = useMemo(() => {
-    const id = (community?.id ?? communityId).toString().trim();
-    return `/c/${encodeURIComponent(id)}`;
-  }, [community?.id, communityId]);
-
-  const shareUrl = useMemo(() => {
-    if (typeof window === "undefined") return `https://mylooped.app${sharePath}`;
-    return `${window.location.origin}${sharePath}`;
-  }, [sharePath]);
+  const canWrite = community?.canPost ?? true;
 
   const writeGateReason = useMemo(() => {
-    if (!permissions || canWrite) return null;
-    if (permissions.requires_verification) return "Verification required. Verify in iOS app.";
-    if (permissions.requires_join || permissions.requiresJoin) return "Join this major or field first.";
-    return "Writing actions are unavailable.";
-  }, [canWrite, permissions]);
+    if (!community || canWrite) return null;
+    const reason = normalizeCommunityKind(community.cannotPostReason);
+    switch (reason) {
+      case "not_verified":
+      case "community_not_verified":
+      case "user_not_verified":
+      case "specialization_verification_required":
+        return "Verification required. Verify in the iOS app.";
+      case "verification_expired":
+        return "Your verification expired. Re-verify in the iOS app.";
+      case "specialization_not_joined":
+        return "Join this major or field first.";
+      case "community_banned":
+        return "This community is currently unavailable.";
+      default:
+        return "Writing actions are unavailable.";
+    }
+  }, [canWrite, community]);
 
   const handleFollowToggle = useCallback(async () => {
     if (!community || followLoading) return;
@@ -665,10 +738,10 @@ export function AppCommunityPage({ communityId }: AppCommunityPageProps) {
     const previous = community.isJoined;
     const next = !previous;
 
-    if (!previous && joinLimitInfo.canJoin === false) {
+    if (!previous && community.joinLimitInfo.canJoin === false) {
       showToast({
         title: "Join required",
-        message: "You have reached your current join limit.",
+        message: messageForActionCode(community.joinLimitInfo.blockedReason, "You have reached your current join limit."),
         tone: "error",
       });
       return;
@@ -691,47 +764,11 @@ export function AppCommunityPage({ communityId }: AppCommunityPageProps) {
     } finally {
       setJoinLoading(false);
     }
-  }, [joinLimitInfo.canJoin, community, joinLoading, showToast]);
+  }, [community, joinLoading, showToast]);
 
-  const handleShare = useCallback(async () => {
-    if (shareLoading) return;
-    setShareLoading(true);
-
-    try {
-      const communityName = community?.name ?? "this community";
-      if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
-        await navigator.share({
-          title: `${communityName} on Looped`,
-          text: `Check out ${communityName} on Looped.`,
-          url: shareUrl,
-        });
-      } else if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(shareUrl);
-        showToast({
-          title: "Community link copied",
-          message: shareUrl,
-        });
-      } else {
-        showToast({
-          title: "Share unavailable",
-          message: shareUrl,
-          tone: "error",
-        });
-      }
-    } catch (error) {
-      if (error instanceof DOMException && error.name === "AbortError") return;
-      showToast({
-        title: "Couldn't share community",
-        message: error instanceof Error ? error.message : "Try again.",
-        tone: "error",
-      });
-    } finally {
-      setShareLoading(false);
-    }
-  }, [community?.name, shareLoading, shareUrl, showToast]);
-
-  const communityHasImage = isImageUrl(community?.icon);
-  const specializationLabel = community?.kind === "major" ? "Major" : community?.kind === "field" ? "Field" : undefined;
+  const communityHasBanner = isImageUrl(community?.bannerImageUrl);
+  const verificationInfo = community?.verificationInfo ?? { label: "Unverified", status: "unknown" as const };
+  const joinLimitInfo = community?.joinLimitInfo ?? {};
 
   return (
     <AppLayout activeNavId="home">
@@ -785,96 +822,91 @@ export function AppCommunityPage({ communityId }: AppCommunityPageProps) {
                 <span>Back</span>
               </button>
 
-              <div className="mt-5 flex flex-col items-center text-center">
-                {communityHasImage ? (
-                  <div className="flex h-14 min-w-20 max-w-[180px] items-center justify-center overflow-hidden">
-                    <img src={community.icon!} alt="" className="max-h-14 w-auto object-contain" loading="lazy" />
+              <div className="mt-5">
+                {communityHasBanner ? (
+                  <div className="h-[120px] overflow-hidden rounded-[24px] bg-white">
+                    <img
+                      src={community.bannerImageUrl!}
+                      alt=""
+                      className="h-full w-full object-cover"
+                      loading="lazy"
+                    />
                   </div>
+                ) : (
+                  <div className="flex h-[120px] items-center justify-center rounded-[24px] bg-bg-muted/70 px-5 text-center">
+                    <h1 className="text-[2rem] leading-[1.1] font-semibold text-strong">{community.name}</h1>
+                  </div>
+                )}
+
+                {communityHasBanner ? (
+                  <h1 className="mt-4 text-[1.5rem] leading-[1.2] font-semibold text-strong">{community.name}</h1>
                 ) : null}
+              </div>
 
-                <h1
-                  className={`mt-4 text-[2rem] leading-[1.15] font-semibold ${
-                    communityHasImage ? "text-strong" : "text-brand"
-                  }`}
+              <div className="mt-5 flex items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold" style={{ color: "var(--color-contrast)" }}>{community.typeLabel}</p>
+                  <p className="mt-1 text-sm text-text-secondary">
+                    {formatCompactCount(community.membersCount)} member{community.membersCount === 1 ? "" : "s"}
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => void handleFollowToggle()}
+                  disabled={followLoading}
+                  className={`min-h-11 min-w-[120px] rounded-full px-5 text-base font-semibold transition ${
+                    community.isFollowing
+                      ? "bg-bg-muted text-strong hover:text-strong"
+                      : "bg-brand text-white hover:bg-brand-hover"
+                  } disabled:opacity-60`}
                 >
-                  {community.name}
-                </h1>
+                  {followLoading ? "Updating..." : community.isFollowing ? "Following" : "Follow"}
+                </button>
               </div>
 
-              <div className="mt-5 flex items-center justify-between gap-3">
-                <p className="text-[1rem] font-semibold text-text-secondary">
-                  {community.membersCount ?? 0} {(community.membersCount ?? 0) === 1 ? "Member" : "Members"}
-                </p>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => void handleShare()}
-                    disabled={shareLoading}
-                    className="rounded-full border border-border/70 bg-bg px-4 py-2 text-sm font-semibold text-text-secondary transition hover:text-strong disabled:opacity-60"
-                  >
-                    {shareLoading ? "Sharing..." : "Share"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void handleFollowToggle()}
-                    disabled={followLoading}
-                    className={`min-w-[136px] rounded-full px-6 py-2 text-base font-semibold transition ${
-                      community.isFollowing
-                        ? "bg-bg-muted text-strong hover:text-strong"
-                        : "bg-brand text-white hover:bg-brand-hover"
-                    } disabled:opacity-60`}
-                  >
-                    {followLoading ? "Updating..." : community.isFollowing ? "Following" : "Follow"}
-                  </button>
-                </div>
+              <div className="mt-4 rounded-[10px] border border-border/40 bg-bg-muted/70 px-2.5 py-2 text-left">
+                {community.isSpecialization ? (
+                  <div className="flex items-start gap-3">
+                    <StatusBadgeIcon icon={community.isJoined ? "check" : "warning"} tone={community.isJoined ? "brand" : "muted"} />
+                    <div className="min-w-0">
+                      <p className="text-base font-semibold text-strong">{community.isJoined ? "Joined" : "Not joined"}</p>
+                      <p className="mt-0.5 text-sm text-text-secondary">
+                        {joinLimitInfo.summary ?? "Join limits apply"}
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-start gap-3">
+                    <StatusBadgeIcon
+                      icon={
+                        verificationInfo.label === "Verified"
+                          ? "check"
+                          : verificationInfo.label === "Pending"
+                            ? "clock"
+                            : verificationInfo.label === "Rejected"
+                              ? "x"
+                              : "warning"
+                      }
+                      tone={
+                        verificationInfo.label === "Verified"
+                          ? "verified"
+                          : verificationInfo.label === "Rejected"
+                            ? "error"
+                            : "muted"
+                      }
+                    />
+                    <div className="min-w-0">
+                      <p className="text-base font-semibold text-strong">{verificationInfo.label}</p>
+                      <p className="mt-0.5 text-sm text-text-secondary">
+                        {verificationInfo.expiresAt
+                          ? `Expires ${formatDateMDY(verificationInfo.expiresAt)}`
+                          : "Verification state shown from your community access"}
+                      </p>
+                    </div>
+                  </div>
+                )}
               </div>
-
-              {community.isSpecialization ? (
-                <div className="mt-4 space-y-2 text-left">
-                  {specializationLabel ? (
-                    <span className="inline-flex rounded-full bg-brand/10 px-2.5 py-1 text-xs font-semibold text-brand">
-                      {specializationLabel}
-                    </span>
-                  ) : null}
-
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-start gap-2">
-                      <span className="mt-1 inline-flex h-5 w-5 items-center justify-center rounded-full bg-brand/10 text-brand">
-                        <svg viewBox="0 0 20 20" className="h-3.5 w-3.5" fill="currentColor" aria-hidden="true">
-                          <path d="M10 2a5 5 0 0 0-5 5v1H4a2 2 0 0 0-2 2v2a6 6 0 1 0 12 0v-2a2 2 0 0 0-2-2h-1V7a3 3 0 1 1 6 0v1h-1a2 2 0 0 0-2 2v2a8 8 0 1 1-16 0v-2h1V7a7 7 0 0 1 7-7Z" />
-                        </svg>
-                      </span>
-                      <div>
-                        <p className="text-lg font-semibold text-strong">{community.isJoined ? "Joined" : "Not joined"}</p>
-                        <p className="text-sm text-text-secondary">{joinLimitInfo.summary ?? "Join limits apply"}</p>
-                      </div>
-                    </div>
-                    <span className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-border/70 text-xs text-text-light">
-                      ?
-                    </span>
-                  </div>
-                </div>
-              ) : (
-                <div className="mt-4 space-y-2 text-left">
-                  <div className="flex items-start gap-2">
-                    <span
-                      className={`mt-1 inline-flex h-5 w-5 items-center justify-center rounded-full ${
-                        verificationInfo.label === "Verified" ? "bg-brand text-white" : "bg-bg-muted text-text-secondary"
-                      }`}
-                    >
-                      <svg viewBox="0 0 20 20" className="h-3.5 w-3.5" fill="currentColor" aria-hidden="true">
-                        <path d="M7.7 13.1 4.9 10.3l-1.2 1.2 4 4 8-8-1.2-1.2-6.8 6.8Z" />
-                      </svg>
-                    </span>
-                    <div>
-                      <p className="text-2xl font-semibold text-strong">{verificationInfo.label}</p>
-                      {verificationInfo.expiresAt ? (
-                        <p className="text-sm text-text-secondary">Expires {formatDateMDY(verificationInfo.expiresAt)}</p>
-                      ) : null}
-                    </div>
-                  </div>
-                </div>
-              )}
 
               {community.isSpecialization ? (
                 <div className="mt-4">
@@ -893,10 +925,6 @@ export function AppCommunityPage({ communityId }: AppCommunityPageProps) {
                 </div>
               ) : null}
 
-              {!community.isSpecialization && verificationInfo.label !== "Verified" ? (
-                <p className="mt-2 text-xs text-text-light text-left">Verification actions are available in the iOS app.</p>
-              ) : null}
-
               {community.description ? (
                 <p className="mt-3 text-left text-sm leading-relaxed text-text-secondary">{community.description}</p>
               ) : null}
@@ -909,29 +937,29 @@ export function AppCommunityPage({ communityId }: AppCommunityPageProps) {
               ) : null}
             </div>
 
-            <div className="grid grid-cols-2 border-t border-border/70">
+            <div className="grid grid-cols-2">
               <button
                 type="button"
                 onClick={() => setActiveTab("posts")}
                 className={`relative px-2 py-4 text-center text-sm transition ${
-                  activeTab === "posts" ? "font-bold text-brand" : "font-medium text-text-secondary hover:text-strong"
+                  activeTab === "posts" ? "font-semibold text-brand" : "font-medium text-text-secondary hover:text-strong"
                 }`}
               >
                 Posts
                 {activeTab === "posts" ? (
-                  <span className="absolute bottom-0 left-1/2 h-0.5 w-16 -translate-x-1/2 bg-brand" />
+                  <span className="absolute bottom-0 left-4 right-4 h-0.5 bg-brand" />
                 ) : null}
               </button>
               <button
                 type="button"
                 onClick={() => setActiveTab("hashtags")}
                 className={`relative px-2 py-4 text-center text-sm transition ${
-                  activeTab === "hashtags" ? "font-bold text-brand" : "font-medium text-text-secondary hover:text-strong"
+                  activeTab === "hashtags" ? "font-semibold text-brand" : "font-medium text-text-secondary hover:text-strong"
                 }`}
               >
                 Hashtags
                 {activeTab === "hashtags" ? (
-                  <span className="absolute bottom-0 left-1/2 h-0.5 w-16 -translate-x-1/2 bg-brand" />
+                  <span className="absolute bottom-0 left-4 right-4 h-0.5 bg-brand" />
                 ) : null}
               </button>
             </div>
