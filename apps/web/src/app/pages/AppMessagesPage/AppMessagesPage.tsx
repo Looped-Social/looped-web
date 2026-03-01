@@ -53,7 +53,7 @@ type MessageRequestRow = {
 };
 
 const SEARCH_DEBOUNCE_MS = 250;
-const DEFAULT_PROFILE_IMAGE_SRC = "/ios-icons/pfp2.svg";
+const DEFAULT_PROFILE_IMAGE_SRC = "/icons/profile/default-avatar.svg";
 
 function handleProfileImageError(event: SyntheticEvent<HTMLImageElement>) {
   const image = event.currentTarget;
@@ -1200,8 +1200,8 @@ export function AppMessagesPage() {
         <span
           className="relative left-[0.5px] top-[0.5px] h-7 w-7 bg-white"
           style={{
-            maskImage: "url('/ios-icons/action-send.svg')",
-            WebkitMaskImage: "url('/ios-icons/action-send.svg')",
+            maskImage: "url('/icons/actions/send-solid.svg')",
+            WebkitMaskImage: "url('/icons/actions/send-solid.svg')",
             maskRepeat: "no-repeat",
             WebkitMaskRepeat: "no-repeat",
             maskPosition: "center",

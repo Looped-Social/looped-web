@@ -24,7 +24,7 @@ import { normalizePostPoll, type PostPoll } from "@/lib/postPoll";
 import { PostActionsApiError, reportEntity } from "@/lib/postActionsApi";
 import { useCurrentUserStore } from "@/stores/currentUserStore";
 
-const DEFAULT_PROFILE_IMAGE_SRC = "/ios-icons/pfp2.svg";
+const DEFAULT_PROFILE_IMAGE_SRC = "/icons/profile/default-avatar.svg";
 const REPORT_REASON_OPTIONS = [
   "Spam",
   "Bullying or Harassment",
@@ -592,7 +592,7 @@ function RepostIcon({ className }: { className?: string }) {
 function SendIcon({ className }: { className?: string }) {
   return (
     <span
-      className={`inline-block bg-current [mask-image:url('/ios-icons/send-icon.svg')] [mask-repeat:no-repeat] [mask-position:center] [mask-size:contain] [-webkit-mask-image:url('/ios-icons/send-icon.svg')] [-webkit-mask-repeat:no-repeat] [-webkit-mask-position:center] [-webkit-mask-size:contain] ${className ?? ""}`}
+      className={`inline-block bg-current [mask-image:url('/icons/actions/send.svg')] [mask-repeat:no-repeat] [mask-position:center] [mask-size:contain] [-webkit-mask-image:url('/icons/actions/send.svg')] [-webkit-mask-repeat:no-repeat] [-webkit-mask-position:center] [-webkit-mask-size:contain] ${className ?? ""}`}
       aria-hidden="true"
     />
   );

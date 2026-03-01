@@ -23,7 +23,7 @@ const MIN_POLL_END_SECONDS = 60;
 const MAX_POLL_END_DAYS = 30;
 const MENTION_LOOKUP_DEBOUNCE_MS = 250;
 const MAX_MENTION_SUGGESTIONS = 6;
-const DEFAULT_PROFILE_IMAGE_SRC = "/ios-icons/pfp2.svg";
+const DEFAULT_PROFILE_IMAGE_SRC = "/icons/profile/default-avatar.svg";
 
 type AsyncStatus = "idle" | "loading" | "ready" | "error";
 
@@ -952,8 +952,7 @@ export function AppCreatePostPage() {
               >
                 <p>You can only post in communities where you are verified.</p>
                 <p className="mt-1.5">
-                  You cannot verify in the web app at this time. Download the iOS app to verify. We are working on
-                  web verification support.
+                  Verify your organization email from onboarding or verification settings if posting is locked.
                 </p>
                 <p className="mt-1.5">Anonymous posting is not supported on web right now.</p>
               </div>

@@ -1,11 +1,11 @@
 import { Link } from "react-router";
 
-import anonDarkImage from "~/assets/landing-page/anon/anon-dark.PNG";
-import anonLightImage from "~/assets/landing-page/anon/anon-light.PNG";
-import communityDarkImage from "~/assets/landing-page/community/community-dark.PNG";
-import communityLightImage from "~/assets/landing-page/community/community-light.PNG";
-import verifyDarkImage from "~/assets/landing-page/verify/verify-dark.PNG";
-import verifyLightImage from "~/assets/landing-page/verify/verify-light.PNG";
+import anonDarkImage from "@/assets/marketing/landing-page/anon/anon-dark.PNG";
+import anonLightImage from "@/assets/marketing/landing-page/anon/anon-light.PNG";
+import communityDarkImage from "@/assets/marketing/landing-page/community/community-dark.PNG";
+import communityLightImage from "@/assets/marketing/landing-page/community/community-light.PNG";
+import verifyDarkImage from "@/assets/marketing/landing-page/verify/verify-dark.PNG";
+import verifyLightImage from "@/assets/marketing/landing-page/verify/verify-light.PNG";
 
 type FeatureSection = {
   title: string;

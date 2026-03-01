@@ -22,7 +22,7 @@ import { fetchMyShareLink, fetchSlugAvailability, fetchUserMe, fetchUserProfile,
 import { isValidUsername, normalizeUsername } from "@/lib/settingsValidation";
 import { refreshCurrentUser } from "@/stores/currentUserStore";
 
-const DEFAULT_PROFILE_IMAGE_SRC = "/ios-icons/pfp2.svg";
+const DEFAULT_PROFILE_IMAGE_SRC = "/icons/profile/default-avatar.svg";
 const SHARE_HANDLE_PATTERN = /^[a-z0-9_]{3,30}$/;
 
 type SelectOption = {

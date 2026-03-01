@@ -9,7 +9,7 @@ import {
 } from "@/lib/messagingApi";
 
 const SEARCH_DEBOUNCE_MS = 250;
-const DEFAULT_PROFILE_IMAGE_SRC = "/ios-icons/pfp2.svg";
+const DEFAULT_PROFILE_IMAGE_SRC = "/icons/profile/default-avatar.svg";
 
 export type MessageRecipientComposerMode = "compose" | "add_members";
 

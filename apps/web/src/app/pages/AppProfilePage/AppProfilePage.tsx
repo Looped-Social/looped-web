@@ -28,7 +28,7 @@ import {
   updateMyShareLink,
 } from "@/lib/userApi";
 
-const DEFAULT_PROFILE_IMAGE_SRC = "/ios-icons/pfp2.svg";
+const DEFAULT_PROFILE_IMAGE_SRC = "/icons/profile/default-avatar.svg";
 const FOLLOW_STORE_KEY = "looped-following-user-ids";
 const SHARE_HANDLE_PATTERN = /^[a-z0-9_]{3,30}$/;
 
@@ -623,8 +623,8 @@ function SettingsIcon({ className }: { className?: string }) {
     <span
       className={`inline-block shrink-0 ${className ?? ""}`}
       style={{
-        maskImage: "url('/ios-icons/nav-settings.svg')",
-        WebkitMaskImage: "url('/ios-icons/nav-settings.svg')",
+        maskImage: "url('/icons/nav/settings.svg')",
+        WebkitMaskImage: "url('/icons/nav/settings.svg')",
         maskRepeat: "no-repeat",
         WebkitMaskRepeat: "no-repeat",
         maskPosition: "center",

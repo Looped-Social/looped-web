@@ -5,7 +5,7 @@ import { AppLayout, AppMobileHeader } from "@/app/components/AppLayout/AppLayout
 import { fetchDefaultProfileImageUrl } from "@/lib/profileEditApi";
 import { UserApiError, fetchUserFollowers, fetchUserFollowing, fetchUserMe } from "@/lib/userApi";
 
-const DEFAULT_PROFILE_IMAGE_SRC = "/ios-icons/pfp2.svg";
+const DEFAULT_PROFILE_IMAGE_SRC = "/icons/profile/default-avatar.svg";
 
 type FollowListMode = "followers" | "following";
 
@@ -83,7 +83,7 @@ function errorMessageForFollowList(error: { status?: number; code?: string; mess
   if (error.code === "forbidden" || error.status === 403) return "This list is private.";
   if (error.code === "not_found" || error.status === 404) return "That account no longer exists.";
   if (error.code === "user_not_provisioned" || error.status === 409) {
-    return "Complete onboarding in the iOS app to view this list.";
+    return "Complete onboarding to view this list.";
   }
   if (error.code === "unauthorized" || error.status === 401) return "Please sign in again to continue.";
   return error.message;

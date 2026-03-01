@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 
-import heroDarkImage from "~/assets/landing-page/hero/home-page-sample-dark.PNG";
-import heroLightImage from "~/assets/landing-page/hero/main-feed-light.PNG";
+import heroDarkImage from "@/assets/marketing/landing-page/hero/home-page-sample-dark.PNG";
+import heroLightImage from "@/assets/marketing/landing-page/hero/main-feed-light.PNG";
 import { AppStoreButton } from "../AppStoreButton/AppStoreButton";
 
 const rotatingWords = ["community", "workplace", "college", "colleagues", "team", "office"];

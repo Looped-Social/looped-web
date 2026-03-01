@@ -43,15 +43,20 @@ export function meta({}: Route.MetaArgs) {
 
 export default function Home() {
   const navigate = useNavigate();
-  const { status } = useUserSession();
+  const { status, accessState } = useUserSession();
 
   useEffect(() => {
-    if (status === "authenticated") {
+    if (status !== "authenticated") return;
+    if (accessState === "signed_in_blocked") {
+      navigate("/onboarding", { replace: true });
+      return;
+    }
+    if (accessState === "active") {
       navigate("/app", { replace: true });
     }
-  }, [navigate, status]);
+  }, [accessState, navigate, status]);
 
-  if (status === "authenticated") {
+  if (status === "authenticated" && (accessState === "active" || accessState === "signed_in_blocked")) {
     return null;
   }
 

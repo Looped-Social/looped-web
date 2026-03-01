@@ -1,5 +1,5 @@
-import appStoreDark from "@/assets/images/download-app-store-black.svg";
-import appStoreLight from "@/assets/images/download-app-store-white.svg";
+import appStoreDark from "@/assets/marketing/app-store/dark.svg";
+import appStoreLight from "@/assets/marketing/app-store/light.svg";
 
 const APP_STORE_URL = "https://apps.apple.com/us/app/looped-social/id6758413180";
 

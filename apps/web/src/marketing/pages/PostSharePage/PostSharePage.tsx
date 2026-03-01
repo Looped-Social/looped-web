@@ -16,7 +16,7 @@ import {
 import { useUserSession } from "@/hooks/useUserSession";
 import { Navbar } from "@/marketing/components/Navbar/Navbar";
 
-const DEFAULT_PROFILE_IMAGE_SRC = "/ios-icons/pfp2.svg";
+const DEFAULT_PROFILE_IMAGE_SRC = "/icons/profile/default-avatar.svg";
 
 type PostSharePageProps = {
   postId: string;
@@ -417,7 +417,7 @@ function RepostIcon({ className }: { className?: string }) {
 function ShareIcon({ className }: { className?: string }) {
   return (
     <span
-      className={`inline-block bg-current [mask-image:url('/ios-icons/send-icon.svg')] [mask-repeat:no-repeat] [mask-position:center] [mask-size:contain] [-webkit-mask-image:url('/ios-icons/send-icon.svg')] [-webkit-mask-repeat:no-repeat] [-webkit-mask-position:center] [-webkit-mask-size:contain] ${className ?? ""}`}
+      className={`inline-block bg-current [mask-image:url('/icons/actions/send.svg')] [mask-repeat:no-repeat] [mask-position:center] [mask-size:contain] [-webkit-mask-image:url('/icons/actions/send.svg')] [-webkit-mask-repeat:no-repeat] [-webkit-mask-position:center] [-webkit-mask-size:contain] ${className ?? ""}`}
       aria-hidden="true"
     />
   );

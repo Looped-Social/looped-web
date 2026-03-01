@@ -38,7 +38,7 @@ import {
   votePoll,
 } from "@/lib/postActionsApi";
 
-const DEFAULT_PROFILE_IMAGE_SRC = "/ios-icons/pfp2.svg";
+const DEFAULT_PROFILE_IMAGE_SRC = "/icons/profile/default-avatar.svg";
 
 function handleProfileImageError(event: SyntheticEvent<HTMLImageElement>) {
   const image = event.currentTarget;
@@ -145,10 +145,10 @@ function titleForWriteError(code?: string, fallbackTitle = "Action unavailable")
 function messageForWriteError(code?: string, fallbackMessage = "This action isn't available right now."): string {
   if (!code) return fallbackMessage;
   if (code === "community_not_verified" || code === "user_not_verified") {
-    return "You must be verified in this community. Verify in the iOS app.";
+    return "You must be verified in this community to continue.";
   }
   if (code === "verification_expired") {
-    return "Your verification expired. Re-verify in the iOS app.";
+    return "Your verification expired. Re-verify your organization email.";
   }
   if (code === "specialization_not_joined") {
     return "Join this major or field first.";
@@ -217,7 +217,7 @@ function RepostIcon({ className }: { className?: string }) {
 function ShareIcon({ className }: { className?: string }) {
   return (
     <span
-      className={`inline-block bg-current [mask-image:url('/ios-icons/send-icon.svg')] [mask-repeat:no-repeat] [mask-position:center] [mask-size:contain] [-webkit-mask-image:url('/ios-icons/send-icon.svg')] [-webkit-mask-repeat:no-repeat] [-webkit-mask-position:center] [-webkit-mask-size:contain] ${className ?? ""}`}
+      className={`inline-block bg-current [mask-image:url('/icons/actions/send.svg')] [mask-repeat:no-repeat] [mask-position:center] [mask-size:contain] [-webkit-mask-image:url('/icons/actions/send.svg')] [-webkit-mask-repeat:no-repeat] [-webkit-mask-position:center] [-webkit-mask-size:contain] ${className ?? ""}`}
       aria-hidden="true"
     />
   );

@@ -4,11 +4,12 @@ import { Link, useLocation, useNavigate } from 'react-router';
 import { Logo } from '@looped/ui';
 
 import { MenuDots, ProfileIcon } from '@/app/components/AppIcons/AppIcons';
+import { FinishProfilePrompt } from '@/app/components/FinishProfilePrompt/FinishProfilePrompt';
 import { useUserSession } from '@/hooks/useUserSession';
 import { loginStatusFromAuthGateCode } from '@/lib/apiBase';
-import { useCurrentUserStore } from '@/stores/currentUserStore';
+import { refreshCurrentUser, useCurrentUserStore } from '@/stores/currentUserStore';
 
-const DEFAULT_PROFILE_IMAGE_SRC = '/ios-icons/pfp2.svg';
+const DEFAULT_PROFILE_IMAGE_SRC = '/icons/profile/default-avatar.svg';
 
 type NavItem = {
   id: string;
@@ -23,49 +24,49 @@ const navItems: NavItem[] = [
     id: 'home',
     label: 'Home',
     href: '/app',
-    iconSrc: '/ios-icons/nav-home.svg',
-    activeIconSrc: '/ios-icons/nav-home-active.svg',
+    iconSrc: '/icons/nav/home.svg',
+    activeIconSrc: '/icons/nav/home-active.svg',
   },
   {
     id: 'search',
     label: 'Search',
     href: '/app/search',
-    iconSrc: '/ios-icons/nav-search.svg',
-    activeIconSrc: '/ios-icons/nav-search-active.svg',
+    iconSrc: '/icons/nav/search.svg',
+    activeIconSrc: '/icons/nav/search-active.svg',
   },
   {
     id: 'messages',
     label: 'Messages',
     href: '/app/messages',
-    iconSrc: '/ios-icons/nav-messages.svg',
-    activeIconSrc: '/ios-icons/nav-messages-active.svg',
+    iconSrc: '/icons/nav/messages.svg',
+    activeIconSrc: '/icons/nav/messages-active.svg',
   },
   {
     id: 'notifications',
     label: 'Notifications',
     href: '/app/notifications',
-    iconSrc: '/ios-icons/nav-notifications.svg',
-    activeIconSrc: '/ios-icons/nav-notifications-active.svg',
+    iconSrc: '/icons/nav/notifications.svg',
+    activeIconSrc: '/icons/nav/notifications-active.svg',
   },
   {
     id: 'create',
     label: 'Create',
     href: '/app/create',
-    iconSrc: '/ios-icons/create-action.svg',
+    iconSrc: '/icons/nav/create.svg',
   },
   {
     id: 'profile',
     label: 'Profile',
     href: '/app/profile',
-    iconSrc: '/ios-icons/nav-profile.svg',
-    activeIconSrc: '/ios-icons/nav-profile-active.svg',
+    iconSrc: '/icons/nav/profile.svg',
+    activeIconSrc: '/icons/nav/profile-active.svg',
   },
   {
     id: 'settings',
     label: 'Settings',
     href: '/app/settings',
-    iconSrc: '/ios-icons/nav-settings.svg',
-    activeIconSrc: '/ios-icons/nav-settings-active.svg',
+    iconSrc: '/icons/nav/settings.svg',
+    activeIconSrc: '/icons/nav/settings-active.svg',
   },
 ];
 const mobileNavOrder = ['home', 'messages', 'create', 'search', 'notifications', 'profile'] as const;
@@ -182,11 +183,13 @@ function NavMaskIcon({
 export function AppLayout({ activeNavId = 'home', children, rightRail }: AppLayoutProps) {
   const navigate = useNavigate();
   const location = useLocation();
-  const { status: sessionStatus, accessState, authGateCode } = useUserSession();
+  const { status: sessionStatus, accessState, authGateCode, bootstrap, refreshSession } = useUserSession();
   const { user } = useCurrentUserStore({ autoLoad: accessState === 'active' });
   const profileImageUrl = user?.profileImageUrl;
   const [expandedRailSectionId, setExpandedRailSectionId] = useState<string | null>(null);
+  const [showFinishProfilePrompt, setShowFinishProfilePrompt] = useState(false);
   const pathname = location.pathname;
+  const shouldPromptProfileCompletion = accessState === 'active' && Boolean(bootstrap?.profileCompletion?.shouldPrompt);
 
   const hideMobileBottomNav =
     /^\/app\/post\/[^/]+\/comments$/.test(pathname) ||
@@ -195,6 +198,10 @@ export function AppLayout({ activeNavId = 'home', children, rightRail }: AppLayo
   useEffect(() => {
     if (sessionStatus === 'loading' || sessionStatus === 'checking') return;
     if (accessState === 'active') return;
+    if (accessState === 'signed_in_blocked') {
+      navigate('/onboarding', { replace: true });
+      return;
+    }
 
     const nextPath = `${location.pathname}${location.search}${location.hash}`;
     const params = new URLSearchParams();
@@ -209,6 +216,10 @@ export function AppLayout({ activeNavId = 'home', children, rightRail }: AppLayo
     navigate(query ? `/login?${query}` : '/login', { replace: true });
   }, [accessState, authGateCode, location.hash, location.pathname, location.search, navigate, sessionStatus]);
 
+  useEffect(() => {
+    setShowFinishProfilePrompt(shouldPromptProfileCompletion);
+  }, [shouldPromptProfileCompletion]);
+
   if (accessState !== 'active') {
     return (
       <div className="flex min-h-screen items-center justify-center bg-shell-bg px-4 text-sm font-medium text-text-secondary">
@@ -218,6 +229,7 @@ export function AppLayout({ activeNavId = 'home', children, rightRail }: AppLayo
   }
 
   return (
+    <>
     <div className="min-h-screen bg-shell-bg">
       <div className="mx-auto w-full">
         <div className="grid w-full gap-x-6 lg:grid-cols-[minmax(220px,1fr)_560px_minmax(220px,1fr)] xl:grid-cols-[minmax(260px,1fr)_560px_minmax(320px,1fr)]">
@@ -376,6 +388,16 @@ export function AppLayout({ activeNavId = 'home', children, rightRail }: AppLayo
         </nav>
       ) : null}
     </div>
+      <FinishProfilePrompt
+        open={showFinishProfilePrompt}
+        defaultBio={user?.bio ?? ''}
+        defaultAvatarUrl={user?.profileImageUrl ?? undefined}
+        onComplete={async () => {
+          setShowFinishProfilePrompt(false);
+          await Promise.allSettled([refreshSession(), refreshCurrentUser()]);
+        }}
+      />
+    </>
   );
 }
 

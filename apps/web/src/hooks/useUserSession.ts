@@ -4,15 +4,15 @@ import type { User } from "firebase/auth";
 
 import { AUTH_GATE_EVENT, type AuthGateCode, type AuthGateEventDetail } from "@/lib/apiBase";
 import {
-  assertWebAccessEligible,
   getFirebaseErrorMessage,
   observeAuthState,
   signInWithApple,
   signInWithEmailPassword,
   signInWithGoogle,
   signOutUser,
-  WebAccessError,
+  signUpWithEmailPassword,
 } from "@/lib/firebaseClient";
+import { fetchSessionBootstrap, SessionBootstrapError, type SessionBootstrap } from "@/lib/sessionBootstrapApi";
 
 export type UserSessionStatus = "loading" | "unauthenticated" | "checking" | "authenticated" | "error";
 export type UserAccessState = "signed_out" | "signed_in_blocked" | "active" | "deleted" | "delete_pending";
@@ -23,6 +23,7 @@ type UserSessionState = {
   error: string | null;
   authGateCode: AuthGateCode | null;
   onboardingStep: string | null;
+  bootstrap: SessionBootstrap | null;
 };
 
 const initialState: UserSessionState = {
@@ -31,11 +32,24 @@ const initialState: UserSessionState = {
   error: null,
   authGateCode: null,
   onboardingStep: null,
+  bootstrap: null,
 };
 
 let cachedSessionState: UserSessionState = initialState;
-let lastEligibilityCheck: { uid: string; at: number } | null = null;
+let lastBootstrapCheck: { uid: string; at: number; state: UserSessionState } | null = null;
 const SESSION_RECHECK_WINDOW_MS = 15_000;
+
+function normalizeAuthGateCode(code: string | null): AuthGateCode | null {
+  if (
+    code === "user_not_provisioned" ||
+    code === "onboarding_incomplete" ||
+    code === "account_deleted" ||
+    code === "account_delete_pending"
+  ) {
+    return code;
+  }
+  return null;
+}
 
 function authGateMessage(code: AuthGateCode): string {
   if (code === "account_delete_pending") {
@@ -44,7 +58,41 @@ function authGateMessage(code: AuthGateCode): string {
   if (code === "account_deleted") {
     return "This account was deleted. Contact support if you need help restoring access.";
   }
-  return "Finish account setup on iOS to continue.";
+  return "Finish onboarding to continue.";
+}
+
+function deriveBootstrapState({
+  user,
+  bootstrap,
+}: {
+  user: User;
+  bootstrap: SessionBootstrap;
+}): UserSessionState {
+  let gateCode = normalizeAuthGateCode(bootstrap.errorCode);
+  if (!gateCode && !bootstrap.onboardingComplete) {
+    gateCode = "onboarding_incomplete";
+  }
+
+  const onboardingStep = bootstrap.onboardingStageV2 ?? bootstrap.onboardingStep;
+  if (gateCode === "account_deleted" || gateCode === "account_delete_pending") {
+    return {
+      status: "unauthenticated",
+      user: null,
+      error: authGateMessage(gateCode),
+      authGateCode: gateCode,
+      onboardingStep,
+      bootstrap,
+    };
+  }
+
+  return {
+    status: "authenticated",
+    user,
+    error: null,
+    authGateCode: gateCode,
+    onboardingStep,
+    bootstrap,
+  };
 }
 
 export function useUserSession() {
@@ -62,121 +110,127 @@ export function useUserSession() {
     let active = true;
     let unsubscribe: (() => void) | undefined;
     let authCheckRequestId = 0;
-    let pendingUnauthenticatedError: string | null = null;
-    let pendingAuthGateCode: AuthGateCode | null = null;
-    let pendingOnboardingStep: string | null = null;
+
+    const loadBootstrap = async ({
+      user,
+      requestId,
+      force = false,
+    }: {
+      user: User;
+      requestId: number;
+      force?: boolean;
+    }) => {
+      if (
+        !force &&
+        lastBootstrapCheck &&
+        lastBootstrapCheck.uid === user.uid &&
+        Date.now() - lastBootstrapCheck.at < SESSION_RECHECK_WINDOW_MS
+      ) {
+        if (!active || requestId !== authCheckRequestId) return;
+        setAndCacheState(lastBootstrapCheck.state);
+        return;
+      }
+
+      setAndCacheState((prev) => ({
+        ...prev,
+        status: "checking",
+        user,
+        error: null,
+      }));
+
+      try {
+        const bootstrap = await fetchSessionBootstrap();
+        if (!active || requestId !== authCheckRequestId) return;
+        const nextState = deriveBootstrapState({ user, bootstrap });
+        lastBootstrapCheck = {
+          uid: user.uid,
+          at: Date.now(),
+          state: nextState,
+        };
+        setAndCacheState(nextState);
+      } catch (error) {
+        if (!active || requestId !== authCheckRequestId) return;
+
+        const message = error instanceof Error ? error.message : "Unable to verify account access.";
+        if (error instanceof SessionBootstrapError && error.status === 401) {
+          try {
+            await signOutUser();
+          } catch {
+            // best effort sign-out on invalid token/session
+          }
+          setAndCacheState({
+            status: "unauthenticated",
+            user: null,
+            error: "Your session expired. Please sign in again.",
+            authGateCode: null,
+            onboardingStep: null,
+            bootstrap: null,
+          });
+          return;
+        }
+
+        setAndCacheState({
+          status: "error",
+          user,
+          error: message,
+          authGateCode: null,
+          onboardingStep: null,
+          bootstrap: null,
+        });
+      }
+    };
 
     const handleUser = (user: User | null) => {
       if (!active) return;
       if (!user) {
-        const error = pendingUnauthenticatedError;
-        const authGateCode = pendingAuthGateCode;
-        const onboardingStep = pendingOnboardingStep;
-        pendingUnauthenticatedError = null;
-        pendingAuthGateCode = null;
-        pendingOnboardingStep = null;
         setAndCacheState({
           status: "unauthenticated",
           user: null,
-          error,
-          authGateCode,
-          onboardingStep,
+          error: null,
+          authGateCode: null,
+          onboardingStep: null,
+          bootstrap: null,
         });
         return;
       }
 
-      if (
-        lastEligibilityCheck &&
-        lastEligibilityCheck.uid === user.uid &&
-        Date.now() - lastEligibilityCheck.at < SESSION_RECHECK_WINDOW_MS
-      ) {
-        pendingAuthGateCode = null;
-        pendingOnboardingStep = null;
-        setAndCacheState({ status: "authenticated", user, error: null, authGateCode: null, onboardingStep: null });
-        return;
-      }
-
       const requestId = ++authCheckRequestId;
-      setAndCacheState({ status: "checking", user, error: null, authGateCode: null, onboardingStep: null });
-      void (async () => {
-        try {
-          await assertWebAccessEligible();
-          if (!active || requestId !== authCheckRequestId) return;
-          lastEligibilityCheck = { uid: user.uid, at: Date.now() };
-          pendingAuthGateCode = null;
-          pendingOnboardingStep = null;
-          setAndCacheState({ status: "authenticated", user, error: null, authGateCode: null, onboardingStep: null });
-        } catch (error) {
-          let message = error instanceof Error ? error.message : "Unable to verify account access.";
-          if (error instanceof WebAccessError) {
-            if (
-              error.code === "user_not_provisioned" ||
-              error.code === "onboarding_incomplete" ||
-              error.code === "account_deleted" ||
-              error.code === "account_delete_pending"
-            ) {
-              pendingAuthGateCode = error.code;
-              pendingOnboardingStep = error.onboardingStep ?? null;
-              message = authGateMessage(error.code);
-            } else {
-              pendingAuthGateCode = null;
-              pendingOnboardingStep = null;
-            }
-          }
-
-          pendingUnauthenticatedError = message;
-          lastEligibilityCheck = null;
-          try {
-            await signOutUser();
-          } catch {
-            // best effort sign-out to clear unsupported sessions
-          }
-          if (!active || requestId !== authCheckRequestId) return;
-          setAndCacheState({
-            status: "unauthenticated",
-            user: null,
-            error: pendingUnauthenticatedError,
-            authGateCode: pendingAuthGateCode,
-            onboardingStep: pendingOnboardingStep,
-          });
-        }
-      })();
+      void loadBootstrap({ user, requestId });
     };
 
     const handleAuthGateEvent = (event: Event) => {
       if (!active) return;
       const detail = (event as CustomEvent<AuthGateEventDetail>).detail;
       if (!detail) return;
-
       const gateCode = detail.code;
-      const onboardingStep = null;
-      const gateMessage = authGateMessage(gateCode);
 
-      pendingAuthGateCode = gateCode;
-      pendingOnboardingStep = onboardingStep;
-      pendingUnauthenticatedError = gateMessage;
+      if (gateCode === "account_deleted" || gateCode === "account_delete_pending") {
+        void signOutUser().catch(() => {
+          // best effort
+        });
+        lastBootstrapCheck = null;
+        setAndCacheState({
+          status: "unauthenticated",
+          user: null,
+          error: authGateMessage(gateCode),
+          authGateCode: gateCode,
+          onboardingStep: null,
+          bootstrap: null,
+        });
+        return;
+      }
 
       setAndCacheState((prev) => ({
         ...prev,
-        status: "checking",
-        error: null,
+        status: prev.user ? "authenticated" : "unauthenticated",
+        authGateCode: gateCode,
+        error: prev.user ? null : authGateMessage(gateCode),
       }));
 
-      void signOutUser()
-        .catch(() => {
-          // best effort sign-out
-        })
-        .finally(() => {
-          if (!active) return;
-          lastEligibilityCheck = null;
-          setAndCacheState({
-            status: "unauthenticated",
-            user: null,
-            error: gateMessage,
-            authGateCode: gateCode,
-            onboardingStep,
-          });
-        });
+      const currentUser = cachedSessionState.user;
+      if (!currentUser) return;
+      const requestId = ++authCheckRequestId;
+      void loadBootstrap({ user: currentUser, requestId, force: true });
     };
 
     observeAuthState(handleUser)
@@ -192,6 +246,7 @@ export function useUserSession() {
           error: message,
           authGateCode: null,
           onboardingStep: null,
+          bootstrap: null,
         });
       });
 
@@ -209,10 +264,17 @@ export function useUserSession() {
   }, []);
 
   const startSignIn = async <TResult,>(action: () => Promise<TResult>) => {
-    setAndCacheState((prev) => ({ ...prev, status: "checking", error: null, authGateCode: null, onboardingStep: null }));
+    setAndCacheState((prev) => ({
+      ...prev,
+      status: "checking",
+      error: null,
+      authGateCode: null,
+      onboardingStep: null,
+      bootstrap: null,
+    }));
     try {
       await action();
-      lastEligibilityCheck = null;
+      lastBootstrapCheck = null;
     } catch (error) {
       setAndCacheState((prev) => ({
         ...prev,
@@ -220,12 +282,17 @@ export function useUserSession() {
         error: getFirebaseErrorMessage(error),
         authGateCode: null,
         onboardingStep: null,
+        bootstrap: null,
       }));
     }
   };
 
   const signIn = async (email: string, password: string) => {
     await startSignIn(() => signInWithEmailPassword(email, password));
+  };
+
+  const signUp = async (email: string, password: string) => {
+    await startSignIn(() => signUpWithEmailPassword(email, password));
   };
 
   const signInWithGoogleProvider = async () => {
@@ -237,28 +304,43 @@ export function useUserSession() {
   };
 
   const signOut = async () => {
+    lastBootstrapCheck = null;
     await signOutUser();
   };
 
-  const accessState: UserAccessState =
-    statusToAccessState(state.status, state.authGateCode);
+  const refreshSession = async () => {
+    const user = cachedSessionState.user;
+    if (!user) return;
+    const bootstrap = await fetchSessionBootstrap();
+    const nextState = deriveBootstrapState({ user, bootstrap });
+    lastBootstrapCheck = {
+      uid: user.uid,
+      at: Date.now(),
+      state: nextState,
+    };
+    setAndCacheState(nextState);
+  };
+
+  const accessState: UserAccessState = statusToAccessState(state.status, state.authGateCode);
 
   return {
     ...state,
     accessState,
     signIn,
+    signUp,
     signInWithGoogle: signInWithGoogleProvider,
     signInWithApple: signInWithAppleProvider,
     signOut,
+    refreshSession,
   };
 }
 
 function statusToAccessState(status: UserSessionStatus, authGateCode: AuthGateCode | null): UserAccessState {
-  if (status === "authenticated") return "active";
   if (authGateCode === "account_delete_pending") return "delete_pending";
   if (authGateCode === "account_deleted") return "deleted";
   if (authGateCode === "user_not_provisioned" || authGateCode === "onboarding_incomplete") {
     return "signed_in_blocked";
   }
+  if (status === "authenticated") return "active";
   return "signed_out";
 }

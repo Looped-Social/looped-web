@@ -75,7 +75,7 @@ type ActorProfilePreview = {
 };
 
 const POLL_INTERVAL_MS = 30_000;
-const DEFAULT_PROFILE_IMAGE_SRC = "/ios-icons/pfp2.svg";
+const DEFAULT_PROFILE_IMAGE_SRC = "/icons/profile/default-avatar.svg";
 
 const POST_TARGET_NOTIFICATION_TYPES = new Set<NotificationType>([
   "like",
@@ -438,7 +438,7 @@ function resolveVerificationPresentation(notification: NotificationView): Notifi
   if (status === "expired") {
     return {
       title: payloadTitle ?? "Verification expired",
-      description: payloadBody ?? "Your verification has expired. Re-verify in the iOS app.",
+      description: payloadBody ?? "Your verification has expired. Re-verify your organization email.",
     };
   }
 
@@ -802,7 +802,7 @@ export function AppNotificationsPage() {
         const parsed = parseApiError(loadError);
         const message =
           parsed.code === "user_not_provisioned"
-            ? "Complete onboarding in the iOS app to receive notifications."
+            ? "Complete onboarding to receive notifications."
             : parsed.message;
         setError(message);
         if (!poll) {

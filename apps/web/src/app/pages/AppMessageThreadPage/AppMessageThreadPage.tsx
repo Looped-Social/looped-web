@@ -115,7 +115,7 @@ type MediaPreviewState = {
 const POLL_INTERVAL_MS = 2_500;
 const MAX_IMAGE_ATTACHMENTS = 4;
 const ZERO_WIDTH_SPACE = "\u200B";
-const DEFAULT_PROFILE_IMAGE_SRC = "/ios-icons/pfp2.svg";
+const DEFAULT_PROFILE_IMAGE_SRC = "/icons/profile/default-avatar.svg";
 const RESOLVE_CACHE_LEEWAY_MS = 20_000;
 
 function handleProfileImageError(event: SyntheticEvent<HTMLImageElement>) {

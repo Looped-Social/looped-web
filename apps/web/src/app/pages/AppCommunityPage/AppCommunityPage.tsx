@@ -468,7 +468,7 @@ function messageForActionCode(code?: string, fallback = "Action unavailable righ
     case "specialization_verification_required":
     case "verification_required":
     case "verify_school":
-      return "Verification required. Verify in the iOS app.";
+      return "Verification required. Verify your organization email to continue.";
     case "specialization_not_joined":
       return "Join this major or field first.";
     case "specialization_join_limit":
@@ -476,7 +476,7 @@ function messageForActionCode(code?: string, fallback = "Action unavailable righ
     case "specialization_join_cooldown":
       return "You can't rejoin this yet.";
     case "verification_expired":
-      return "Your verification expired. Re-verify in the iOS app.";
+      return "Your verification expired. Re-verify your organization email.";
     case "community_banned":
       return "This community is currently unavailable.";
     default:
@@ -880,7 +880,7 @@ export function AppCommunityPage({ communityId }: AppCommunityPageProps) {
                         {verificationInfo.label === "Verified" && verificationInfo.expiresAt
                           ? `Expires ${formatDateMDY(verificationInfo.expiresAt)}`
                           : verificationInfo.label === "Unverified"
-                            ? "Verification required to post, like, or comment. Verify in the iOS app."
+                            ? "Verification required to post, like, or comment. Verify your organization email."
                             : "Verification state shown from your community access"}
                       </p>
                     </div>

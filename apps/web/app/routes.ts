@@ -39,6 +39,8 @@ export default [
   route('app/profile/:userId/following', 'routes/app/profile-following.tsx'),
   route('app/profile/:userId', 'routes/app/profile-user.tsx'),
   route('login', 'routes/marketing/login.tsx'),
+  route('signup', 'routes/marketing/signup.tsx'),
+  route('onboarding', 'routes/marketing/onboarding.tsx'),
   route('delete-account', 'routes/marketing/delete-account.tsx'),
   route('u/:username', 'routes/marketing/profile-share.tsx'),
 ] satisfies RouteConfig;

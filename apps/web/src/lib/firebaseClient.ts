@@ -109,6 +109,17 @@ export async function signInWithEmailPassword(
   return cachedAuthModule.signInWithEmailAndPassword(cachedAuth, email, password);
 }
 
+export async function signUpWithEmailPassword(
+  email: string,
+  password: string
+): Promise<UserCredential> {
+  await ensureFirebase();
+  if (!cachedAuth || !cachedAuthModule) {
+    throw new Error("Firebase auth failed to initialize.");
+  }
+  return cachedAuthModule.createUserWithEmailAndPassword(cachedAuth, email, password);
+}
+
 export async function signInWithGoogle(): Promise<UserCredential> {
   await ensureFirebase();
   if (!cachedAuth || !cachedAuthModule) {
@@ -212,7 +223,7 @@ function onboardingCompleteFromPayload(payload: unknown): boolean | undefined {
 }
 
 const WEB_ACCESS_REQUIRED_MESSAGE =
-  "Complete account setup in the Looped iOS app before signing in on web.";
+  "Complete account setup before continuing on web.";
 const WEB_ACCESS_CHECK_FAILED_MESSAGE = "Unable to verify account access right now. Please try again.";
 
 export type WebAccessErrorCode = AuthGateCode | "unauthorized" | "unknown";
@@ -322,6 +333,10 @@ export function getFirebaseErrorMessage(error: unknown): string {
       case "auth/invalid-credential":
       case "auth/invalid-login-credentials":
         return "Email or password is incorrect.";
+      case "auth/email-already-in-use":
+        return "An account with this email already exists.";
+      case "auth/weak-password":
+        return "Password is too weak. Use a stronger password.";
       case "auth/too-many-requests":
         return "Too many attempts. Try again later.";
       case "auth/network-request-failed":

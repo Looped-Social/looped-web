@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="640" viewBox="0 0 960 640" fill="none">
+  <rect width="960" height="640" rx="40" fill="#F7F8FA"/>
+  <rect x="96" y="96" width="768" height="448" rx="28" fill="#FFFFFF" stroke="#E6E8ED" stroke-width="4"/>
+  <rect x="164" y="168" width="632" height="72" rx="18" fill="#EA404A" opacity="0.14"/>
+  <rect x="164" y="268" width="632" height="52" rx="16" fill="#111827" opacity="0.09"/>
+  <rect x="164" y="338" width="632" height="52" rx="16" fill="#111827" opacity="0.09"/>
+  <rect x="164" y="428" width="220" height="52" rx="16" fill="#EA404A" opacity="0.2"/>
+  <text x="480" y="532" text-anchor="middle" fill="#6B7280" font-size="28" font-family="Poppins, Arial, sans-serif">Email Verification Placeholder</text>
+</svg>
