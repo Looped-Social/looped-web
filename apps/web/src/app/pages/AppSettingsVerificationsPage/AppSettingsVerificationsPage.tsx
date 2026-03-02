@@ -2,10 +2,15 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { AppLayout, AppMobileHeader } from "@/app/components/AppLayout/AppLayout";
 import { SettingsSubpageHeader } from "@/app/components/SettingsSubpageHeader/SettingsSubpageHeader";
+import { VerificationEmailFlow } from "@/app/components/VerificationEmailFlow/VerificationEmailFlow";
+import { useEmailVerificationMachine, type EmailVerificationDraft } from "@/lib/emailVerificationMachine";
 import { normalizeSettingsError } from "@/lib/settingsHttp";
 import {
+  fetchCommunityVerificationDomains,
   fetchCommunityVerifications,
   fetchJoinedSpecializations,
+  finishCommunityVerification,
+  startCommunityVerification,
   type CommunityVerificationItem,
   type JoinedSpecializationItem,
 } from "@/lib/verificationApi";
@@ -53,6 +58,18 @@ export function AppSettingsVerificationsPage() {
   const [error, setError] = useState<string | null>(null);
   const [communityItems, setCommunityItems] = useState<CommunityVerificationItem[]>([]);
   const [joinedSpecializations, setJoinedSpecializations] = useState<JoinedSpecializationItem[]>([]);
+  const [activeVerificationCommunity, setActiveVerificationCommunity] = useState<{
+    communityId: string;
+    communityName: string;
+  } | null>(null);
+  const [verificationDraft, setVerificationDraft] = useState<EmailVerificationDraft>({
+    emailLocalPart: "",
+    selectedDomain: "",
+    submittedEmail: "",
+    pendingCode: "",
+    cooldownUntil: null,
+  });
+  const [verificationNotice, setVerificationNotice] = useState<string | null>(null);
 
   const loadVerifications = useCallback(async () => {
     setStatus("loading");
@@ -76,6 +93,68 @@ export function AppSettingsVerificationsPage() {
   useEffect(() => {
     void loadVerifications();
   }, [loadVerifications]);
+
+  useEffect(() => {
+    if (!activeVerificationCommunity) return;
+    setVerificationDraft({
+      emailLocalPart: "",
+      selectedDomain: "",
+      submittedEmail: "",
+      pendingCode: "",
+      cooldownUntil: null,
+    });
+    setVerificationNotice(null);
+  }, [activeVerificationCommunity]);
+
+  const updateVerificationDraft = useCallback((nextDraft: Partial<EmailVerificationDraft>) => {
+    setVerificationDraft((previous) => ({
+      ...previous,
+      ...nextDraft,
+    }));
+  }, []);
+
+  const closeVerificationModal = useCallback(() => {
+    setActiveVerificationCommunity(null);
+    setVerificationNotice(null);
+  }, []);
+
+  const communityVerificationApi = useMemo(
+    () => ({
+      loadDomains: ({ communityId, signal }: { communityId: string; signal?: AbortSignal }) =>
+        fetchCommunityVerificationDomains(communityId, { signal }),
+      sendCode: ({ communityId, email }: { communityId: string; email: string }) =>
+        startCommunityVerification({ communityId, method: "email", email }),
+      verifyCode: ({ communityId, email, code }: { communityId: string; email: string; code: string }) =>
+        finishCommunityVerification({ communityId, method: "email", code, email }),
+    }),
+    []
+  );
+
+  const communityVerificationAdapter = useMemo(
+    () => ({
+      afterVerifySuccess: async () => {
+        setVerificationNotice("Verification complete.");
+        await loadVerifications();
+      },
+    }),
+    [loadVerifications]
+  );
+
+  const verificationMachine = useEmailVerificationMachine({
+    enabled: Boolean(activeVerificationCommunity),
+    communityId: activeVerificationCommunity?.communityId ?? null,
+    draft: verificationDraft,
+    onDraftChange: updateVerificationDraft,
+    api: communityVerificationApi,
+    adapter: communityVerificationAdapter,
+    initialPreferredState: verificationDraft.submittedEmail ? "enter_code" : "enter_email",
+    defaultCooldownSeconds: 60,
+    onDone: () => {
+      window.setTimeout(() => {
+        closeVerificationModal();
+      }, 350);
+    },
+  });
 
   const sortedCommunities = useMemo(() => {
     return [...communityItems].sort((a, b) => {
@@ -159,6 +238,20 @@ export function AppSettingsVerificationsPage() {
                           {expiresAt ? <p>Expires: {expiresAt}</p> : null}
                           {item.rejectReason ? <p>Reason: {item.rejectReason}</p> : null}
                         </div>
+                        <div className="pt-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setActiveVerificationCommunity({
+                                communityId: item.communityId,
+                                communityName: item.communityName,
+                              });
+                            }}
+                            className="rounded-full border border-border/70 bg-bg px-3 py-1.5 text-xs font-semibold text-text-secondary transition hover:text-strong"
+                          >
+                            {item.verified ? "Verify again" : "Verify email"}
+                          </button>
+                        </div>
                       </div>
                     );
                   })}
@@ -180,6 +273,65 @@ export function AppSettingsVerificationsPage() {
           </>
         ) : null}
       </div>
+
+      {activeVerificationCommunity ? (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 sm:items-center sm:p-6">
+          <div className="w-full max-w-[680px] rounded-2xl border border-border/70 bg-bg p-4 shadow-xl sm:p-5">
+            <div className="mb-3 flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-xl font-semibold text-strong">Verify Your Email</h2>
+                <p className="mt-1 text-sm text-text-secondary">
+                  {activeVerificationCommunity.communityName}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeVerificationModal}
+                className="rounded-full border border-border px-3 py-1.5 text-xs font-semibold text-text-secondary transition hover:text-strong"
+              >
+                Close
+              </button>
+            </div>
+
+            {verificationNotice ? (
+              <p className="mb-3 rounded-xl border border-secondary/30 bg-secondary/10 px-3 py-2 text-sm text-secondary">
+                {verificationNotice}
+              </p>
+            ) : null}
+
+            <VerificationEmailFlow
+              state={verificationMachine.state}
+              communityName={activeVerificationCommunity.communityName}
+              draft={verificationDraft}
+              domains={verificationMachine.domains}
+              errorMessage={verificationMachine.errorMessage}
+              resendHelperText={verificationMachine.resendHelperText}
+              canSendCode={verificationMachine.canSendCode}
+              canVerifyCode={verificationMachine.canVerifyCode}
+              canResendCode={verificationMachine.canResendCode}
+              transitionLocked={verificationMachine.transitionLocked}
+              overlayTitle={verificationMachine.overlayTitle}
+              showBack={false}
+              showSkip={false}
+              onEmailLocalPartChange={verificationMachine.setEmailLocalPart}
+              onDomainChange={verificationMachine.setSelectedDomain}
+              onCodeChange={verificationMachine.setCode}
+              onSendCode={() => {
+                void verificationMachine.sendCode();
+              }}
+              onVerifyCode={() => {
+                void verificationMachine.verifyCode();
+              }}
+              onResendCode={() => {
+                void verificationMachine.resendCode();
+              }}
+              onRetryDomains={() => {
+                void verificationMachine.retryDomains();
+              }}
+            />
+          </div>
+        </div>
+      ) : null}
     </AppLayout>
   );
 }

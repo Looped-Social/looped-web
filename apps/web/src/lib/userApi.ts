@@ -22,7 +22,7 @@ function clampLimit(value: number | undefined, fallback: number, min: number, ma
   return Math.max(min, Math.min(max, Math.floor(value)));
 }
 
-async function userFetch<T>(path: string, init?: RequestInit): Promise<T> {
+async function userFetchRaw(path: string, init?: RequestInit): Promise<Response> {
   const token = await getFirebaseIdToken();
   const base = getApiBase();
   const headers = new Headers(init?.headers ?? undefined);
@@ -47,6 +47,10 @@ async function userFetch<T>(path: string, init?: RequestInit): Promise<T> {
     throw new UserApiError(response.status, details || "Request failed.", details);
   }
 
+  return response;
+}
+
+async function parseJsonBody<T>(response: Response): Promise<T> {
   if (response.status === 204) {
     return {} as T;
   }
@@ -61,6 +65,11 @@ async function userFetch<T>(path: string, init?: RequestInit): Promise<T> {
   } catch {
     throw new UserApiError(response.status, "Unexpected server response.", text);
   }
+}
+
+async function userFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await userFetchRaw(path, init);
+  return parseJsonBody<T>(response);
 }
 
 export async function fetchUserMe(): Promise<UserMe> {
@@ -239,6 +248,7 @@ export type DeleteUserResponse = {
   firebase_status?: "ok" | "skipped" | "failed" | "not_requested";
   firebase_deleted?: boolean;
   delete_pending?: boolean;
+  request_id?: string | null;
 };
 
 export type DeleteUserStatusResponse = {
@@ -250,6 +260,7 @@ export type DeleteUserStatusResponse = {
   updated_at?: string;
   completed_at?: string;
   error?: string;
+  request_id?: string | null;
 };
 
 export type SlugAvailabilityResponse = {
@@ -282,7 +293,12 @@ export type UnlinkProviderResponse = {
 };
 
 export async function deleteUser(): Promise<DeleteUserResponse> {
-  return userFetch<DeleteUserResponse>("/v1/users/me/delete", { method: "POST" });
+  const response = await userFetchRaw("/v1/users/me/delete", { method: "POST" });
+  const payload = await parseJsonBody<DeleteUserResponse>(response);
+  return {
+    ...payload,
+    request_id: response.headers.get("X-Request-Id"),
+  };
 }
 
 function normalizeDeletionStatus(value: unknown): DeletionStatus | null {
@@ -342,7 +358,12 @@ function resolveDeleteStatusPath(statusEndpoint?: string): string {
 }
 
 export async function fetchDeleteUserStatus(statusEndpoint?: string): Promise<DeleteUserStatusResponse> {
-  return userFetch<DeleteUserStatusResponse>(resolveDeleteStatusPath(statusEndpoint));
+  const response = await userFetchRaw(resolveDeleteStatusPath(statusEndpoint));
+  const payload = await parseJsonBody<DeleteUserStatusResponse>(response);
+  return {
+    ...payload,
+    request_id: response.headers.get("X-Request-Id"),
+  };
 }
 
 export async function fetchSlugAvailability(slug: string): Promise<SlugAvailabilityResponse> {

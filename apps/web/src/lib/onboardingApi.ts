@@ -47,6 +47,7 @@ export type CommunityOption = {
   kind: string;
   name: string;
   shortName?: string;
+  memberCount?: number;
   membersLabel?: string;
   imageUrl?: string;
 };
@@ -207,6 +208,7 @@ function normalizeCommunityOption(payload: unknown): CommunityOption | null {
     kind,
     name,
     shortName,
+    memberCount,
     membersLabel: memberCount !== undefined ? `${memberCount.toLocaleString()} members` : undefined,
     imageUrl:
       getString(payload.image_url ?? payload.imageUrl ?? payload.profile_image_url ?? payload.profileImageUrl) ??
@@ -336,11 +338,34 @@ export async function setOnboardingOrg(orgId: string | number): Promise<Onboardi
 export async function setOnboardingVerificationChoice(
   verificationPath: "email" | "skip"
 ): Promise<OnboardingSnapshot> {
-  const { data } = await onboardingAuthFetch<unknown>("/v1/users/me/onboarding-v2/verification-choice", {
-    method: "PUT",
-    body: JSON.stringify({ verification_path: verificationPath }),
-  });
-  return normalizeOnboardingSnapshot(data);
+  try {
+    const { data } = await onboardingAuthFetch<unknown>("/v1/users/me/onboarding-v2/verification-choice", {
+      method: "PUT",
+      body: JSON.stringify({ verification_path: verificationPath }),
+    });
+    return normalizeOnboardingSnapshot(data);
+  } catch (error) {
+    if (
+      !(error instanceof OnboardingApiError) ||
+      error.status < 400 ||
+      error.status >= 500 ||
+      error.code === "invalid_verification_path" ||
+      error.code === "invalid_stage" ||
+      error.code === "invalid_onboarding_stage" ||
+      error.code === "invalid_onboarding_step" ||
+      error.code === "org_not_selected" ||
+      error.code === "onboarding_incomplete" ||
+      error.code === "user_not_provisioned"
+    ) {
+      throw error;
+    }
+
+    const { data } = await onboardingAuthFetch<unknown>("/v1/users/me/onboarding-v2/verification-choice", {
+      method: "PUT",
+      body: JSON.stringify({ verificationPath: verificationPath }),
+    });
+    return normalizeOnboardingSnapshot(data);
+  }
 }
 
 export async function markOnboardingEmailVerificationSuccess(): Promise<OnboardingSnapshot> {
@@ -382,39 +407,46 @@ export async function completeAfterCommunityRequest(): Promise<OnboardingSnapsho
 export async function searchOnboardingCommunities({
   query,
   kind,
-  limit = 15,
+  limit = 25,
+  signal,
 }: {
   query: string;
   kind?: CommunityKind;
   limit?: number;
+  signal?: AbortSignal;
 }): Promise<CommunityOption[]> {
   const params = new URLSearchParams();
   params.set("query", query);
   params.set("limit", String(limit));
   if (kind) params.set("kind", kind);
 
-  const { data } = await onboardingAuthFetch<unknown>(`/v1/communities/search?${params.toString()}`);
+  const { data } = await onboardingAuthFetch<unknown>(`/v1/communities/search?${params.toString()}`, { signal });
   return extractCommunityItems(data);
 }
 
 export async function fetchRecommendedOnboardingCommunities({
   kind,
-  limit = 12,
+  limit = 40,
+  signal,
 }: {
   kind: CommunityKind;
   limit?: number;
+  signal?: AbortSignal;
 }): Promise<CommunityOption[]> {
   const params = new URLSearchParams();
   params.set("kind", kind);
   params.set("limit", String(limit));
-  const { data } = await onboardingAuthFetch<unknown>(`/v1/communities/recommended?${params.toString()}`);
+  const { data } = await onboardingAuthFetch<unknown>(`/v1/communities/recommended?${params.toString()}`, { signal });
   return extractCommunityItems(data);
 }
 
 export async function fetchCommunityVerificationDomains(
-  communityId: string | number
+  communityId: string | number,
+  options?: { signal?: AbortSignal }
 ): Promise<string[]> {
-  const { data } = await onboardingAuthFetch<unknown>(`/v1/communities/${communityId}/domains`);
+  const { data } = await onboardingAuthFetch<unknown>(`/v1/communities/${communityId}/domains`, {
+    signal: options?.signal,
+  });
   if (!isRecord(data)) return [];
   const items = Array.isArray(data.items) ? data.items : [];
   return items

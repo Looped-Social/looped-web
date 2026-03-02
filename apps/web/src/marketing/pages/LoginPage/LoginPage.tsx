@@ -4,7 +4,6 @@ import { Link, useLocation, useNavigate } from "react-router";
 import { AppStoreButton } from "@/marketing/components/AppStoreButton/AppStoreButton";
 import { AuthCard } from "@/marketing/components/Auth/AuthCard";
 import { LoginCard } from "@/marketing/components/Auth/LoginCard";
-import { SignupCard } from "@/marketing/components/Auth/SignupCard";
 import { PageShell } from "@/marketing/components/PageShell/PageShell";
 import { useUserSession } from "@/hooks/useUserSession";
 import { loginStatusFromAuthGateCode } from "@/lib/apiBase";
@@ -31,7 +30,6 @@ function decodeURIComponentSafely(value: string): string {
 }
 
 type LoginStatusCode = "delete-pending" | "onboarding-required" | "account-deleted";
-type AuthMode = "login" | "signup";
 
 function resolveStatusCode(rawSearch: string): LoginStatusCode | null {
   const params = new URLSearchParams(rawSearch);
@@ -47,22 +45,12 @@ function resolveStatusMessage(statusCode: LoginStatusCode | null): string | null
   return null;
 }
 
-function resolveAuthMode(pathname: string, rawSearch: string): AuthMode {
-  const params = new URLSearchParams(rawSearch);
-  const mode = params.get("mode");
-  if (mode === "signup") return "signup";
-  if (mode === "login") return "login";
-  if (pathname === "/signup") return "signup";
-  return "login";
-}
-
 export function LoginPage() {
   const {
     status,
     user,
     error,
-    signIn,
-    signUp,
+    signInOrSignUp,
     signInWithGoogle,
     signInWithApple,
     signOut,
@@ -80,8 +68,6 @@ export function LoginPage() {
     () => resolvePostSignInDestination(location.search),
     [location.search]
   );
-  const initialMode = useMemo(() => resolveAuthMode(location.pathname, location.search), [location.pathname, location.search]);
-  const [authMode, setAuthMode] = useState<AuthMode>(initialMode);
   const statusCode = useMemo(() => resolveStatusCode(location.search), [location.search]);
   const statusMessage = useMemo(() => resolveStatusMessage(statusCode), [statusCode]);
 
@@ -93,10 +79,6 @@ export function LoginPage() {
   const shouldShowBlockingCard =
     (isDeletedBlocked || isDeletePendingBlocked) ||
     (status !== "authenticated" && isOnboardingBlocked);
-
-  useEffect(() => {
-    setAuthMode(initialMode);
-  }, [initialMode]);
 
   useEffect(() => {
     if (status === "authenticated") {
@@ -130,21 +112,11 @@ export function LoginPage() {
     }
   };
 
-  const switchMode = (mode: AuthMode) => {
-    setAuthMode(mode);
-    const params = new URLSearchParams(location.search);
-    params.set("mode", mode);
-    const query = params.toString();
-    navigate(query ? `/login?${query}` : "/login", { replace: true });
-  };
-
   return (
     <PageShell>
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-10 lg:flex-row lg:items-start lg:gap-16">
         <div className="flex-1 space-y-6">
-          <h1 className="text-4xl font-semibold tracking-tight text-strong md:text-5xl">
-            {authMode === "signup" ? "Create your Looped account" : "Welcome back to Looped"}
-          </h1>
+          <h1 className="text-4xl font-semibold tracking-tight text-strong md:text-5xl">Sign in or sign up</h1>
           <p className="text-lg leading-8 text-text-secondary">
             Sign up and complete onboarding directly on web. Verification is email-only on web for now, and photo ID
             verification remains iOS-only.
@@ -256,45 +228,17 @@ export function LoginPage() {
                   </div>
                 </AuthCard>
               ) : (
-                <>
-                  <div className="grid grid-cols-2 rounded-lg bg-bg-muted p-1 text-xs font-semibold">
-                    <button
-                      type="button"
-                      onClick={() => switchMode("login")}
-                      className={`rounded-md px-3 py-2 transition ${authMode === "login" ? "bg-bg text-strong" : "text-text-secondary"}`}
-                    >
-                      Log in
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => switchMode("signup")}
-                      className={`rounded-md px-3 py-2 transition ${authMode === "signup" ? "bg-bg text-strong" : "text-text-secondary"}`}
-                    >
-                      Sign up
-                    </button>
-                  </div>
-
-                  {authMode === "login" ? (
-                    <LoginCard
-                      onSubmit={signIn}
-                      onGoogle={signInWithGoogle}
-                      onApple={signInWithApple}
-                      onForgotPassword={handleForgotPassword}
-                      error={error}
-                      resetMessage={resetMessage}
-                      resetTone={resetTone}
-                      note="New here? Create an account and continue onboarding on web."
-                      isBusy={isBusy || status === "loading"}
-                    />
-                  ) : (
-                    <SignupCard
-                      onSubmit={signUp}
-                      onSwitchToLogin={() => switchMode("login")}
-                      error={error}
-                      isBusy={isBusy || status === "loading"}
-                    />
-                  )}
-                </>
+                <LoginCard
+                  onSubmit={signInOrSignUp}
+                  onGoogle={signInWithGoogle}
+                  onApple={signInWithApple}
+                  onForgotPassword={handleForgotPassword}
+                  error={error}
+                  resetMessage={resetMessage}
+                  resetTone={resetTone}
+                  note="Use the same form to sign in or create your account on web."
+                  isBusy={isBusy || status === "loading"}
+                />
               )}
             </div>
           )}

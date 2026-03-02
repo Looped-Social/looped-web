@@ -13,5 +13,5 @@ export function meta({}: Route.MetaArgs) {
 }
 
 export default function SignupRoute() {
-  return <Navigate to="/login?mode=signup" replace />;
+  return <Navigate to="/login" replace />;
 }

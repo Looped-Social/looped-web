@@ -7,7 +7,19 @@ import { useToast } from "@/app/components/AppToast/AppToast";
 import { updatePreferCommunityShortNames, usePreferCommunityShortNames } from "@/lib/communityDisplayPreference";
 import { fetchContentPreferences, updateContentPreferences } from "@/lib/contentPreferencesApi";
 import { readContentPreferences, updateContentPreferencesCache } from "@/lib/contentPreferences";
+import {
+  ACCOUNTS_DELETED_NOTICE,
+  assertDeleteResponseSucceeded,
+  DELETE_PENDING_TIMEOUT_MS,
+  DELETE_POLL_DELAYS_MS,
+  DELETE_SLOW_THRESHOLD_MS,
+  getDeletePendingTimeoutMessage,
+  getDeleteProgressMessage,
+  recordDeleteDebugEvent,
+  revokeAnonIdentityForDeleteBestEffort,
+} from "@/lib/deleteAccountFlow";
 import { signOutUser } from "@/lib/firebaseClient";
+import { persistPostLogoutNotice } from "@/lib/postLogoutNotice";
 import { type MessagePermission, updateMySafetySettings } from "@/lib/settingsApi";
 import { normalizeSettingsError } from "@/lib/settingsHttp";
 import { isMatchingConfirmationPhrase } from "@/lib/settingsValidation";
@@ -15,8 +27,6 @@ import {
   deactivateUser,
   deleteUser,
   fetchDeleteUserStatus,
-  isDeleteCompleted,
-  isDeleteInProgress,
   parseUserApiError,
   resolveDeletionStatus,
 } from "@/lib/userApi";
@@ -44,8 +54,6 @@ const THEME_PREFERENCE_OPTIONS: Array<{ value: ThemePreference; label: string }>
 type PendingActionKind = "deactivate" | "delete" | "logout";
 type PendingActionStep = "intro" | "confirm";
 type AsyncState = "idle" | "loading" | "saving" | "success" | "error";
-const DELETE_POLL_DELAYS_MS = [2_000, 3_000, 5_000];
-const DELETE_LONG_RUNNING_THRESHOLD_MS = 60_000;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => {
@@ -600,6 +608,7 @@ export function AppSettingsPage() {
     setActionState("saving");
     setModalError(null);
     let success = false;
+    let deleteSlowTimerId: number | null = null;
 
     try {
       if (pendingAction === "deactivate") {
@@ -617,102 +626,100 @@ export function AppSettingsPage() {
         return;
       }
 
-      setDeleteProgressText("Starting account deletion request...");
+      setDeleteProgressText(getDeleteProgressMessage(false));
       setDeleteOperationId(null);
       setDeleteLongRunning(false);
+      deleteSlowTimerId = window.setTimeout(() => {
+        setDeleteLongRunning(true);
+        setDeleteProgressText(getDeleteProgressMessage(true));
+      }, DELETE_SLOW_THRESHOLD_MS);
 
-      const startedAt = Date.now();
-      let statusEndpoint: string | undefined;
-      let pollAttempt = 0;
-      let pollNetworkFailures = 0;
+      await revokeAnonIdentityForDeleteBestEffort();
 
       const response = await deleteUser();
+      assertDeleteResponseSucceeded(response);
       setDeleteOperationId(response.operation_id ?? null);
-      statusEndpoint = response.status_endpoint;
+      recordDeleteDebugEvent({
+        source: "settings",
+        stage: "start",
+        operationId: response.operation_id ?? null,
+        deletionStatus: response.deletion_status ?? null,
+        deletePending: response.delete_pending ?? null,
+        requestId: response.request_id ?? null,
+      });
 
-      const deleteStatus = resolveDeletionStatus(response);
-      if (isDeleteCompleted(deleteStatus)) {
-        try {
-          await signOutUser();
-        } catch {
-          // account is already terminal; continue local sign-out cleanup
+      const initialStatus = resolveDeletionStatus(response);
+      const isPending = response.delete_pending === true || initialStatus === "pending" || initialStatus === "in_progress";
+      if (isPending) {
+        let statusEndpoint = response.status_endpoint;
+        let pollAttempt = 0;
+        const pollingStartedAt = Date.now();
+        let latestOperationId = response.operation_id ?? null;
+
+        while (true) {
+          if (Date.now() - pollingStartedAt >= DELETE_PENDING_TIMEOUT_MS) {
+            throw new Error(getDeletePendingTimeoutMessage(latestOperationId));
+          }
+
+          const delayMs = DELETE_POLL_DELAYS_MS[Math.min(pollAttempt, DELETE_POLL_DELAYS_MS.length - 1)];
+          await sleep(delayMs);
+
+          const statusResponse = await fetchDeleteUserStatus(statusEndpoint);
+          statusEndpoint = statusResponse.status_endpoint ?? statusEndpoint;
+          latestOperationId = statusResponse.operation_id ?? latestOperationId;
+          setDeleteOperationId(latestOperationId);
+          recordDeleteDebugEvent({
+            source: "settings",
+            stage: "status",
+            operationId: statusResponse.operation_id ?? latestOperationId,
+            deletionStatus: statusResponse.deletion_status ?? null,
+            deletePending: statusResponse.delete_pending ?? null,
+            requestId: statusResponse.request_id ?? null,
+          });
+
+          const pollStatus = resolveDeletionStatus(statusResponse);
+          const stillPending =
+            statusResponse.delete_pending === true || pollStatus === "pending" || pollStatus === "in_progress";
+
+          if (pollStatus === "completed" || statusResponse.delete_pending === false) {
+            break;
+          }
+
+          if (pollStatus === "failed") {
+            throw new Error("Account deletion failed. Please try again or contact support.");
+          }
+
+          if (!stillPending) {
+            throw new Error("Unable to confirm account deletion status. Please try again.");
+          }
+
+          pollAttempt += 1;
         }
-        clearCurrentUserStore();
-        showToast({
-          kind: "success",
-          title: "Account deleted",
-          message: "Your account has been deleted.",
-        });
-        setActionState("success");
-        success = true;
-        navigate("/login", { replace: true });
-        return;
-      }
-
-      if (!isDeleteInProgress(deleteStatus)) {
+      } else if (initialStatus !== "completed" && response.delete_pending !== false) {
         throw new Error("Unable to confirm account deletion status. Please try again.");
       }
 
-      setDeleteProgressText("Deleting your account. This can take up to a minute.");
-
-      while (true) {
-        if (Date.now() - startedAt >= DELETE_LONG_RUNNING_THRESHOLD_MS) {
-          setDeleteLongRunning(true);
-          setDeleteProgressText("Still processing your deletion request. Keep this screen open.");
-        }
-
-        const delayMs = DELETE_POLL_DELAYS_MS[Math.min(pollAttempt, DELETE_POLL_DELAYS_MS.length - 1)];
-        await sleep(delayMs);
-
-        let statusResponse: Awaited<ReturnType<typeof fetchDeleteUserStatus>>;
-        try {
-          statusResponse = await fetchDeleteUserStatus(statusEndpoint);
-          pollNetworkFailures = 0;
-        } catch (pollError) {
-          const parsed = parseUserApiError(pollError);
-          if (parsed.status === 0 && pollNetworkFailures < 3) {
-            pollNetworkFailures += 1;
-            setDeleteProgressText("This is taking longer than expected. Retrying status check...");
-            pollAttempt += 1;
-            continue;
-          }
-          throw pollError;
-        }
-
-        statusEndpoint = statusResponse.status_endpoint ?? statusEndpoint;
-        if (statusResponse.operation_id) {
-          setDeleteOperationId(statusResponse.operation_id);
-        }
-
-        const pollStatus = resolveDeletionStatus(statusResponse);
-        if (isDeleteCompleted(pollStatus)) {
-          try {
-            await signOutUser();
-          } catch {
-            // account is already terminal; continue local sign-out cleanup
-          }
-          clearCurrentUserStore();
-          showToast({
-            kind: "success",
-            title: "Account deleted",
-            message: "Your account has been deleted.",
-          });
-          setActionState("success");
-          success = true;
-          navigate("/login", { replace: true });
-          return;
-        }
-
-        if (pollStatus === "failed") {
-          throw new Error("Account deletion failed. Please try again or contact support.");
-        }
-
-        if (!isDeleteInProgress(pollStatus)) {
-          throw new Error("Unable to confirm account deletion status. Please try again.");
-        }
-
-        pollAttempt += 1;
+      if (deleteSlowTimerId !== null) {
+        window.clearTimeout(deleteSlowTimerId);
+        deleteSlowTimerId = null;
       }
+
+      persistPostLogoutNotice(ACCOUNTS_DELETED_NOTICE);
+      try {
+        await signOutUser();
+      } catch {
+        // terminal path: continue local cleanup even if Firebase sign-out throws
+      }
+      clearCurrentUserStore();
+      showToast({
+        kind: "success",
+        title: ACCOUNTS_DELETED_NOTICE,
+        message: ACCOUNTS_DELETED_NOTICE,
+      });
+      setActionState("success");
+      success = true;
+      navigate("/login", { replace: true });
+      return;
     } catch (error) {
       setActionState("error");
       const message =
@@ -726,6 +733,9 @@ export function AppSettingsPage() {
         message,
       });
     } finally {
+      if (deleteSlowTimerId !== null) {
+        window.clearTimeout(deleteSlowTimerId);
+      }
       if (!success) {
         setActionState("idle");
         setDeleteProgressText(null);
@@ -755,6 +765,29 @@ export function AppSettingsPage() {
 
   const isLoading = currentUserState.status === "idle" || currentUserState.status === "loading";
   const isActionPending = actionState === "saving";
+  const isDeleteProcessing = pendingAction === "delete" && isActionPending;
+
+  useEffect(() => {
+    if (!isDeleteProcessing) return;
+
+    const marker = { deleteProcessingGuard: true, at: Date.now() };
+    window.history.pushState(marker, "", window.location.href);
+
+    const handlePopState = () => {
+      window.history.pushState(marker, "", window.location.href);
+    };
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => {
+      window.removeEventListener("popstate", handlePopState);
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, [isDeleteProcessing]);
 
   return (
     <AppLayout activeNavId="settings">
@@ -1027,7 +1060,7 @@ export function AppSettingsPage() {
                 {pendingAction === "delete" && isActionPending && deleteProgressText ? (
                   <div className="space-y-2 rounded-xl border border-border bg-bg-muted px-3 py-2 text-xs text-text-secondary">
                     <p>{deleteProgressText}</p>
-                    {deleteLongRunning ? <p>Deletion is still processing. We will keep checking automatically.</p> : null}
+                    {deleteLongRunning ? <p>Deletion request is still in progress.</p> : null}
                     {deleteOperationId ? <p>Operation ID: {deleteOperationId}</p> : null}
                   </div>
                 ) : null}

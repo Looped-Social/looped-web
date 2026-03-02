@@ -1,8 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="960" height="640" viewBox="0 0 960 640" fill="none">
-  <rect width="960" height="640" rx="40" fill="#F7F8FA"/>
-  <rect x="96" y="96" width="768" height="448" rx="28" fill="#FFFFFF" stroke="#E6E8ED" stroke-width="4"/>
-  <circle cx="480" cy="230" r="72" fill="#EA404A" opacity="0.18"/>
-  <path d="M444 232l22 22 50-50" stroke="#EA404A" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
-  <rect x="240" y="352" width="480" height="56" rx="16" fill="#111827" opacity="0.1"/>
-  <text x="480" y="500" text-anchor="middle" fill="#6B7280" font-size="28" font-family="Poppins, Arial, sans-serif">Verification Confirmation Placeholder</text>
-</svg>

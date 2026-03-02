@@ -1,9 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="960" height="640" viewBox="0 0 960 640" fill="none">
-  <rect width="960" height="640" rx="40" fill="#F7F8FA"/>
-  <rect x="96" y="96" width="768" height="448" rx="28" fill="#FFFFFF" stroke="#E6E8ED" stroke-width="4"/>
-  <circle cx="180" cy="176" r="18" fill="#EA404A"/>
-  <rect x="220" y="156" width="300" height="40" rx="12" fill="#111827" opacity="0.15"/>
-  <rect x="140" y="252" width="680" height="48" rx="16" fill="#EA404A" opacity="0.15"/>
-  <rect x="140" y="320" width="680" height="48" rx="16" fill="#111827" opacity="0.1"/>
-  <text x="480" y="430" text-anchor="middle" fill="#6B7280" font-size="28" font-family="Poppins, Arial, sans-serif">Auth Entry Placeholder</text>
-</svg>

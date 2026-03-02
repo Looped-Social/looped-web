@@ -12,7 +12,9 @@ import {
   signOutUser,
   signUpWithEmailPassword,
 } from "@/lib/firebaseClient";
+import { clearPersistedOnboardingState } from "@/lib/onboardingStorage";
 import { fetchSessionBootstrap, SessionBootstrapError, type SessionBootstrap } from "@/lib/sessionBootstrapApi";
+import { clearCurrentUserStore } from "@/stores/currentUserStore";
 
 export type UserSessionStatus = "loading" | "unauthenticated" | "checking" | "authenticated" | "error";
 export type UserAccessState = "signed_out" | "signed_in_blocked" | "active" | "deleted" | "delete_pending";
@@ -38,6 +40,12 @@ const initialState: UserSessionState = {
 let cachedSessionState: UserSessionState = initialState;
 let lastBootstrapCheck: { uid: string; at: number; state: UserSessionState } | null = null;
 const SESSION_RECHECK_WINDOW_MS = 15_000;
+
+function getFirebaseAuthErrorCode(error: unknown): string | null {
+  if (typeof error !== "object" || !error || !("code" in error)) return null;
+  const code = (error as { code?: unknown }).code;
+  return typeof code === "string" ? code : null;
+}
 
 function normalizeAuthGateCode(code: string | null): AuthGateCode | null {
   if (
@@ -295,6 +303,55 @@ export function useUserSession() {
     await startSignIn(() => signUpWithEmailPassword(email, password));
   };
 
+  const signInOrSignUp = async (email: string, password: string) => {
+    setAndCacheState((prev) => ({
+      ...prev,
+      status: "checking",
+      error: null,
+      authGateCode: null,
+      onboardingStep: null,
+      bootstrap: null,
+    }));
+
+    try {
+      await signInWithEmailPassword(email, password);
+      lastBootstrapCheck = null;
+      return;
+    } catch (signInError) {
+      const code = getFirebaseAuthErrorCode(signInError);
+      const shouldAttemptSignUp =
+        code === "auth/user-not-found" ||
+        code === "auth/invalid-login-credentials" ||
+        code === "auth/invalid-credential";
+
+      if (!shouldAttemptSignUp) {
+        setAndCacheState((prev) => ({
+          ...prev,
+          status: "unauthenticated",
+          error: getFirebaseErrorMessage(signInError),
+          authGateCode: null,
+          onboardingStep: null,
+          bootstrap: null,
+        }));
+        return;
+      }
+    }
+
+    try {
+      await signUpWithEmailPassword(email, password);
+      lastBootstrapCheck = null;
+    } catch (signUpError) {
+      setAndCacheState((prev) => ({
+        ...prev,
+        status: "unauthenticated",
+        error: getFirebaseErrorMessage(signUpError),
+        authGateCode: null,
+        onboardingStep: null,
+        bootstrap: null,
+      }));
+    }
+  };
+
   const signInWithGoogleProvider = async () => {
     await startSignIn(signInWithGoogle);
   };
@@ -304,8 +361,24 @@ export function useUserSession() {
   };
 
   const signOut = async () => {
+    const uid = cachedSessionState.user?.uid ?? state.user?.uid ?? null;
     lastBootstrapCheck = null;
-    await signOutUser();
+    try {
+      await signOutUser();
+    } finally {
+      if (uid) {
+        clearPersistedOnboardingState(uid);
+      }
+      clearCurrentUserStore();
+      setAndCacheState({
+        status: "unauthenticated",
+        user: null,
+        error: null,
+        authGateCode: null,
+        onboardingStep: null,
+        bootstrap: null,
+      });
+    }
   };
 
   const refreshSession = async () => {
@@ -328,6 +401,7 @@ export function useUserSession() {
     accessState,
     signIn,
     signUp,
+    signInOrSignUp,
     signInWithGoogle: signInWithGoogleProvider,
     signInWithApple: signInWithAppleProvider,
     signOut,

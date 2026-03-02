@@ -3,6 +3,8 @@ import { Link } from "react-router";
 
 import { PageShell } from "@/marketing/components/PageShell/PageShell";
 import { AuthCard } from "@/marketing/components/Auth/AuthCard";
+import communityRequestIllustration from "@/assets/illustrations/community-request.png";
+import requestConfirmIllustration from "@/assets/illustrations/request-confirm.png";
 import { useUserSession } from "@/hooks/useUserSession";
 import {
   CommunityApiError,
@@ -206,6 +208,15 @@ export function CommunityRequestPage() {
           </form>
 
           <div className="space-y-6">
+            <div className="overflow-hidden rounded-2xl border border-border bg-bg p-4 shadow-sm">
+              <img
+                src={submitSuccess ? requestConfirmIllustration : communityRequestIllustration}
+                alt=""
+                className="h-auto w-full rounded-xl bg-bg-muted object-cover"
+                loading="lazy"
+              />
+            </div>
+
             <div className="rounded-2xl border border-border bg-bg p-6 shadow-sm">
               <h3 className="text-lg font-semibold text-strong">Signed in</h3>
               <p className="mt-2 text-sm text-text-secondary">

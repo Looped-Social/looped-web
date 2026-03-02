@@ -66,6 +66,48 @@ const ALLOWED_NEXT_PRIORITY: Array<{ keys: string[]; step: OnboardingFlowStep }>
   { keys: ["org_selection", "select_company", "org_selected"], step: "org_selection" },
 ];
 
+const EARLY_STAGE_STEPS = new Set<OnboardingFlowStep>(["profile_setup", "verification_info", "org_selection"]);
+const CONTEXT_OVERRIDE_STAGES = new Set([
+  "org_selected",
+  "verification_intro",
+  "verification_choice",
+  "ways_to_verify",
+  "email_verification",
+  "email_verified",
+  "specialization_required",
+  "specialization_selection",
+  "specialization_selected",
+  "ready_to_finalize",
+  "skip_explainer",
+]);
+const ORG_REQUIRED_STEPS = new Set<OnboardingFlowStep>([
+  "verification_intro",
+  "verification_choice",
+  "email_verification_enter_email",
+  "email_verification_enter_code",
+  "specialization_selection",
+  "skip_explainer",
+  "verification_confirmation",
+]);
+const INFO_SCREEN_REQUIRED_STAGES = new Set([
+  "org_selection",
+  "select_company",
+  "org_selected",
+  "verification_intro",
+  "verification_choice",
+  "ways_to_verify",
+]);
+const INFO_SCREEN_REQUIRED_RESOLVED_STEPS = new Set<OnboardingFlowStep>([
+  "org_selection",
+  "verification_intro",
+  "verification_choice",
+  "email_verification_enter_email",
+  "email_verification_enter_code",
+  "specialization_selection",
+  "skip_explainer",
+  "verification_confirmation",
+]);
+
 function normalizeStage(value: string | null | undefined): string | null {
   if (!value) return null;
   const trimmed = value.trim().toLowerCase();
@@ -90,6 +132,45 @@ function stepFromAllowedNext(stages: string[]): OnboardingFlowStep | null {
 
 function hasSpecializationSelected(bootstrap: SessionBootstrap): boolean {
   return Boolean(bootstrap.onboardingContext.selectedSpecializationId);
+}
+
+function wasInfoScreenViewed(bootstrap: SessionBootstrap): boolean {
+  const milestones = bootstrap.onboardingContext.milestones;
+  const rawValue = milestones.info_screen_viewed_at ?? milestones.infoScreenViewedAt;
+  if (typeof rawValue !== "string") return false;
+  const normalized = rawValue.trim().toLowerCase();
+  if (
+    !normalized ||
+    normalized === "null" ||
+    normalized === "undefined" ||
+    normalized === "none" ||
+    normalized === "false" ||
+    normalized === "0"
+  ) {
+    return false;
+  }
+  return true;
+}
+
+function coerceCodeStep(step: OnboardingFlowStep, hasPendingVerificationCode: boolean): OnboardingFlowStep {
+  if (step === "email_verification_enter_email" && hasPendingVerificationCode) {
+    return "email_verification_enter_code";
+  }
+  return step;
+}
+
+function shouldUseContextOverride({
+  normalizedStage,
+  stageStep,
+}: {
+  normalizedStage: string | null;
+  stageStep: OnboardingFlowStep | null;
+}): boolean {
+  if (!normalizedStage) return true;
+  if (normalizedStage === "photo_id_verification") return true;
+  if (CONTEXT_OVERRIDE_STAGES.has(normalizedStage)) return true;
+  if (!stageStep) return true;
+  return !EARLY_STAGE_STEPS.has(stageStep);
 }
 
 function resolveFromContext({
@@ -131,35 +212,79 @@ export function resolveOnboardingStep({
   localStep,
   hasPendingVerificationCode = false,
 }: ResolveArgs): OnboardingFlowStep {
-  if (!bootstrap) return sanitizeLocalStep(localStep) ?? "profile_setup";
+  const sanitizedLocalStep = sanitizeLocalStep(localStep);
+  if (!bootstrap) return sanitizedLocalStep ?? "profile_setup";
   if (bootstrap.onboardingComplete) return "completed";
 
-  const fromContext = resolveFromContext({ bootstrap, hasPendingVerificationCode });
-  if (fromContext) return fromContext;
-
   const normalizedStage = normalizeStage(bootstrap.onboardingStageV2);
-  if (normalizedStage && normalizedStage in STAGE_MAP) {
-    const mapped = STAGE_MAP[normalizedStage];
-    if (mapped === "email_verification_enter_email" && hasPendingVerificationCode) {
-      return "email_verification_enter_code";
-    }
-    return mapped;
-  }
-
-  if (normalizedStage === "photo_id_verification") {
-    return "unsupported_web_stage";
-  }
-
   const allowedNextStep = stepFromAllowedNext(bootstrap.allowedNextStagesV2);
-  if (allowedNextStep) return allowedNextStep;
+  const fromContext = resolveFromContext({ bootstrap, hasPendingVerificationCode });
+  if (fromContext === "unsupported_web_stage") return fromContext;
 
-  const legacyStep = normalizeStage(bootstrap.onboardingStep);
-  if (legacyStep === "profile_setup") return "profile_setup";
-  if (legacyStep === "select_company") return "org_selection";
-  if (legacyStep === "verification") return "verification_choice";
-  if (legacyStep === "verification_notifications") return "verification_confirmation";
+  let stageStep: OnboardingFlowStep | null = null;
+  if (normalizedStage === "photo_id_verification") {
+    stageStep = "unsupported_web_stage";
+  } else if (normalizedStage && normalizedStage in STAGE_MAP) {
+    stageStep = coerceCodeStep(STAGE_MAP[normalizedStage], hasPendingVerificationCode);
 
-  return sanitizeLocalStep(localStep) ?? "profile_setup";
+    if (
+      normalizedStage === "org_selected" &&
+      allowedNextStep &&
+      allowedNextStep !== "org_selection" &&
+      allowedNextStep !== "verification_intro"
+    ) {
+      stageStep = coerceCodeStep(allowedNextStep, hasPendingVerificationCode);
+    }
+  }
+
+  let resolvedStep: OnboardingFlowStep | null = stageStep;
+  if (fromContext && shouldUseContextOverride({ normalizedStage, stageStep })) {
+    resolvedStep = fromContext;
+  }
+
+  if (!resolvedStep && allowedNextStep) {
+    resolvedStep = coerceCodeStep(allowedNextStep, hasPendingVerificationCode);
+  }
+
+  if (!resolvedStep) {
+    const legacyStep = normalizeStage(bootstrap.onboardingStep);
+    if (legacyStep === "profile_setup") {
+      resolvedStep = "profile_setup";
+    } else if (legacyStep === "select_company") {
+      resolvedStep = "org_selection";
+    } else if (legacyStep === "verification") {
+      resolvedStep = "verification_choice";
+    } else if (legacyStep === "verification_notifications") {
+      resolvedStep = "verification_confirmation";
+    }
+  }
+
+  if (!resolvedStep) {
+    resolvedStep = sanitizedLocalStep ?? "profile_setup";
+  }
+
+  const infoScreenViewed = wasInfoScreenViewed(bootstrap);
+  if (
+    !infoScreenViewed &&
+    ((normalizedStage && INFO_SCREEN_REQUIRED_STAGES.has(normalizedStage)) ||
+      INFO_SCREEN_REQUIRED_RESOLVED_STEPS.has(resolvedStep))
+  ) {
+    return "verification_info";
+  }
+
+  if (
+    resolvedStep === "org_selection" &&
+    sanitizedLocalStep === "verification_info"
+  ) {
+    return "verification_info";
+  }
+
+  const hasSelectedOrg = Boolean(bootstrap.onboardingContext.selectedOrgId);
+  if (ORG_REQUIRED_STEPS.has(resolvedStep) && !hasSelectedOrg) {
+    return "org_selection";
+  }
+
+  return resolvedStep;
 }
 
 export function canGoBackFromStep(step: OnboardingFlowStep): boolean {

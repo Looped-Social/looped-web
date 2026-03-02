@@ -76,8 +76,8 @@ export function LoginCard({
 
   return (
     <AuthCard
-      title="Sign in"
-      description="Sign in with the account you use on Looped."
+      title="Sign in or sign up"
+      description="Use Google or Apple, or continue with email and password."
     >
       <div className="space-y-6">
         {hasProviders && (
@@ -110,7 +110,9 @@ export function LoginCard({
         {hasProviders && (
           <div className="flex items-center gap-3">
             <span className="h-px flex-1 bg-border" />
-            <span className="text-[11px] font-semibold uppercase text-text-light">or</span>
+            <span className="text-center text-[11px] font-semibold text-text-light">
+              or sign in or sign up with email/password
+            </span>
             <span className="h-px flex-1 bg-border" />
           </div>
         )}
@@ -180,7 +182,7 @@ export function LoginCard({
             disabled={isDisabled}
             className="inline-flex w-full items-center justify-center rounded-lg bg-brand px-4 py-2.5 text-sm font-semibold text-white transition hover:-translate-y-px hover:bg-brand/90 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {isBusy ? "Signing in..." : "Sign in"}
+            {isBusy ? "Continuing..." : "Continue with email"}
           </button>
 
           {note && <p className="text-xs text-text-light">{note}</p>}

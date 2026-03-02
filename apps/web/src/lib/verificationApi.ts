@@ -132,6 +132,18 @@ export async function startCommunityVerification({
   });
 }
 
+export async function fetchCommunityVerificationDomains(
+  communityId: string | number,
+  options?: { signal?: AbortSignal }
+): Promise<string[]> {
+  const response = await settingsAuthFetch<unknown>(`/v1/communities/${communityId}/domains`, {
+    signal: options?.signal,
+  });
+  return extractItemsArray(response)
+    .map((entry) => normalizeOptional(entry))
+    .filter((value): value is string => Boolean(value));
+}
+
 export async function finishCommunityVerification({
   communityId,
   method,
@@ -148,8 +160,6 @@ export async function finishCommunityVerification({
     body: JSON.stringify({
       method,
       code,
-      mediaKey: null,
-      token: null,
       email,
     }),
   });
