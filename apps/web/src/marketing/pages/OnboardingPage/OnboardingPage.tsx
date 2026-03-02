@@ -713,11 +713,17 @@ export function OnboardingPage() {
       return;
     }
     if (
+      resolvedStep === "skip_explainer" &&
+      manualStepOverride !== "skip_explainer" &&
+      manualStepOverride !== "verification_intro"
+    ) {
+      setManualStepOverride(null);
+      return;
+    }
+    if (
       (resolvedStep === "completed" ||
         resolvedStep === "verification_confirmation" ||
         resolvedStep === "specialization_selection" ||
-        resolvedStep === "skip_explainer" ||
-        resolvedStep === "verification_info" ||
         resolvedStep === "unsupported_web_stage") &&
       manualStepOverride !== resolvedStep
     ) {
@@ -1672,10 +1678,11 @@ export function OnboardingPage() {
                     ) : null}
                     <OnboardingContinueButton
                       label="Continue"
+                      loadingLabel="Continuing..."
                       onClick={() => {
-                        setManualStepOverride("verification_choice");
-                        savePersisted({ latestStep: "verification_choice" });
+                        void handleSelectVerificationPath("email");
                       }}
+                      isLoading={transitionLock}
                       variant="primary"
                     />
                     <button
