@@ -1017,7 +1017,7 @@ export function AppMessagesPage() {
     activeTabId === "messages" && isAnonymousViewer && normalizedQuery.length > 0 && !shouldSearchApi;
 
   return (
-    <AppLayout activeNavId="messages">
+    <AppLayout activeNavId="messages" onMobileFabClick={openComposer}>
       <AppMobileHeader title="Messages" showAction={false} />
 
       <header className="border-b border-border/70 bg-bg px-4 pb-4 pt-4 sm:px-6">
@@ -1188,30 +1188,6 @@ export function AppMessagesPage() {
           </>
         )}
       </section>
-
-      <button
-        type="button"
-        onClick={openComposer}
-        className={`fixed bottom-[calc(5.25rem+env(safe-area-inset-bottom))] right-5 z-50 inline-flex h-14 w-14 items-center justify-center rounded-full bg-brand text-white transition hover:bg-brand-hover sm:hidden ${
-          activeTabId !== "messages" ? "pointer-events-none opacity-0" : ""
-        }`}
-        aria-label="New message"
-      >
-        <span
-          className="relative left-[0.5px] top-[0.5px] h-7 w-7 bg-white"
-          style={{
-            maskImage: "url('/icons/actions/send-solid.svg')",
-            WebkitMaskImage: "url('/icons/actions/send-solid.svg')",
-            maskRepeat: "no-repeat",
-            WebkitMaskRepeat: "no-repeat",
-            maskPosition: "center",
-            WebkitMaskPosition: "center",
-            maskSize: "contain",
-            WebkitMaskSize: "contain",
-          }}
-          aria-hidden="true"
-        />
-      </button>
 
       <MessageRecipientComposer
         open={isComposerOpen}

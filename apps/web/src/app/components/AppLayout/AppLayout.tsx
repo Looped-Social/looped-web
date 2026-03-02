@@ -69,7 +69,7 @@ const navItems: NavItem[] = [
     activeIconSrc: '/icons/nav/nav-selected/settings-active.svg',
   },
 ];
-const mobileNavOrder = ['home', 'messages', 'create', 'search', 'notifications', 'profile'] as const;
+const mobileNavOrder = ['home', 'messages', 'search', 'notifications', 'profile'] as const;
 const navItemsById = new Map(navItems.map((item) => [item.id, item] as const));
 const mobileNavItems = mobileNavOrder
   .map((id) => navItemsById.get(id))
@@ -79,6 +79,10 @@ type AppLayoutProps = {
   activeNavId?: string;
   children: ReactNode;
   rightRail?: ReactNode;
+  isCommentsSheetOpen?: boolean;
+  isHomeRightMenuOpen?: boolean;
+  mobileFabHidden?: boolean;
+  onMobileFabClick?: () => void;
 };
 
 type RailFooterSection = {
@@ -180,6 +184,43 @@ function NavMaskIcon({
   );
 }
 
+function FabPlusIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+    >
+      <path d="M12 5v14" />
+      <path d="M5 12h14" />
+    </svg>
+  );
+}
+
+function FabSendIcon({ className }: { className?: string }) {
+  return (
+    <span
+      className={className}
+      style={{
+        maskImage: "url('/icons/actions/send-solid.svg')",
+        WebkitMaskImage: "url('/icons/actions/send-solid.svg')",
+        maskRepeat: 'no-repeat',
+        WebkitMaskRepeat: 'no-repeat',
+        maskPosition: 'center',
+        WebkitMaskPosition: 'center',
+        maskSize: 'contain',
+        WebkitMaskSize: 'contain',
+      }}
+      aria-hidden="true"
+    />
+  );
+}
+
 function getNavIconSrc(item: NavItem, isActive: boolean): string {
   if (item.id === 'profile') {
     return item.iconSrc;
@@ -190,7 +231,28 @@ function getNavIconSrc(item: NavItem, isActive: boolean): string {
   return item.iconSrc;
 }
 
-export function AppLayout({ activeNavId = 'home', children, rightRail }: AppLayoutProps) {
+function getAnonymousModeFromBootstrapUser(user: Record<string, unknown> | null | undefined): boolean {
+  if (!user) return false;
+  const rawValue = user.is_anonymous ?? user.isAnonymous;
+  if (typeof rawValue === 'boolean') return rawValue;
+  if (typeof rawValue === 'number' && Number.isFinite(rawValue)) return rawValue !== 0;
+  if (typeof rawValue === 'string') {
+    const normalized = rawValue.trim().toLowerCase();
+    if (normalized === 'true' || normalized === '1') return true;
+    if (normalized === 'false' || normalized === '0') return false;
+  }
+  return false;
+}
+
+export function AppLayout({
+  activeNavId = 'home',
+  children,
+  rightRail,
+  isCommentsSheetOpen = false,
+  isHomeRightMenuOpen = false,
+  mobileFabHidden = false,
+  onMobileFabClick,
+}: AppLayoutProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const { status: sessionStatus, accessState, authGateCode, bootstrap, refreshSession } = useUserSession();
@@ -207,6 +269,30 @@ export function AppLayout({ activeNavId = 'home', children, rightRail }: AppLayo
   const hideMobileBottomNav =
     /^\/app\/post\/[^/]+\/comments$/.test(pathname) ||
     /^\/app\/messages\/(conversation|channel)\/[^/]+$/.test(pathname);
+  const isAnonymousMode = getAnonymousModeFromBootstrapUser(bootstrap?.user);
+
+  const fabTab: 'home' | 'messages' | 'profile' | null =
+    pathname === '/app' ? 'home' : pathname === '/app/messages' ? 'messages' : pathname === '/app/profile' ? 'profile' : null;
+  const showFab =
+    fabTab !== null &&
+    !isCommentsSheetOpen &&
+    !(fabTab === 'home' && isHomeRightMenuOpen) &&
+    !mobileFabHidden;
+  const fabType: 'addPost' | 'sendMessage' = fabTab === 'messages' ? 'sendMessage' : 'addPost';
+  const fabBackgroundClass = fabType === 'sendMessage' ? 'bg-secondary' : isAnonymousMode ? 'bg-secondary' : 'bg-brand';
+  const fabBottomClass = hideMobileBottomNav ? 'bottom-4' : 'bottom-[calc(60px+env(safe-area-inset-bottom))]';
+
+  const handleFabClick = () => {
+    if (onMobileFabClick) {
+      onMobileFabClick();
+      return;
+    }
+    if (fabType === 'sendMessage') {
+      navigate('/app/messages');
+      return;
+    }
+    navigate('/app/create');
+  };
 
   useEffect(() => {
     if (sessionStatus === 'loading' || sessionStatus === 'checking') return;
@@ -399,6 +485,21 @@ export function AppLayout({ activeNavId = 'home', children, rightRail }: AppLayo
             })}
           </div>
         </nav>
+      ) : null}
+
+      {showFab ? (
+        <button
+          type="button"
+          onClick={handleFabClick}
+          className={`fixed ${fabBottomClass} right-5 z-50 inline-flex h-14 w-14 items-center justify-center rounded-full ${fabBackgroundClass} text-white transition-[bottom,opacity,transform] duration-200 ease-out hover:opacity-95 lg:hidden`}
+          aria-label={fabType === 'sendMessage' ? 'New message' : 'Create post'}
+        >
+          {fabType === 'sendMessage' ? (
+            <FabSendIcon className="h-8 w-8 bg-white" />
+          ) : (
+            <FabPlusIcon className="h-[33px] w-[33px]" />
+          )}
+        </button>
       ) : null}
     </div>
       <FinishProfilePrompt

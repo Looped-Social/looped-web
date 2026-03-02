@@ -55,6 +55,21 @@ type PendingActionKind = "deactivate" | "delete" | "logout";
 type PendingActionStep = "intro" | "confirm";
 type AsyncState = "idle" | "loading" | "saving" | "success" | "error";
 
+const SETTINGS_ICON = {
+  accountUser: "/icons/settings/account/user.svg",
+  accountLock: "/icons/settings/account/lock.svg",
+  accountShield: "/icons/settings/account/shield-solid-full.svg",
+  accountBell: "/icons/settings/account/bell.svg",
+  verified: "/icons/verified.svg",
+  safetyFollowerCounts: "/icons/settings/saftey/follower-counts.svg",
+  safetyMessagePermissions: "/icons/settings/saftey/message-perimissions.svg",
+  safetyUserSlash: "/icons/settings/saftey/user-slash-solid-full.svg",
+  supportQuestion: "/icons/settings/support/circle-question.svg",
+  supportScroll: "/icons/settings/support/scroll.svg",
+  supportTerms: "/icons/settings/support/terms.svg",
+  supportUserAgreement: "/icons/settings/support/user-agreement.svg",
+} as const;
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, ms);
@@ -167,16 +182,46 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
+function SettingsRowLabel({
+  label,
+  iconSrc,
+  labelClassName = "text-sm font-semibold text-strong",
+}: {
+  label: string;
+  iconSrc?: string;
+  labelClassName?: string;
+}) {
+  return (
+    <div className="flex min-w-0 items-center gap-2.5">
+      {iconSrc ? (
+        <img
+          src={iconSrc}
+          alt=""
+          aria-hidden="true"
+          className="h-5 w-5 shrink-0 object-contain"
+          loading="lazy"
+          onError={(event) => {
+            event.currentTarget.style.display = "none";
+          }}
+        />
+      ) : null}
+      <p className={`min-w-0 truncate ${labelClassName}`}>{label}</p>
+    </div>
+  );
+}
+
 function LinkRow({
   label,
   to,
+  iconSrc,
 }: {
   label: string;
   to: string;
+  iconSrc?: string;
 }) {
   return (
     <Link to={to} className="flex items-center justify-between gap-3 px-4 py-3 transition hover:bg-bg-muted/30">
-      <p className="min-w-0 text-sm font-semibold text-strong">{label}</p>
+      <SettingsRowLabel label={label} iconSrc={iconSrc} />
       <ChevronRightIcon className="h-4 w-4 shrink-0 text-text-light" />
     </Link>
   );
@@ -187,15 +232,17 @@ function ToggleRow({
   checked,
   disabled,
   onChange,
+  iconSrc,
 }: {
   label: string;
   checked: boolean;
   disabled?: boolean;
   onChange: () => void;
+  iconSrc?: string;
 }) {
   return (
     <div className="flex items-center justify-between gap-3 px-4 py-3">
-      <p className="min-w-0 text-sm font-semibold text-strong">{label}</p>
+      <SettingsRowLabel label={label} iconSrc={iconSrc} />
       <button
         type="button"
         role="switch"
@@ -221,15 +268,17 @@ function SelectRow({
   value,
   disabled,
   onChange,
+  iconSrc,
 }: {
   label: string;
   value: MessagePermission;
   disabled?: boolean;
   onChange: (value: MessagePermission) => void;
+  iconSrc?: string;
 }) {
   return (
     <div className="flex items-center justify-between gap-3 px-4 py-3">
-      <p className="min-w-0 text-sm font-semibold text-strong">{label}</p>
+      <SettingsRowLabel label={label} iconSrc={iconSrc} />
       <select
         value={value}
         disabled={disabled}
@@ -252,11 +301,13 @@ function ActionRow({
   destructive = false,
   disabled = false,
   onClick,
+  iconSrc,
 }: {
   label: string;
   destructive?: boolean;
   disabled?: boolean;
   onClick: () => void;
+  iconSrc?: string;
 }) {
   return (
     <button
@@ -265,7 +316,11 @@ function ActionRow({
       onClick={onClick}
       className="w-full px-4 py-3 text-left transition hover:bg-bg-muted/30 disabled:opacity-60"
     >
-      <p className={`text-sm font-semibold ${destructive ? "text-brand" : "text-strong"}`}>{label}</p>
+      <SettingsRowLabel
+        label={label}
+        iconSrc={iconSrc}
+        labelClassName={`text-sm font-semibold ${destructive ? "text-brand" : "text-strong"}`}
+      />
     </button>
   );
 }
@@ -828,9 +883,9 @@ export function AppSettingsPage() {
           <>
             <Section title="Account">
               <div className="divide-y divide-border/60">
-                <LinkRow label="Edit Profile" to="/app/profile/edit" />
-                <LinkRow label="Privacy & Data" to="/privacy-policy" />
-                <LinkRow label="Connected Accounts" to="/app/settings/connected" />
+                <LinkRow label="Edit Profile" to="/app/profile/edit" iconSrc={SETTINGS_ICON.accountUser} />
+                <LinkRow label="Privacy & Data" to="/privacy-policy" iconSrc={SETTINGS_ICON.accountLock} />
+                <LinkRow label="Connected Accounts" to="/app/settings/connected" iconSrc={SETTINGS_ICON.accountShield} />
               </div>
             </Section>
 
@@ -849,24 +904,27 @@ export function AppSettingsPage() {
               <div className="divide-y divide-border/60">
                 <ToggleRow
                   label="Show Follower Count"
+                  iconSrc={SETTINGS_ICON.safetyFollowerCounts}
                   checked={showFollowerCount}
                   disabled={followerState === "saving"}
                   onChange={() => void handleToggleFollowerCount()}
                 />
                 <SelectRow
                   label="Messaging Permissions"
+                  iconSrc={SETTINGS_ICON.safetyMessagePermissions}
                   value={messagePermission}
                   disabled={messagePermissionState === "saving"}
                   onChange={(next) => void handleChangeMessagePermission(next)}
                 />
                 <ToggleRow
                   label="Hide Anonymous Posts"
+                  iconSrc={SETTINGS_ICON.safetyUserSlash}
                   checked={hideAnonymousPosts}
                   disabled={hideAnonymousPostsState === "saving"}
                   onChange={() => void handleToggleHideAnonymousPosts()}
                 />
-                <LinkRow label="Blocked Users" to="/app/settings/blocked" />
-                <LinkRow label="Appeals & Violations" to="/app/settings/review" />
+                <LinkRow label="Blocked Users" to="/app/settings/blocked" iconSrc={SETTINGS_ICON.safetyUserSlash} />
+                <LinkRow label="Appeals & Violations" to="/app/settings/review" iconSrc={SETTINGS_ICON.accountShield} />
               </div>
               {rowError ? <p className="px-4 py-2 text-xs text-brand">{rowError}</p> : null}
             </Section>
@@ -891,18 +949,19 @@ export function AppSettingsPage() {
                 <LinkRow
                   label="Community Verifications"
                   to="/app/settings/verifications"
+                  iconSrc={SETTINGS_ICON.verified}
                 />
               </div>
             </Section>
 
             <Section title="Support & About">
               <div className="divide-y divide-border/60">
-                <LinkRow label="Feedback" to="/contact" />
-                <LinkRow label="Request New Community" to="/community-request" />
-                <LinkRow label="Content Policy" to="/community-rules" />
-                <LinkRow label="Privacy Policy" to="/privacy-policy" />
-                <LinkRow label="User Agreement" to="/terms" />
-                <LinkRow label="Attributions" to="/attributions" />
+                <LinkRow label="Feedback" to="/contact" iconSrc={SETTINGS_ICON.supportQuestion} />
+                <LinkRow label="Request New Community" to="/community-request" iconSrc={SETTINGS_ICON.supportScroll} />
+                <LinkRow label="Content Policy" to="/community-rules" iconSrc={SETTINGS_ICON.supportScroll} />
+                <LinkRow label="Privacy Policy" to="/privacy-policy" iconSrc={SETTINGS_ICON.accountLock} />
+                <LinkRow label="User Agreement" to="/terms" iconSrc={SETTINGS_ICON.supportUserAgreement} />
+                <LinkRow label="Attributions" to="/attributions" iconSrc={SETTINGS_ICON.supportTerms} />
               </div>
             </Section>
 

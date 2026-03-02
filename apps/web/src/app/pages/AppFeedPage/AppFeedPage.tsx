@@ -1057,7 +1057,12 @@ export function AppFeedPage() {
   );
 
   return (
-    <AppLayout activeNavId="home" rightRail={rightRail}>
+    <AppLayout
+      activeNavId="home"
+      rightRail={rightRail}
+      isCommentsSheetOpen={Boolean(commentsOverlayPostId)}
+      isHomeRightMenuOpen={isCommunitySearchActive}
+    >
       <AppMobileHeader showBorder={false} showAction={false} />
 
       <header className="bg-bg">

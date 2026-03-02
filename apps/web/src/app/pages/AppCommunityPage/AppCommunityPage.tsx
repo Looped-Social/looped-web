@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { RiVerifiedBadgeFill } from "react-icons/ri";
 import { useNavigate } from "react-router";
 
 import { AppLayout } from "@/app/components/AppLayout/AppLayout";
@@ -70,6 +69,8 @@ type JoinLimitInfo = {
 };
 
 type VerificationModalStep = "intro" | "method" | "email" | "confirmed";
+
+const VERIFIED_ICON_SRC = "/icons/verified.svg";
 
 function BackIcon({ className }: { className?: string }) {
   return (
@@ -148,7 +149,20 @@ function StatusBadgeIcon({
   return (
     <span className={className} style={style}>
       {icon === "check" && tone === "verified" ? (
-        <RiVerifiedBadgeFill className="h-7 w-7" aria-hidden="true" />
+        <span
+          className="h-7 w-7 bg-current"
+          aria-hidden="true"
+          style={{
+            maskImage: `url('${VERIFIED_ICON_SRC}')`,
+            WebkitMaskImage: `url('${VERIFIED_ICON_SRC}')`,
+            maskRepeat: "no-repeat",
+            WebkitMaskRepeat: "no-repeat",
+            maskPosition: "center",
+            WebkitMaskPosition: "center",
+            maskSize: "contain",
+            WebkitMaskSize: "contain",
+          }}
+        />
       ) : null}
       {icon === "check" ? (
         <svg
