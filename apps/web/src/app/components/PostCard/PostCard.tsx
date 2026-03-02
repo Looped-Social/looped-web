@@ -356,7 +356,6 @@ export function PostCard({ post }: PostCardProps) {
 
   const [isSaved, setIsSaved] = useState(post.viewerSaved ?? false);
   const [isSaveLoading, setIsSaveLoading] = useState(false);
-  const [shareCount, setShareCount] = useState(post.stats.shares ?? 0);
   const [isShareLoading, setIsShareLoading] = useState(false);
   const [pollState, setPollState] = useState<PostPoll | undefined>(post.poll);
   const [isPollVoting, setIsPollVoting] = useState(false);
@@ -412,7 +411,6 @@ export function PostCard({ post }: PostCardProps) {
     setLikesCount(post.stats.likes);
     setIsReposted(post.viewerHasReposted ?? false);
     setIsSaved(post.viewerSaved ?? false);
-    setShareCount(post.stats.shares ?? 0);
     setPollState(post.poll);
     setIsPollVoting(false);
     setIsHidden(false);
@@ -794,12 +792,7 @@ export function PostCard({ post }: PostCardProps) {
         return;
       }
 
-      const response = await sharePost(post.id);
-      if (response.shareCount !== undefined) {
-        setShareCount(response.shareCount);
-      } else {
-        setShareCount((count) => count + 1);
-      }
+      await sharePost(post.id);
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return;
 
@@ -1144,14 +1137,13 @@ export function PostCard({ post }: PostCardProps) {
         </button>
 
         <button
-          className="inline-flex items-center gap-1 rounded-full px-1 py-1 text-[15px] font-medium text-text-secondary transition hover:text-strong disabled:opacity-60 dark:text-white/85 dark:hover:text-white"
+          className="inline-flex items-center rounded-full px-1 py-1 text-[15px] font-medium text-text-secondary transition hover:text-strong disabled:opacity-60 dark:text-white/85 dark:hover:text-white"
           aria-label="Share"
           type="button"
           onClick={() => void handleShare()}
           disabled={isShareLoading}
         >
           <ShareIcon className="h-[22px] w-[22px] flex-none" />
-          <span className="text-sm font-medium tabular-nums">{shareCount}</span>
         </button>
       </div>
       <button
@@ -1406,14 +1398,13 @@ export function PostCard({ post }: PostCardProps) {
           </button>
 
           <button
-            className="inline-flex items-center gap-1 text-[1rem] font-medium text-text-secondary transition hover:text-strong disabled:opacity-60"
+            className="inline-flex items-center text-[1rem] font-medium text-text-secondary transition hover:text-strong disabled:opacity-60"
             aria-label="Share"
             type="button"
             onClick={() => void handleShare()}
             disabled={isShareLoading}
           >
             <ShareIcon className="h-[22px] w-[22px] flex-none" />
-            <span className="text-[1.02rem] font-medium tabular-nums">{shareCount}</span>
           </button>
         </div>
         <button

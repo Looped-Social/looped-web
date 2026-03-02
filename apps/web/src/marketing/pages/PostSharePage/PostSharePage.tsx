@@ -34,7 +34,6 @@ type SharedPost = {
   createdAtLabel: string;
   likesCount: number;
   commentsCount: number;
-  sharesCount: number;
   mediaAssetIds: string[];
   directMediaUrl?: string;
   directMediaMimeType?: string;
@@ -229,7 +228,6 @@ function normalizeSharedPost(payload: unknown): SharedPost | null {
     createdAtLabel: formatTimeAgo(pickString(payload, ["created_at", "createdAt", "timestamp", "created"])),
     likesCount: pickNumber(payload, ["likes_count", "likesCount"]) ?? 0,
     commentsCount: pickNumber(payload, ["comments_count", "commentsCount", "comment_count", "commentCount"]) ?? 0,
-    sharesCount: pickNumber(payload, ["share_count", "shareCount", "shares_count", "sharesCount"]) ?? 0,
     mediaAssetIds: extractMediaAssetIds(payload),
     directMediaUrl,
     directMediaMimeType,
@@ -847,11 +845,10 @@ export function PostSharePage({ postId }: PostSharePageProps) {
                       <button
                         type="button"
                         onClick={() => handleActionIntent("comment")}
-                        className="inline-flex items-center gap-1 text-[1rem] font-medium text-text-secondary transition hover:text-strong"
+                        className="inline-flex items-center text-[1rem] font-medium text-text-secondary transition hover:text-strong"
                         aria-label="Share"
                       >
                         <ShareIcon className="h-[22px] w-[22px] flex-none" />
-                        <span className="text-[1.02rem] font-medium tabular-nums">{post.sharesCount}</span>
                       </button>
                     </div>
 

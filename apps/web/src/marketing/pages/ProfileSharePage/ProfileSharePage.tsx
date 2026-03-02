@@ -46,7 +46,6 @@ type SharedProfileFeedPost = {
   createdAtLabel: string;
   likesCount: number;
   commentsCount: number;
-  sharesCount: number;
   mediaAssetIds: string[];
   poll?: PostPoll;
 };
@@ -245,7 +244,6 @@ function normalizeSharedProfileFeedPost(payload: unknown): SharedProfileFeedPost
     createdAtLabel: formatTimeAgo(payload.created_at ?? payload.createdAt ?? payload.timestamp),
     likesCount: pickNumber(payload, ["likes_count", "likesCount"]) ?? 0,
     commentsCount: pickNumber(payload, ["comments_count", "commentsCount", "comment_count", "commentCount"]) ?? 0,
-    sharesCount: pickNumber(payload, ["share_count", "shareCount", "shares_count", "sharesCount"]) ?? 0,
     mediaAssetIds: extractMediaAssetIds(payload),
     poll: normalizePoll(payload.poll),
   };
@@ -458,9 +456,8 @@ function ReadOnlyProfilePostCard({
             <span className="inline-flex items-center text-[1rem] font-medium">
               <RepostIcon className="h-[24px] w-[24px] flex-none" />
             </span>
-            <span className="inline-flex items-center gap-1 text-[1rem] font-medium">
+            <span className="inline-flex items-center text-[1rem] font-medium">
               <ShareIcon className="h-[22px] w-[22px] flex-none" />
-              <span className="text-[1.02rem] font-medium tabular-nums">{post.sharesCount}</span>
             </span>
           </div>
           <span className="inline-flex items-center justify-center text-text-secondary">
