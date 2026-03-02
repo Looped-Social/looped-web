@@ -1,10 +1,13 @@
 import { type ChangeEvent, type SyntheticEvent, useCallback, useEffect, useRef, useState } from "react";
 
 import { CameraIcon } from "@/app/components/AppIcons/AppIcons";
+import { useToast } from "@/app/components/AppToast/AppToast";
 import { AvatarCropModal } from "@/app/components/AvatarCropModal/AvatarCropModal";
 import { dismissProfileCompletionPrompt, saveProfileCompletionDraft } from "@/lib/onboardingApi";
+import { patchCurrentUser } from "@/stores/currentUserStore";
 
 const DEFAULT_PROFILE_IMAGE_SRC = "/icons/profile/default-avatar.svg";
+const BIO_CHARACTER_LIMIT = 500;
 
 type FinishProfilePromptProps = {
   open: boolean;
@@ -19,6 +22,7 @@ export function FinishProfilePrompt({
   defaultBio = "",
   defaultAvatarUrl,
 }: FinishProfilePromptProps) {
+  const { showToast } = useToast();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const [bio, setBio] = useState(defaultBio);
@@ -31,6 +35,11 @@ export function FinishProfilePrompt({
   const [error, setError] = useState<string | null>(null);
 
   const effectiveAvatarSrc = photoPreviewUrl ?? avatarUrl ?? DEFAULT_PROFILE_IMAGE_SRC;
+  const normalizedInitialBio = defaultBio.trim();
+  const normalizedCurrentBio = bio.trim();
+  const hasBioChanges = normalizedCurrentBio !== normalizedInitialBio;
+  const hasPhotoChanges = Boolean(photoFile);
+  const hasEdits = hasBioChanges || hasPhotoChanges;
 
   useEffect(() => {
     if (!open) return;
@@ -74,7 +83,13 @@ export function FinishProfilePrompt({
     if (!file) return;
 
     if (!file.type.startsWith("image/")) {
-      setError("Please select an image file.");
+      const message = "Please select an image file.";
+      setError(message);
+      showToast({
+        kind: "error",
+        title: "Profile setup",
+        text: message,
+      });
       return;
     }
 
@@ -83,7 +98,7 @@ export function FinishProfilePrompt({
       if (previous) URL.revokeObjectURL(previous);
       return URL.createObjectURL(file);
     });
-  }, []);
+  }, [showToast]);
 
   const handleCancelCrop = useCallback(() => {
     setCropSourceUrl((previous) => {
@@ -116,15 +131,33 @@ export function FinishProfilePrompt({
     setBusy(true);
     setError(null);
     try {
-      await saveProfileCompletionDraft({
-        bio: bio.trim(),
-        profilePhotoFile: photoFile,
-      });
+      if (hasEdits) {
+        await saveProfileCompletionDraft({
+          bio: hasBioChanges ? normalizedCurrentBio : undefined,
+          profilePhotoFile: photoFile,
+        });
+      }
       await dismissProfileCompletionPrompt();
+      if (hasBioChanges) {
+        patchCurrentUser({ bio: normalizedCurrentBio });
+      }
+      if (hasPhotoChanges && photoPreviewUrl) {
+        patchCurrentUser({ profileImageUrl: photoPreviewUrl });
+      }
+      showToast({
+        kind: "success",
+        title: "Profile setup",
+        text: hasEdits ? "Profile updated." : "Profile setup completed.",
+      });
       await onComplete();
     } catch (nextError) {
       const message = nextError instanceof Error ? nextError.message : "Unable to save profile.";
       setError(message);
+      showToast({
+        kind: "error",
+        title: "Profile setup",
+        text: message,
+      });
     } finally {
       setBusy(false);
     }
@@ -135,10 +168,20 @@ export function FinishProfilePrompt({
     setError(null);
     try {
       await dismissProfileCompletionPrompt();
+      showToast({
+        kind: "info",
+        title: "Profile setup",
+        text: "Skipped for now.",
+      });
       await onComplete();
     } catch (nextError) {
       const message = nextError instanceof Error ? nextError.message : "Unable to dismiss prompt.";
       setError(message);
+      showToast({
+        kind: "error",
+        title: "Profile setup",
+        text: message,
+      });
     } finally {
       setBusy(false);
     }
@@ -189,17 +232,37 @@ export function FinishProfilePrompt({
               className="sr-only"
               onChange={handlePhotoPicked}
             />
+            {hasPhotoChanges ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setPhotoFile(null);
+                  setPhotoPreviewUrl((previous) => {
+                    if (previous) URL.revokeObjectURL(previous);
+                    return null;
+                  });
+                  setError(null);
+                }}
+                className="mt-2 text-sm font-semibold text-text-secondary underline underline-offset-2 transition hover:text-strong disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={busy}
+              >
+                Remove selected photo
+              </button>
+            ) : null}
           </div>
 
           <label className="mt-6 block">
             <span className="mb-2 block text-[1.08rem] font-semibold text-strong">Bio</span>
             <textarea
               value={bio}
-              onChange={(event) => setBio(event.currentTarget.value)}
+              onChange={(event) => setBio(event.currentTarget.value.slice(0, BIO_CHARACTER_LIMIT))}
               rows={4}
               className="w-full resize-y rounded-xl border border-border/70 bg-bg-muted px-3 py-3 text-[1.02rem] text-strong outline-none transition focus:border-brand/50"
               placeholder="Tell people about yourself"
             />
+            <span className="mt-1 block text-right text-xs text-text-light">
+              {bio.length}/{BIO_CHARACTER_LIMIT}
+            </span>
           </label>
 
           {error ? <p className="mt-3 text-sm text-brand">{error}</p> : null}
@@ -211,7 +274,7 @@ export function FinishProfilePrompt({
               onClick={handleSave}
               className="w-full rounded-xl bg-brand px-4 py-3 text-[1.1rem] font-semibold text-white transition hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {busy ? "Saving..." : "Save and continue"}
+              {busy ? "Saving..." : "Continue"}
             </button>
             <button
               type="button"

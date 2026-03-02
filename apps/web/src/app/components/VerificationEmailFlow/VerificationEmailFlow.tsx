@@ -103,21 +103,29 @@ export function VerificationEmailFlow({
   const [codeFocused, setCodeFocused] = useState(false);
 
   const domainSupportCopy = useMemo(() => buildDomainSupportCopy(domains), [domains]);
+  const hasMultipleDomains = domains.length > 1;
+  const singleDomain = domains.length === 1 ? domains[0] : null;
+  const fixedDomain = singleDomain ?? draft.selectedDomain.trim();
   const normalizedCode = draft.pendingCode.replace(/\D/g, "").slice(0, 6);
   const activeCodeIndex = Math.min(normalizedCode.length, 5);
+  const showDomainSupport =
+    state === "enter_email" ||
+    state === "sending_code" ||
+    state === "enter_email_error";
 
   return (
-    <section className="relative rounded-[14px] bg-bg-muted px-[18px] py-6">
-      {overlayTitle ? (
-        <div className="absolute inset-0 z-20 flex items-center justify-center rounded-[14px] bg-bg/85">
-          <div className="inline-flex items-center gap-2 rounded-full bg-bg px-4 py-2 text-sm font-semibold text-strong shadow-sm">
-            <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden="true" />
-            <span>{overlayTitle}</span>
+    <section className="space-y-4">
+      <div className="relative rounded-[14px] bg-bg-muted px-[18px] py-6">
+        {overlayTitle ? (
+          <div className="absolute inset-0 z-20 flex items-center justify-center rounded-[14px] bg-bg/85">
+            <div className="inline-flex items-center gap-2 rounded-full bg-bg px-4 py-2 text-sm font-semibold text-strong shadow-sm">
+              <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden="true" />
+              <span>{overlayTitle}</span>
+            </div>
           </div>
-        </div>
-      ) : null}
+        ) : null}
 
-      <div className={`space-y-4 ${overlayTitle ? "pointer-events-none" : ""}`}>
+        <div className={`space-y-4 ${overlayTitle ? "pointer-events-none" : ""}`}>
         {showBack && onBack ? (
           <button
             type="button"
@@ -173,19 +181,24 @@ export function VerificationEmailFlow({
                       spellCheck={false}
                       disabled={transitionLocked}
                     />
-                    <select
-                      value={draft.selectedDomain}
-                      onChange={(event) => onDomainChange(event.target.value)}
-                      disabled={transitionLocked}
-                      className="min-w-[86px] max-w-[150px] rounded-lg border-0 bg-text-secondary/12 px-2 py-1.5 text-sm text-strong outline-none"
-                    >
-                      {domains.length === 0 ? <option value="">No domains</option> : null}
-                      {domains.map((domain) => (
-                        <option key={domain} value={domain}>
-                          @{domain}
-                        </option>
-                      ))}
-                    </select>
+                    {hasMultipleDomains ? (
+                      <select
+                        value={draft.selectedDomain}
+                        onChange={(event) => onDomainChange(event.target.value)}
+                        disabled={transitionLocked}
+                        className="min-w-[86px] max-w-[150px] rounded-lg border-0 bg-text-secondary/12 px-2 py-1.5 text-sm text-strong outline-none"
+                      >
+                        {domains.map((domain) => (
+                          <option key={domain} value={domain}>
+                            @{domain}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <span className="min-w-[86px] max-w-[150px] rounded-lg bg-text-secondary/12 px-2 py-1.5 text-sm text-strong">
+                        @{fixedDomain || "domain"}
+                      </span>
+                    )}
                   </div>
                 </div>
 
@@ -216,28 +229,6 @@ export function VerificationEmailFlow({
                   ) : null}
                 </div>
 
-                <div className="space-y-1">
-                  <p className="text-sm font-semibold text-strong">Don't see your domain?</p>
-                  <p className="text-sm text-text-secondary">{domainSupportCopy}</p>
-                  <p className="text-sm text-text-secondary">
-                    <a
-                      href="https://mylooped.app/contact"
-                      target="_blank"
-                      rel="noreferrer"
-                      className="font-semibold underline underline-offset-2 hover:text-strong"
-                    >
-                      Contact us
-                    </a>{" "}
-                    and{" "}
-                    <a
-                      href="mailto:support@mylooped.app"
-                      className="font-semibold underline underline-offset-2 hover:text-strong"
-                    >
-                      email us here
-                    </a>
-                    .
-                  </p>
-                </div>
               </div>
             ) : null}
           </>
@@ -290,14 +281,14 @@ export function VerificationEmailFlow({
                     className="absolute inset-0 h-full w-full opacity-0"
                     disabled={transitionLocked}
                   />
-                  <div className="flex items-center gap-2">
+                  <div className="mx-auto flex w-full max-w-[420px] items-center justify-center gap-3">
                     {Array.from({ length: 6 }, (_, index) => {
                       const char = normalizedCode[index] ?? "";
                       const isActive = codeFocused && normalizedCode.length < 6 && index === activeCodeIndex;
                       return (
                         <div
                           key={`verify-code-box-${index}`}
-                          className={`h-9 w-7 rounded-md border text-center text-sm font-medium leading-9 text-strong ${
+                          className={`h-12 w-11 rounded-lg border text-center text-lg font-semibold leading-[3rem] text-strong ${
                             isActive ? "border-brand" : "border-border/70"
                           }`}
                         >
@@ -323,12 +314,12 @@ export function VerificationEmailFlow({
                     behavior="disabled"
                     className="w-full h-[52px]"
                   />
-                  <div className="flex items-center justify-between gap-3">
+                  <div className={`flex items-center gap-3 ${showSkip && onSkip ? "justify-between" : "justify-center"}`}>
                     <button
                       type="button"
                       onClick={onResendCode}
                       disabled={!canResendCode}
-                      className="text-sm font-semibold text-strong underline underline-offset-2 transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="text-sm font-semibold text-secondary underline underline-offset-2 transition hover:text-secondary/80 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       Resend email
                     </button>
@@ -344,37 +335,39 @@ export function VerificationEmailFlow({
                     ) : null}
                   </div>
                   {resendHelperText ? (
-                    <p className="text-sm text-text-secondary">{resendHelperText}</p>
+                    <p className="text-center text-sm text-text-secondary">{resendHelperText}</p>
                   ) : null}
-                </div>
-
-                <div className="space-y-1">
-                  <p className="text-sm font-semibold text-strong">Don't see your domain?</p>
-                  <p className="text-sm text-text-secondary">{domainSupportCopy}</p>
-                  <p className="text-sm text-text-secondary">
-                    <a
-                      href="https://mylooped.app/contact"
-                      target="_blank"
-                      rel="noreferrer"
-                      className="font-semibold underline underline-offset-2 hover:text-strong"
-                    >
-                      Contact us
-                    </a>{" "}
-                    and{" "}
-                    <a
-                      href="mailto:support@mylooped.app"
-                      className="font-semibold underline underline-offset-2 hover:text-strong"
-                    >
-                      email us here
-                    </a>
-                    .
-                  </p>
                 </div>
               </>
             ) : null}
           </div>
         ) : null}
+        </div>
       </div>
+      {showDomainSupport ? (
+        <div className="mx-auto w-full max-w-[640px] space-y-1 text-center">
+          <p className="text-sm font-semibold text-strong">Don&apos;t see your domain?</p>
+          <p className="text-sm text-text-secondary">{domainSupportCopy}</p>
+          <p className="text-sm text-text-secondary">
+            <a
+              href="https://mylooped.app/contact"
+              target="_blank"
+              rel="noreferrer"
+              className="text-secondary underline underline-offset-2 hover:text-secondary/80"
+            >
+              Contact us
+            </a>{" "}
+            and{" "}
+            <a
+              href="mailto:support@mylooped.app"
+              className="text-secondary underline underline-offset-2 hover:text-secondary/80"
+            >
+              email us here
+            </a>
+            .
+          </p>
+        </div>
+      ) : null}
     </section>
   );
 }

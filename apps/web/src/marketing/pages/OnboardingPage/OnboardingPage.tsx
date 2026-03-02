@@ -4,6 +4,7 @@ import { Link, useNavigate } from "react-router";
 import { Logo } from "@looped/ui";
 
 import { CameraIcon } from "@/app/components/AppIcons/AppIcons";
+import { useToast } from "@/app/components/AppToast/AppToast";
 import { AvatarCropModal } from "@/app/components/AvatarCropModal/AvatarCropModal";
 import { OnboardingContinueButton } from "@/app/components/OnboardingContinueButton/OnboardingContinueButton";
 import { VerificationEmailFlow } from "@/app/components/VerificationEmailFlow/VerificationEmailFlow";
@@ -22,9 +23,8 @@ import {
   completeAfterCommunityRequest,
   finishCommunityEmailVerification,
   fetchCommunityVerificationDomains,
-  fetchFieldsForOnboarding,
-  fetchMajorsForOnboarding,
   fetchRecommendedOnboardingCommunities,
+  fetchRecommendedOnboardingSpecializations,
   finalizeOnboarding,
   followOnboardingCommunity,
   joinSpecialization,
@@ -33,6 +33,7 @@ import {
   OnboardingApiError,
   saveProfileCompletionDraft,
   searchOnboardingCommunities,
+  searchOnboardingSpecializations,
   setOnboardingOrg,
   setOnboardingVerificationChoice,
   startCommunityEmailVerification,
@@ -54,11 +55,18 @@ import {
 
 const USERNAME_DEBOUNCE_MS = 280;
 const ORG_SEARCH_DEBOUNCE_MS = 250;
+const SPECIALIZATION_SEARCH_DEBOUNCE_MS = 250;
 const DEFAULT_PROFILE_IMAGE_SRC = "/icons/profile/default-avatar.svg";
 const LOCKED_TRANSITION_STEPS = new Set<OnboardingFlowStep>([
   "profile_setup",
   "specialization_selection",
   "verification_confirmation",
+]);
+const SKIP_PATH_BACK_OVERRIDE_STEPS = new Set<OnboardingFlowStep>([
+  "skip_explainer",
+  "verification_intro",
+  "org_selection",
+  "verification_info",
 ]);
 
 const STEP_LABELS: Record<OnboardingFlowStep, string> = {
@@ -66,7 +74,7 @@ const STEP_LABELS: Record<OnboardingFlowStep, string> = {
   verification_info: "Info",
   org_selection: "Organization",
   verification_intro: "Verification",
-  verification_choice: "Method",
+  verification_choice: "Verify with email",
   email_verification_enter_email: "Email",
   email_verification_enter_code: "Code",
   specialization_selection: "Specialization",
@@ -159,6 +167,12 @@ const EMAIL_PATH_STAGE_HINTS = new Set([
   "ready_to_finalize",
   "completed",
   "finalized",
+]);
+
+const SPECIALIZATION_STAGE_HINTS = new Set([
+  "specialization_selection",
+  "specialization_required",
+  "email_verified",
 ]);
 
 function buildProgressSteps({
@@ -298,6 +312,51 @@ function BackArrowIcon({ className }: { className?: string }) {
   );
 }
 
+function SearchIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+    >
+      <circle cx="11" cy="11" r="7" />
+      <path d="m20 20-3.5-3.5" />
+    </svg>
+  );
+}
+
+function InfoIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
+      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M12 10v6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      <circle cx="12" cy="7.5" r="1" fill="currentColor" />
+    </svg>
+  );
+}
+
+function CheckIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+    >
+      <path d="M20 6 9 17l-5-5" />
+    </svg>
+  );
+}
+
 function OnboardingBackButton({
   onClick,
   disabled = false,
@@ -323,23 +382,25 @@ function nextBackStep(step: OnboardingFlowStep): OnboardingFlowStep | null {
   if (step === "org_selection") return "verification_info";
   if (step === "verification_intro") return "org_selection";
   if (step === "verification_choice") return "verification_intro";
-  if (step === "email_verification_enter_email" || step === "email_verification_enter_code") return "verification_choice";
+  if (step === "email_verification_enter_code") return "email_verification_enter_email";
+  if (step === "email_verification_enter_email") return "verification_choice";
   if (step === "skip_explainer") return "verification_intro";
   return null;
 }
 
 export function OnboardingPage() {
   const navigate = useNavigate();
+  const { showToast } = useToast();
   const { status, accessState, user, bootstrap, signOut, refreshSession } = useUserSession();
   const uid = user?.uid ?? null;
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const usernameRequestRef = useRef(0);
   const orgSearchRequestRef = useRef(0);
+  const specializationSearchRequestRef = useRef(0);
 
   const [persisted, setPersisted] = useState<PersistedOnboardingState>(defaultPersistedOnboardingState());
   const [transitionLock, setTransitionLock] = useState(false);
-  const [stepError, setStepError] = useState<string | null>(null);
-  const [stepNotice, setStepNotice] = useState<string | null>(null);
+  const [, setStepError] = useState<string | null>(null);
   const [usernameStatus, setUsernameStatus] = useState<"idle" | "checking" | "available" | "taken" | "invalid" | "error">("idle");
   const [usernameMessage, setUsernameMessage] = useState<string | null>(null);
   const [manualStepOverride, setManualStepOverride] = useState<OnboardingFlowStep | null>(null);
@@ -352,13 +413,47 @@ export function OnboardingPage() {
   const [orgSearchError, setOrgSearchError] = useState<string | null>(null);
   const [isOrgSearchFocused, setIsOrgSearchFocused] = useState(false);
   const [orgSearchRefreshNonce, setOrgSearchRefreshNonce] = useState(0);
+  const [showOrgChoiceInfo, setShowOrgChoiceInfo] = useState(false);
+  const [showVerificationHowItWorks, setShowVerificationHowItWorks] = useState(false);
   const [specializationOptions, setSpecializationOptions] = useState<SpecializationOption[]>([]);
   const [specializationLoading, setSpecializationLoading] = useState(false);
+  const [specializationQuery, setSpecializationQuery] = useState("");
+  const [specializationSearchError, setSpecializationSearchError] = useState<string | null>(null);
+  const [specializationSearchRefreshNonce, setSpecializationSearchRefreshNonce] = useState(0);
+  const [specializationSelectionError, setSpecializationSelectionError] = useState<string | null>(null);
+  const [showSpecializationInfo, setShowSpecializationInfo] = useState(false);
   const [finishBio, setFinishBio] = useState("");
   const [finishPhotoFile, setFinishPhotoFile] = useState<File | null>(null);
   const [finishPhotoPreviewUrl, setFinishPhotoPreviewUrl] = useState<string | null>(null);
   const [finishCropSourceUrl, setFinishCropSourceUrl] = useState<string | null>(null);
   const [isApplyingFinishCrop, setIsApplyingFinishCrop] = useState(false);
+
+  const showOnboardingError = useCallback((message: string) => {
+    showToast({
+      kind: "error",
+      title: "Onboarding",
+      text: message,
+      durationMs: 2800,
+    });
+  }, [showToast]);
+
+  const showOnboardingInfo = useCallback((message: string) => {
+    showToast({
+      kind: "info",
+      title: "Onboarding",
+      text: message,
+      durationMs: 2200,
+    });
+  }, [showToast]);
+
+  const showOnboardingSuccess = useCallback((message: string) => {
+    showToast({
+      kind: "success",
+      title: "Onboarding",
+      text: message,
+      durationMs: 2200,
+    });
+  }, [showToast]);
 
   const profileCompletionPrompt = Boolean(bootstrap?.profileCompletion?.shouldPrompt);
   const hasPendingVerificationCode = Boolean(persisted.verificationDraft.submittedEmail);
@@ -377,17 +472,31 @@ export function OnboardingPage() {
       ? persisted.orgDraft?.orgKind ?? bootstrap?.onboardingContext.selectedOrgKind ?? "company"
       : bootstrap?.onboardingContext.selectedOrgKind ?? persisted.orgDraft?.orgKind ?? "company"
   );
+  const selectedOrgFromPicker =
+    [...recommendedCommunities, ...searchedCommunities].find((entry) => entry.id === selectedOrgId) ?? null;
+  const selectedOrgNameFromContext = bootstrap?.onboardingContext.selectedOrgName?.trim() || null;
+  const selectedOrgNameFromPicker = selectedOrgFromPicker?.name?.trim() || null;
+  const selectedOrgNameFromDraft = persisted.orgDraft?.orgName?.trim() || null;
+  const resolvedSelectedOrgName =
+    selectedOrgNameFromContext ??
+    selectedOrgNameFromPicker ??
+    selectedOrgNameFromDraft ??
+    null;
   const selectedCommunity =
-    [...recommendedCommunities, ...searchedCommunities].find((entry) => entry.id === selectedOrgId) ??
-    (selectedOrgId
+    selectedOrgFromPicker ??
+    (selectedOrgId && resolvedSelectedOrgName
       ? {
           id: selectedOrgId,
           kind: selectedOrgKind,
-          name: persisted.orgDraft?.orgName || "Selected organization",
+          name: resolvedSelectedOrgName,
         }
       : null);
   const activeOrgQuery = searchQuery.trim();
   const visibleCommunities = activeOrgQuery.length > 0 ? searchedCommunities : recommendedCommunities;
+  const selectedOrgLabel = resolvedSelectedOrgName ?? "your community";
+  const specializationType = selectedOrgKind === "school" ? "major" : "field";
+  const specializationTitle = selectedOrgKind === "school" ? "Major" : "Field";
+  const activeSpecializationQuery = specializationQuery.trim();
 
   const verificationPath = normalizeVerificationPath(bootstrap?.onboardingContext.verificationPath);
   const normalizedServerStage = normalizeOnboardingStage(bootstrap?.onboardingStageV2);
@@ -528,8 +637,12 @@ export function OnboardingPage() {
     savePersisted({
       orgDraft: {
         orgId: selectedOrgId,
-        orgName: persisted.orgDraft?.orgName || selectedCommunity?.name || "Selected organization",
+        orgName: persisted.orgDraft?.orgName || selectedCommunity?.name || resolvedSelectedOrgName || "",
         orgKind: selectedOrgKind,
+      },
+      specializationDraft: {
+        primaryId: "",
+        selectedIds: [],
       },
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -692,19 +805,97 @@ export function OnboardingPage() {
 
   useEffect(() => {
     if (currentStep !== "specialization_selection") return;
-    setSpecializationLoading(true);
-    const loader =
-      selectedOrgKind === "school" ? fetchMajorsForOnboarding : fetchFieldsForOnboarding;
+    if (!selectedOrgId) {
+      setManualStepOverride("org_selection");
+      savePersisted({ latestStep: "org_selection" });
+      return;
+    }
 
-    void loader()
-      .then((items) => {
-        setSpecializationOptions(items);
-      })
-      .catch((error) => {
-        setStepError(mapOnboardingError(error));
-      })
-      .finally(() => setSpecializationLoading(false));
-  }, [currentStep, selectedOrgKind]);
+    const querySnapshot = activeSpecializationQuery;
+    const requestId = ++specializationSearchRequestRef.current;
+    const controller = new AbortController();
+    let timer: number | null = null;
+
+    const run = () => {
+      setSpecializationLoading(true);
+      setSpecializationSearchError(null);
+
+      const request =
+        querySnapshot.length > 0
+          ? searchOnboardingSpecializations({
+              query: querySnapshot,
+              kind: specializationType,
+              limit: 50,
+              signal: controller.signal,
+            })
+          : fetchRecommendedOnboardingSpecializations({
+              type: "all",
+              limit: 50,
+              signal: controller.signal,
+            }).then(async (items) => {
+              const filtered = items.filter((entry) => entry.type === specializationType);
+              if (filtered.length > 0) return filtered;
+              return fetchRecommendedOnboardingSpecializations({
+                type: specializationType,
+                limit: 50,
+                signal: controller.signal,
+              });
+            });
+
+      void request
+        .then((items) => {
+          if (controller.signal.aborted || requestId !== specializationSearchRequestRef.current) return;
+          setSpecializationOptions(items);
+        })
+        .catch((error) => {
+          if (controller.signal.aborted || requestId !== specializationSearchRequestRef.current) return;
+          setSpecializationSearchError(mapOnboardingError(error));
+          setSpecializationOptions([]);
+        })
+        .finally(() => {
+          if (controller.signal.aborted || requestId !== specializationSearchRequestRef.current) return;
+          setSpecializationLoading(false);
+        });
+    };
+
+    if (querySnapshot.length > 0) {
+      timer = window.setTimeout(run, SPECIALIZATION_SEARCH_DEBOUNCE_MS);
+    } else {
+      run();
+    }
+
+    return () => {
+      if (timer !== null) window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [
+    activeSpecializationQuery,
+    currentStep,
+    savePersisted,
+    selectedOrgId,
+    specializationSearchRefreshNonce,
+    specializationType,
+  ]);
+
+  useEffect(() => {
+    if (currentStep !== "verification_intro") return;
+    if (!selectedOrgId || !resolvedSelectedOrgName) {
+      setManualStepOverride("org_selection");
+      savePersisted({ latestStep: "org_selection" });
+    }
+  }, [currentStep, resolvedSelectedOrgName, savePersisted, selectedOrgId]);
+
+  useEffect(() => {
+    if (currentStep === "verification_intro") return;
+    if (!showVerificationHowItWorks) return;
+    setShowVerificationHowItWorks(false);
+  }, [currentStep, showVerificationHowItWorks]);
+
+  useEffect(() => {
+    if (currentStep === "specialization_selection") return;
+    if (!showSpecializationInfo) return;
+    setShowSpecializationInfo(false);
+  }, [currentStep, showSpecializationInfo]);
 
   useEffect(() => {
     if (!manualStepOverride) return;
@@ -714,8 +905,7 @@ export function OnboardingPage() {
     }
     if (
       resolvedStep === "skip_explainer" &&
-      manualStepOverride !== "skip_explainer" &&
-      manualStepOverride !== "verification_intro"
+      !SKIP_PATH_BACK_OVERRIDE_STEPS.has(manualStepOverride)
     ) {
       setManualStepOverride(null);
       return;
@@ -756,11 +946,11 @@ export function OnboardingPage() {
         savePersisted({ latestStep: "email_verification_enter_email" });
       })
       .catch((error) => {
-        setStepError(mapOnboardingError(error));
+        showOnboardingError(mapOnboardingError(error));
       })
       .finally(() => setTransitionLock(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentStep, photoFallbackAttempted, refreshSession]);
+  }, [currentStep, photoFallbackAttempted, refreshSession, showOnboardingError]);
 
   useEffect(() => {
     if (currentStep !== "completed" || !profileCompletionPrompt) return;
@@ -793,7 +983,7 @@ export function OnboardingPage() {
     if (!file) return;
 
     if (!file.type.startsWith("image/")) {
-      setStepError("Please select an image file.");
+      showOnboardingError("Please select an image file.");
       return;
     }
 
@@ -802,7 +992,7 @@ export function OnboardingPage() {
       if (previous) URL.revokeObjectURL(previous);
       return URL.createObjectURL(file);
     });
-  }, []);
+  }, [showOnboardingError]);
 
   const handleCancelFinishCrop = useCallback(() => {
     setFinishCropSourceUrl((previous) => {
@@ -833,7 +1023,6 @@ export function OnboardingPage() {
     setTransitionLock(busy);
     if (busy) {
       setStepError(null);
-      setStepNotice(null);
     }
   };
 
@@ -843,23 +1032,42 @@ export function OnboardingPage() {
     if (!step) return;
     setManualStepOverride(step);
     savePersisted({ latestStep: step });
+
+    if (currentStep === "skip_explainer" && step === "verification_intro") {
+      void (async () => {
+        try {
+          await setOnboardingVerificationChoice("email");
+          await refreshSession();
+        } catch {
+          // best effort: keep UX moving; later mutations still resync on invalid stage
+        }
+      })();
+    }
   };
+
+  const routeToAppAfterOnboarding = useCallback(() => {
+    if (uid) {
+      clearPersistedOnboardingState(uid);
+    }
+    setManualStepOverride(null);
+    navigate("/app", { replace: true });
+  }, [navigate, uid]);
 
   const recoverFromInvalidOnboardingStep = useCallback(async (notice: string) => {
     try {
       await refreshSession();
       setManualStepOverride(null);
       setStepError(null);
-      setStepNotice(notice);
+      showOnboardingInfo(notice);
     } catch (error) {
-      setStepError(mapOnboardingError(error));
+      showOnboardingError(mapOnboardingError(error));
     }
-  }, [refreshSession]);
+  }, [refreshSession, showOnboardingError, showOnboardingInfo]);
 
   const handleProfileSubmit = async () => {
     const validationError = validateProfileDraft(persisted.profileDraft);
     if (validationError) {
-      setStepError(validationError);
+      showOnboardingError(validationError);
       return;
     }
     if (resolvedStep !== "profile_setup") {
@@ -868,14 +1076,14 @@ export function OnboardingPage() {
         await refreshSession();
         setManualStepOverride(null);
       } catch (error) {
-        setStepError(mapOnboardingError(error));
+        showOnboardingError(mapOnboardingError(error));
       } finally {
         setBusy(false);
       }
       return;
     }
     if (usernameStatus === "checking") {
-      setStepError("Please wait for username availability to finish checking.");
+      showOnboardingError("Please wait for username availability to finish checking.");
       return;
     }
 
@@ -888,7 +1096,7 @@ export function OnboardingPage() {
         savePersisted({ latestStep: "verification_info" });
         setManualStepOverride(null);
       } catch (error) {
-        setStepError(mapOnboardingError(error));
+        showOnboardingError(mapOnboardingError(error));
       } finally {
         setBusy(false);
       }
@@ -899,7 +1107,7 @@ export function OnboardingPage() {
     try {
       const availability = await checkUsernameAvailability(typedUsername);
       if (!availability.available && !availability.ownedByMe) {
-        setStepError("That username is already taken.");
+        showOnboardingError("That username is already taken.");
         return;
       }
       await submitOnboardingProfile({
@@ -923,7 +1131,7 @@ export function OnboardingPage() {
         savePersisted({ latestStep: "verification_info" });
         setManualStepOverride(null);
       } else {
-        setStepError(mapOnboardingError(error));
+        showOnboardingError(mapOnboardingError(error));
       }
     } finally {
       setBusy(false);
@@ -943,7 +1151,7 @@ export function OnboardingPage() {
           "Your onboarding state changed. We refreshed your current step."
         );
       } else {
-        setStepError(mapOnboardingError(error));
+        showOnboardingError(mapOnboardingError(error));
       }
     } finally {
       setBusy(false);
@@ -952,22 +1160,40 @@ export function OnboardingPage() {
 
   const handleOrgContinue = async () => {
     if (!selectedCommunity) {
-      setStepError("Select an organization to continue.");
+      showOnboardingError("Select an organization to continue.");
       return;
     }
     setBusy(true);
     try {
-      await setOnboardingOrg(selectedCommunity.id);
+      const orgSnapshot = await setOnboardingOrg(selectedCommunity.id);
       try {
         await followOnboardingCommunity(selectedCommunity.id);
       } catch {
         // best effort
       }
+      if (serverAlreadyOnSkipPath) {
+        try {
+          await setOnboardingVerificationChoice("email");
+        } catch {
+          // best effort: step will be reasserted again in verification flow
+        }
+      }
       await refreshSession();
+      const context = orgSnapshot.onboarding_context;
+      const selectedOrgNameFromResponse =
+        context && typeof context === "object"
+          ? (() => {
+              const raw = (context as Record<string, unknown>).selected_org_name ??
+                (context as Record<string, unknown>).selectedOrgName;
+              if (typeof raw !== "string") return null;
+              const trimmed = raw.trim();
+              return trimmed.length > 0 ? trimmed : null;
+            })()
+          : null;
       savePersisted({
         orgDraft: {
           orgId: selectedCommunity.id,
-          orgName: selectedCommunity.shortName ?? selectedCommunity.name,
+          orgName: selectedOrgNameFromResponse ?? selectedCommunity.name ?? selectedCommunity.shortName ?? "",
           orgKind: selectedCommunity.kind,
         },
         latestStep: "verification_intro",
@@ -985,7 +1211,7 @@ export function OnboardingPage() {
         } catch {
           // best effort resync after org selection failure
         }
-        setStepError(mapOnboardingError(error));
+        showOnboardingError(mapOnboardingError(error));
       }
     } finally {
       setBusy(false);
@@ -1029,11 +1255,16 @@ export function OnboardingPage() {
           "Your onboarding state changed. We refreshed your current step."
         );
       } else {
-        setStepError(mapOnboardingError(error));
+        showOnboardingError(mapOnboardingError(error));
       }
     } finally {
       setBusy(false);
     }
+  };
+
+  const handleVerificationIntroContinue = () => {
+    savePersisted({ latestStep: "verification_choice" });
+    setManualStepOverride("verification_choice");
   };
 
   const ensureOnboardingEmailVerificationPath = useCallback(async () => {
@@ -1080,8 +1311,7 @@ export function OnboardingPage() {
     });
 
     if (latestBootstrap?.onboardingComplete) {
-      savePersisted({ latestStep: "completed" });
-      setManualStepOverride(null);
+      routeToAppAfterOnboarding();
       return;
     }
 
@@ -1097,7 +1327,7 @@ export function OnboardingPage() {
     }
 
     setManualStepOverride(null);
-  }, [refreshSession, savePersisted]);
+  }, [refreshSession, routeToAppAfterOnboarding, savePersisted]);
 
   const onboardingVerificationApi = useMemo(
     () => ({
@@ -1114,7 +1344,11 @@ export function OnboardingPage() {
   const onboardingVerificationAdapter = useMemo(
     () => ({
       beforeLoadDomains: async () => {
-        await ensureOnboardingEmailVerificationPath();
+        try {
+          await ensureOnboardingEmailVerificationPath();
+        } catch {
+          // best effort on domain-load path
+        }
       },
       beforeSendCode: async () => {
         await ensureOnboardingEmailVerificationPath();
@@ -1135,16 +1369,46 @@ export function OnboardingPage() {
   );
 
   const handleSpecializationContinue = async () => {
-    const selectedIds = persisted.specializationDraft.selectedIds.filter((entry) => entry.length > 0).slice(0, 2);
+    const selectedIds = Array.from(
+      new Set(persisted.specializationDraft.selectedIds.filter((entry) => entry.length > 0))
+    ).slice(0, 2);
     if (!selectedIds.length) {
-      setStepError("Select at least one specialization.");
+      showOnboardingError("Select at least one specialization.");
       return;
     }
 
     setBusy(true);
     try {
       const primaryId = selectedIds[0];
-      await submitOnboardingSpecialization(primaryId);
+      let primarySubmitted = false;
+      try {
+        await submitOnboardingSpecialization(primaryId);
+        primarySubmitted = true;
+      } catch (error) {
+        if (isInvalidOnboardingStateError(error)) {
+          await recoverFromInvalidOnboardingStep(
+            "Your onboarding state changed. We refreshed your current step."
+          );
+          return;
+        }
+
+        const latestBootstrap = await fetchSessionBootstrap();
+        const normalizedStage = normalizeOnboardingStage(latestBootstrap.onboardingStageV2);
+        const allowedNext = latestBootstrap.allowedNextStagesV2.map((entry) => entry.toLowerCase());
+        const stillAllowsSpecialization =
+          (normalizedStage ? SPECIALIZATION_STAGE_HINTS.has(normalizedStage) : false) ||
+          allowedNext.includes("specialization_selection") ||
+          allowedNext.includes("specialization_required");
+        if (!stillAllowsSpecialization) {
+          throw error;
+        }
+
+        await submitOnboardingSpecialization(primaryId);
+        primarySubmitted = true;
+      }
+
+      if (!primarySubmitted) return;
+
       if (selectedIds.length > 1) {
         await Promise.allSettled(selectedIds.slice(1).map((id) => joinSpecialization(id)));
       }
@@ -1155,14 +1419,15 @@ export function OnboardingPage() {
         },
       });
       await refreshSession();
-      setManualStepOverride(null);
+      savePersisted({ latestStep: "verification_confirmation" });
+      setManualStepOverride("verification_confirmation");
     } catch (error) {
       if (isInvalidOnboardingStateError(error)) {
         await recoverFromInvalidOnboardingStep(
           "Your onboarding state changed. We refreshed your current step."
         );
       } else {
-        setStepError(mapOnboardingError(error));
+        showOnboardingError(mapOnboardingError(error));
       }
     } finally {
       setBusy(false);
@@ -1175,15 +1440,14 @@ export function OnboardingPage() {
       await acknowledgeSkipExplainer();
       await finalizeOnboarding();
       await refreshSession();
-      savePersisted({ latestStep: "completed" });
-      setManualStepOverride(null);
+      routeToAppAfterOnboarding();
     } catch (error) {
       if (isInvalidOnboardingStateError(error)) {
         await recoverFromInvalidOnboardingStep(
           "Your onboarding state changed. We refreshed your current step."
         );
       } else {
-        setStepError(mapOnboardingError(error));
+        showOnboardingError(mapOnboardingError(error));
       }
     } finally {
       setBusy(false);
@@ -1195,15 +1459,14 @@ export function OnboardingPage() {
     try {
       await finalizeOnboarding();
       await refreshSession();
-      savePersisted({ latestStep: "completed" });
-      setManualStepOverride(null);
+      routeToAppAfterOnboarding();
     } catch (error) {
       if (isInvalidOnboardingStateError(error)) {
         await recoverFromInvalidOnboardingStep(
           "Your onboarding state changed. We refreshed your current step."
         );
       } else {
-        setStepError(mapOnboardingError(error));
+        showOnboardingError(mapOnboardingError(error));
       }
     } finally {
       setBusy(false);
@@ -1215,15 +1478,14 @@ export function OnboardingPage() {
     try {
       await completeAfterCommunityRequest();
       await refreshSession();
-      savePersisted({ latestStep: "completed" });
-      setManualStepOverride(null);
+      routeToAppAfterOnboarding();
     } catch (error) {
       if (isInvalidOnboardingStateError(error)) {
         await recoverFromInvalidOnboardingStep(
           "Your onboarding state changed. We refreshed your current step."
         );
       } else {
-        setStepError(mapOnboardingError(error));
+        showOnboardingError(mapOnboardingError(error));
       }
     } finally {
       setBusy(false);
@@ -1233,11 +1495,15 @@ export function OnboardingPage() {
   const toggleSpecialization = (id: string) => {
     const current = persisted.specializationDraft.selectedIds;
     const exists = current.includes(id);
+    if (!exists && current.length >= 2) {
+      setSpecializationSelectionError("You can select up to 2.");
+      return;
+    }
+
+    setSpecializationSelectionError(null);
     const next = exists
       ? current.filter((entry) => entry !== id)
-      : current.length >= 2
-        ? [...current.slice(1), id]
-        : [...current, id];
+      : [...current, id];
     savePersisted({
       specializationDraft: {
         ...persisted.specializationDraft,
@@ -1255,10 +1521,10 @@ export function OnboardingPage() {
       });
       await dismissProfileCompletionPrompt();
       await refreshSession();
-      setStepNotice("Profile updated.");
+      showOnboardingSuccess("Profile updated.");
       setBusy(false);
     } catch (error) {
-      setStepError(mapOnboardingError(error));
+      showOnboardingError(mapOnboardingError(error));
       setBusy(false);
     }
   };
@@ -1268,9 +1534,9 @@ export function OnboardingPage() {
     try {
       await dismissProfileCompletionPrompt();
       await refreshSession();
-      setStepNotice("You can finish your profile anytime from settings.");
+      showOnboardingInfo("You can finish your profile anytime from settings.");
     } catch (error) {
-      setStepError(mapOnboardingError(error));
+      showOnboardingError(mapOnboardingError(error));
     } finally {
       setBusy(false);
     }
@@ -1300,7 +1566,7 @@ export function OnboardingPage() {
       currentStep === "email_verification_enter_code" ? "enter_code" : "enter_email",
     defaultCooldownSeconds: 60,
     onDone: () => {
-      setStepNotice("Email verification complete.");
+      showOnboardingSuccess("Email verification complete.");
     },
   });
 
@@ -1352,8 +1618,29 @@ export function OnboardingPage() {
   }
 
   const illustration = getStepIllustration(currentStep);
-  const canBack = canGoBackFromStep(currentStep) && !transitionLock && !emailVerificationMachine.transitionLocked;
-  const showStepIllustration = currentStep !== "org_selection" && currentStep !== "verification_info";
+  const isEmailVerificationStep =
+    currentStep === "email_verification_enter_email" || currentStep === "email_verification_enter_code";
+  const isSpecializationStep = currentStep === "specialization_selection";
+  const canBack =
+    canGoBackFromStep(currentStep) &&
+    !transitionLock &&
+    (!isEmailVerificationStep || !emailVerificationMachine.transitionLocked);
+  const showCornerSkip =
+    (currentStep === "verification_intro" ||
+      currentStep === "verification_choice" ||
+      currentStep === "email_verification_enter_email" ||
+      currentStep === "email_verification_enter_code") &&
+    !transitionLock &&
+    (!isEmailVerificationStep || !emailVerificationMachine.transitionLocked);
+  const showStepIllustration =
+    currentStep !== "org_selection" &&
+    currentStep !== "verification_intro" &&
+    currentStep !== "verification_choice" &&
+    !isSpecializationStep &&
+    !isEmailVerificationStep;
+  const showInlineMobileIllustration = showStepIllustration && currentStep !== "verification_info";
+  const centerStepHeader = currentStep === "org_selection" || isEmailVerificationStep || isSpecializationStep;
+  const contentColumnClassName = "space-y-4";
   const profileContinueEnabled =
     validateProfileDraft(persisted.profileDraft) === null &&
     usernameStatus !== "checking" &&
@@ -1373,11 +1660,30 @@ export function OnboardingPage() {
     activeOrgQuery.length > 0 &&
     visibleCommunities.length === 0;
   const showRequestCommunityCta = showOrgNoMatchesState;
+  const showSpecializationLoadingState = specializationLoading && specializationOptions.length === 0;
+  const showSpecializationStartTypingState =
+    !specializationLoading &&
+    !specializationSearchError &&
+    activeSpecializationQuery.length === 0 &&
+    specializationOptions.length === 0;
+  const showSpecializationNoMatchesState =
+    !specializationLoading &&
+    !specializationSearchError &&
+    activeSpecializationQuery.length > 0 &&
+    specializationOptions.length === 0;
   const specializationContinueEnabled =
     persisted.specializationDraft.selectedIds.filter((entry) => entry.length > 0).length > 0;
   const stepTitle =
     currentStep === "org_selection"
       ? "Search for your school or place of work"
+      : currentStep === "profile_setup"
+        ? "Create your profile"
+      : currentStep === "specialization_selection"
+        ? specializationTitle
+      : currentStep === "skip_explainer"
+        ? "You skipped verification"
+      : currentStep === "verification_confirmation"
+        ? "You're verified!"
       : currentStep === "email_verification_enter_email" || currentStep === "email_verification_enter_code"
         ? "Verify Your Email"
       : (STEP_LABELS[currentStep] ?? STEP_LABELS.profile_setup);
@@ -1405,28 +1711,105 @@ export function OnboardingPage() {
               />
             </div>
             <p className="text-xs text-text-secondary">
-              Step {Math.min(progressCount, progressTotal)} of {progressTotal}
+              Step {Math.min(progressCount, progressTotal)}
             </p>
           </div>
 
           <div className={`grid gap-6 ${showStepIllustration ? "lg:grid-cols-[1.2fr_1fr]" : ""}`}>
-            <div className="space-y-4">
-              {currentStep !== "verification_info" ? (
-                <div>
-                  <h1 className="mt-1 text-2xl font-semibold text-strong md:text-3xl">{stepTitle}</h1>
-                  {currentStep === "org_selection" ? (
-                    <p className="mt-2 text-sm leading-6 text-text-secondary">
-                      If you're in multiple schools or workplaces, choose one for now. You can verify others later.
-                    </p>
+            <div className={contentColumnClassName}>
+              {canBack || showCornerSkip ? (
+                <div className="flex items-center justify-between">
+                  {canBack ? (
+                    <OnboardingBackButton
+                      onClick={() => {
+                        if (currentStep === "email_verification_enter_code") {
+                          emailVerificationMachine.resetToEmailEntry();
+                        }
+                        handleBack();
+                      }}
+                      disabled={transitionLock}
+                    />
+                  ) : (
+                    <div className="h-10 w-10" />
+                  )}
+                  {showCornerSkip ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void handleSelectVerificationPath("skip");
+                      }}
+                      disabled={transitionLock || (isEmailVerificationStep && emailVerificationMachine.transitionLocked)}
+                      className="inline-flex h-10 items-center rounded-full bg-bg-muted px-4 text-sm font-medium text-text-secondary transition hover:text-strong disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      Skip
+                    </button>
                   ) : null}
                 </div>
               ) : null}
 
-              {stepError ? (
-                <div className="rounded-xl border border-brand/20 bg-brand/10 px-4 py-3 text-sm text-brand">{stepError}</div>
+              {currentStep !== "verification_info" && currentStep !== "verification_intro" ? (
+                <div
+                  className={
+                    currentStep === "org_selection"
+                      ? "mx-auto w-full max-w-2xl"
+                      : currentStep === "specialization_selection"
+                        ? "mx-auto w-full max-w-[640px]"
+                      : isEmailVerificationStep
+                        ? "mx-auto w-full max-w-[640px]"
+                        : ""
+                  }
+                >
+                  <h1
+                    className={`mt-1 text-2xl font-semibold text-strong md:text-3xl ${centerStepHeader ? "text-center" : ""}`}
+                  >
+                    {stepTitle}
+                  </h1>
+                  {currentStep === "org_selection" ? (
+                    <p className="mt-2 text-center text-sm leading-6 text-text-secondary">
+                      If you're in multiple schools or workplaces, choose one for now. You can verify others later.
+                    </p>
+                  ) : null}
+                  {currentStep === "specialization_selection" ? (
+                    <p className="mt-2 text-center text-sm leading-6 text-text-secondary">
+                      Select up to 2 {selectedOrgKind === "school" ? "majors" : "fields"} to join now.
+                    </p>
+                  ) : null}
+                  {currentStep === "org_selection" ? (
+                    <div className="mt-1 flex justify-center">
+                      <button
+                        type="button"
+                        onClick={() => setShowOrgChoiceInfo(true)}
+                        className="inline-flex items-center gap-1 text-sm text-text-secondary transition hover:text-strong"
+                      >
+                        <InfoIcon className="h-4 w-4" />
+                        <span>More info</span>
+                      </button>
+                    </div>
+                  ) : null}
+                  {currentStep === "specialization_selection" ? (
+                    <div className="mt-1 flex justify-center">
+                      <button
+                        type="button"
+                        onClick={() => setShowSpecializationInfo(true)}
+                        className="inline-flex items-center gap-1 text-sm text-text-secondary transition hover:text-strong"
+                      >
+                        <InfoIcon className="h-4 w-4" />
+                        <span>More info</span>
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
               ) : null}
-              {stepNotice ? (
-                <div className="rounded-xl border border-border bg-bg-muted px-4 py-3 text-sm text-text-secondary">{stepNotice}</div>
+
+              {showInlineMobileIllustration ? (
+                <div className="flex justify-center lg:hidden">
+                  <img
+                    src={illustration}
+                    alt=""
+                    className="w-full max-w-[260px] object-contain sm:max-w-[300px]"
+                    loading="lazy"
+                  />
+                </div>
               ) : null}
 
               {currentStep === "unsupported_web_stage" ? (
@@ -1448,6 +1831,8 @@ export function OnboardingPage() {
                     <Link
                       to="/contact"
                       className="rounded-full border border-border px-5 py-2.5 text-sm font-semibold text-text-secondary transition hover:text-strong"
+                      target="_blank"
+                      rel="noopener noreferrer"
                     >
                       Contact support
                     </Link>
@@ -1457,7 +1842,7 @@ export function OnboardingPage() {
 
               {currentStep === "profile_setup" ? (
                 <div className="space-y-3">
-                  <p className="text-sm text-text-secondary">Enter your legal profile details.</p>
+                  <p className="text-sm text-text-secondary">Choose a username and tell us a little about you.</p>
 
                   <div className="space-y-1">
                     <label htmlFor="onboarding-username" className="text-sm font-semibold text-text-secondary">Username</label>
@@ -1560,6 +1945,28 @@ export function OnboardingPage() {
                     behavior="disabled"
                     className="w-full"
                   />
+
+                  <p className="pt-2 text-center text-sm text-text-secondary">
+                    By signing up, you agree to our{" "}
+                    <Link
+                      to="/privacy-policy"
+                      className="text-secondary font-normal underline underline-offset-2"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      Privacy Policy
+                    </Link>{" "}
+                    and{" "}
+                    <Link
+                      to="/terms"
+                      className="text-secondary font-normal underline underline-offset-2"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      User Agreement
+                    </Link>
+                    .
+                  </p>
                 </div>
               ) : null}
 
@@ -1570,21 +1977,23 @@ export function OnboardingPage() {
                   onContinue={() => {
                     void handleVerificationInfoContinue();
                   }}
-                  onBack={canBack ? handleBack : undefined}
                 />
               ) : null}
 
               {currentStep === "org_selection" ? (
-                <div className="space-y-4">
-                  <input
-                    type="search"
-                    value={searchQuery}
-                    onChange={(event) => setSearchQuery(event.target.value)}
-                    onFocus={() => setIsOrgSearchFocused(true)}
-                    onBlur={() => setIsOrgSearchFocused(false)}
-                    placeholder="Search for company/school..."
-                    className="w-full rounded-xl border border-border bg-bg px-3 py-2.5 text-sm text-strong outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
-                  />
+                <div className="mx-auto w-full max-w-2xl space-y-4">
+                  <div className="relative">
+                    <SearchIcon className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-text-light" />
+                    <input
+                      type="search"
+                      value={searchQuery}
+                      onChange={(event) => setSearchQuery(event.target.value)}
+                      onFocus={() => setIsOrgSearchFocused(true)}
+                      onBlur={() => setIsOrgSearchFocused(false)}
+                      placeholder="Search"
+                      className="w-full rounded-full border border-border bg-bg-muted pl-12 pr-4 py-2.5 text-sm text-strong outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+                    />
+                  </div>
 
                   {showOrgLoadingState ? <p className="text-sm text-text-light">Loading organizations...</p> : null}
                   {showOrgStartTypingState ? <p className="text-sm text-text-light">Start typing to search.</p> : null}
@@ -1602,7 +2011,7 @@ export function OnboardingPage() {
                     </div>
                   ) : null}
 
-                  <div className="max-h-56 space-y-2 overflow-y-auto pr-1">
+                  <div className="max-h-[420px] space-y-2 overflow-y-auto pr-1">
                     {visibleCommunities.map((community) => {
                       const selected = selectedCommunity?.id === community.id;
                       return (
@@ -1613,17 +2022,17 @@ export function OnboardingPage() {
                             savePersisted({
                               orgDraft: {
                                 orgId: community.id,
-                                orgName: community.shortName ?? community.name,
+                                orgName: community.name ?? community.shortName ?? "",
                                 orgKind: community.kind,
                               },
                             })
                           }
-                          className={`w-full rounded-xl border px-3 py-3 text-left transition ${
-                            selected ? "border-brand bg-brand/10" : "border-border bg-bg hover:border-brand/40"
+                          className={`w-full rounded-xl border px-3 py-2 text-left transition ${
+                            selected ? "border-brand bg-bg" : "border-border bg-bg hover:border-brand/40"
                           }`}
                         >
-                          <div className="flex items-center gap-3">
-                            <div className="h-11 w-11 overflow-hidden rounded-full border border-border bg-bg-muted">
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="h-9 w-9 overflow-hidden rounded-full border border-border bg-bg-muted">
                               <img
                                 src={community.imageUrl ?? DEFAULT_PROFILE_IMAGE_SRC}
                                 alt=""
@@ -1634,7 +2043,12 @@ export function OnboardingPage() {
                                 }}
                               />
                             </div>
-                            <p className="text-sm font-semibold text-strong">{community.shortName ?? community.name}</p>
+                            <p className="flex-1 text-sm font-semibold text-strong">{community.shortName ?? community.name}</p>
+                            {selected ? (
+                              <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-brand text-white">
+                                <CheckIcon className="h-3.5 w-3.5" />
+                              </span>
+                            ) : null}
                           </div>
                         </button>
                       );
@@ -1668,45 +2082,57 @@ export function OnboardingPage() {
               ) : null}
 
               {currentStep === "verification_intro" ? (
-                <div className="space-y-4">
-                  <p className="text-sm leading-6 text-text-secondary">
-                    Verify with your organization email to unlock posting permissions. Web currently supports email verification only.
-                  </p>
-                  <div className="flex flex-wrap gap-3">
-                    {canBack ? (
-                      <OnboardingBackButton onClick={handleBack} disabled={transitionLock} />
-                    ) : null}
-                    <OnboardingContinueButton
-                      label="Continue"
-                      loadingLabel="Continuing..."
-                      onClick={() => {
-                        void handleSelectVerificationPath("email");
-                      }}
-                      isLoading={transitionLock}
-                      variant="primary"
-                    />
-                    <button
-                      type="button"
-                      disabled={transitionLock}
-                      onClick={() => handleSelectVerificationPath("skip")}
-                      className="rounded-full border border-border px-5 py-2.5 text-sm font-semibold text-text-secondary transition hover:text-strong disabled:opacity-60"
-                    >
-                      Skip verification
-                    </button>
+                <div className="mx-auto w-full max-w-5xl">
+                  <div className="grid items-center gap-8 md:grid-cols-[minmax(220px,340px)_1fr]">
+                    <div className="flex justify-center md:justify-start">
+                      <img
+                        src={verifyFirstIllustration}
+                        alt=""
+                        className="w-full max-w-[320px] object-contain"
+                        loading="lazy"
+                      />
+                    </div>
+                    <div className="space-y-4 text-center md:text-left">
+                      <h2 className="text-2xl font-semibold leading-tight text-strong md:text-3xl">
+                        Verify your identity for {selectedOrgLabel}
+                      </h2>
+                      <p className="mx-auto max-w-lg text-sm leading-7 text-text-secondary md:mx-0">
+                        We require verification to post, comment, and like in communities to keep your experience authentic.
+                      </p>
+                      <div className="mx-auto w-full max-w-sm space-y-3 md:mx-0">
+                        <OnboardingContinueButton
+                          label="Continue"
+                          loadingLabel="Continuing..."
+                          onClick={() => {
+                            handleVerificationIntroContinue();
+                          }}
+                          isLoading={transitionLock}
+                          variant="primary"
+                          className="w-full"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowVerificationHowItWorks(true)}
+                          className="w-full text-center text-secondary underline underline-offset-2 transition hover:text-strong"
+                        >
+                          How Verification Works
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 </div>
               ) : null}
 
               {currentStep === "verification_choice" ? (
-                <div className="space-y-4">
-                  <div className="rounded-xl border border-brand/40 bg-brand/10 p-4">
-                    <p className="text-sm font-semibold text-strong">Company/Student Email</p>
-                    <p className="mt-1 text-xs text-text-secondary">Only email verification is available on web.</p>
+                <div className="space-y-5">
+                  <div className="max-w-3xl space-y-2">
+                    <p className="text-base font-medium text-strong">Web currently supports email verification only.</p>
+                    <p className="text-base leading-7 text-text-secondary">
+                      If you want to verify with photo ID, download Looped on iOS. We&apos;re working on bringing photo ID
+                      verification to web.
+                    </p>
                   </div>
                   <div className="flex flex-wrap gap-3">
-                    {canBack ? (
-                      <OnboardingBackButton onClick={handleBack} disabled={transitionLock} />
-                    ) : null}
                     <OnboardingContinueButton
                       label="Continue"
                       loadingLabel="Continuing..."
@@ -1716,79 +2142,110 @@ export function OnboardingPage() {
                       isLoading={transitionLock}
                       variant="primary"
                     />
-                    <button
-                      type="button"
-                      disabled={transitionLock}
-                      onClick={() => handleSelectVerificationPath("skip")}
-                      className="rounded-full border border-border px-5 py-2.5 text-sm font-semibold text-text-secondary transition hover:text-strong disabled:opacity-60"
-                    >
-                      Skip verification
-                    </button>
                   </div>
                 </div>
               ) : null}
 
               {currentStep === "email_verification_enter_email" || currentStep === "email_verification_enter_code" ? (
-                <VerificationEmailFlow
-                  state={emailVerificationMachine.state}
-                  communityName={selectedCommunity?.name ?? "organization"}
-                  draft={persisted.verificationDraft}
-                  domains={emailVerificationMachine.domains}
-                  errorMessage={emailVerificationMachine.errorMessage}
-                  resendHelperText={emailVerificationMachine.resendHelperText}
+                <div className="mx-auto w-full max-w-[640px]">
+                  <VerificationEmailFlow
+                    state={emailVerificationMachine.state}
+                    communityName={selectedCommunity?.name ?? "organization"}
+                    draft={persisted.verificationDraft}
+                    domains={emailVerificationMachine.domains}
+                    errorMessage={emailVerificationMachine.errorMessage}
+                    resendHelperText={emailVerificationMachine.resendHelperText}
                   canSendCode={emailVerificationMachine.canSendCode}
                   canVerifyCode={emailVerificationMachine.canVerifyCode}
                   canResendCode={emailVerificationMachine.canResendCode}
                   transitionLocked={emailVerificationMachine.transitionLocked}
                   overlayTitle={emailVerificationMachine.overlayTitle}
-                  showBack={canBack}
-                  onBack={handleBack}
-                  showSkip
-                  onSkip={() => {
-                    void handleSelectVerificationPath("skip");
-                  }}
                   onEmailLocalPartChange={emailVerificationMachine.setEmailLocalPart}
                   onDomainChange={emailVerificationMachine.setSelectedDomain}
                   onCodeChange={emailVerificationMachine.setCode}
                   onSendCode={() => {
-                    void emailVerificationMachine.sendCode();
-                  }}
-                  onVerifyCode={() => {
-                    void emailVerificationMachine.verifyCode();
-                  }}
-                  onResendCode={() => {
-                    void emailVerificationMachine.resendCode();
-                  }}
-                  onRetryDomains={() => {
-                    void emailVerificationMachine.retryDomains();
-                  }}
-                />
+                      void emailVerificationMachine.sendCode();
+                    }}
+                    onVerifyCode={() => {
+                      void emailVerificationMachine.verifyCode();
+                    }}
+                    onResendCode={() => {
+                      void emailVerificationMachine.resendCode();
+                    }}
+                    onRetryDomains={() => {
+                      void emailVerificationMachine.retryDomains();
+                    }}
+                  />
+                </div>
               ) : null}
 
               {currentStep === "specialization_selection" ? (
-                <div className="space-y-4">
-                  <p className="text-sm text-text-secondary">
-                    Pick up to 2 {selectedOrgKind === "school" ? "majors" : "fields"}.
-                  </p>
-                  {specializationLoading ? <p className="text-sm text-text-light">Loading options...</p> : null}
-                  <div className="max-h-56 space-y-2 overflow-y-auto pr-1">
+                <div className="mx-auto w-full max-w-[640px] space-y-4">
+                  <div className="relative">
+                    <SearchIcon className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-text-light" />
+                    <input
+                      type="search"
+                      value={specializationQuery}
+                      onChange={(event) => {
+                        setSpecializationQuery(event.target.value);
+                        if (specializationSelectionError) {
+                          setSpecializationSelectionError(null);
+                        }
+                      }}
+                      placeholder="Search"
+                      className="w-full rounded-full border border-border bg-bg-muted pl-12 pr-4 py-2.5 text-sm text-strong outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+                    />
+                  </div>
+
+                  {showSpecializationLoadingState ? (
+                    <p className="text-sm text-text-light">Loading {specializationTitle.toLowerCase()}s...</p>
+                  ) : null}
+                  {showSpecializationStartTypingState ? (
+                    <p className="text-sm text-text-light">Start typing to search.</p>
+                  ) : null}
+                  {showSpecializationNoMatchesState ? <p className="text-sm text-text-light">No matches found.</p> : null}
+
+                  {specializationSearchError ? (
+                    <div className="rounded-xl border border-border bg-bg-muted/40 p-3">
+                      <p className="text-sm text-brand">{specializationSearchError}</p>
+                      <button
+                        type="button"
+                        onClick={() => setSpecializationSearchRefreshNonce((previous) => previous + 1)}
+                        className="mt-2 text-sm font-semibold text-secondary transition hover:opacity-90"
+                      >
+                        Retry
+                      </button>
+                    </div>
+                  ) : null}
+
+                  <div className="max-h-[420px] space-y-2 overflow-y-auto pr-1">
                     {specializationOptions.map((option) => {
-                      const selected = persisted.specializationDraft.selectedIds.includes(option.id);
+                      const selectedIndex = persisted.specializationDraft.selectedIds.indexOf(option.id);
+                      const selected = selectedIndex >= 0;
                       return (
                         <button
                           key={option.id}
                           type="button"
                           onClick={() => toggleSpecialization(option.id)}
                           className={`w-full rounded-xl border px-3 py-2 text-left transition ${
-                            selected ? "border-brand bg-brand/10" : "border-border bg-bg hover:border-brand/40"
+                            selected ? "border-brand bg-bg" : "border-border bg-bg hover:border-brand/40"
                           }`}
                         >
-                          <p className="text-sm font-semibold text-strong">{option.name}</p>
-                          <p className="text-xs text-text-light">{option.type}</p>
+                          <div className="flex items-center justify-between gap-3">
+                            <p className="text-sm font-semibold text-strong">{option.name}</p>
+                            {selected ? (
+                              <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-brand text-xs font-semibold text-white">
+                                {selectedIndex + 1}
+                              </span>
+                            ) : null}
+                          </div>
                         </button>
                       );
                     })}
                   </div>
+                  {specializationSelectionError ? (
+                    <p className="text-sm text-brand">{specializationSelectionError}</p>
+                  ) : null}
                   <OnboardingContinueButton
                     label="Continue"
                     loadingLabel="Continuing..."
@@ -1807,14 +2264,12 @@ export function OnboardingPage() {
               {currentStep === "skip_explainer" ? (
                 <div className="space-y-4">
                   <p className="text-sm leading-6 text-text-secondary">
-                    If you skip verification now, some posting and interaction features stay restricted.
+                    You can verify later anytime in settings or on a community page. You can post, like, and comment
+                    only in communities where you're verified.
                   </p>
                   <div className="flex flex-wrap gap-3">
-                    {canBack ? (
-                      <OnboardingBackButton onClick={handleBack} disabled={transitionLock} />
-                    ) : null}
                     <OnboardingContinueButton
-                      label="Continue anyway"
+                      label="Continue"
                       loadingLabel="Continuing..."
                       onClick={() => {
                         void handleSkipContinue();
@@ -1829,16 +2284,17 @@ export function OnboardingPage() {
               {currentStep === "verification_confirmation" ? (
                 <div className="space-y-4">
                   <p className="text-sm leading-6 text-text-secondary">
-                    You are ready to finish onboarding. Continue to enter the app.
+                    You're verified for {selectedOrgLabel}. Your major or field is joined. Start posting.
                   </p>
                   <OnboardingContinueButton
-                    label="Finalize onboarding"
-                    loadingLabel="Finalizing..."
+                    label="Continue"
+                    loadingLabel="Continuing..."
                     onClick={() => {
                       void handleFinalizeContinue();
                     }}
                     isLoading={transitionLock}
                     variant="primary"
+                    className="w-full max-w-xs"
                   />
                 </div>
               ) : null}
@@ -1934,11 +2390,11 @@ export function OnboardingPage() {
             </div>
 
             {showStepIllustration ? (
-              <div className="flex items-start justify-center">
+              <div className="hidden items-start justify-center lg:flex">
                 <img
                   src={illustration}
                   alt=""
-                  className="w-full max-w-md rounded-2xl border border-border bg-bg-muted object-cover"
+                  className="w-full max-w-md object-contain"
                   loading="lazy"
                 />
               </div>
@@ -1954,6 +2410,85 @@ export function OnboardingPage() {
         onCancel={handleCancelFinishCrop}
         onApply={handleApplyFinishCrop}
       />
+      {showOrgChoiceInfo && currentStep === "org_selection" ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 px-5 backdrop-blur-[2px]"
+          role="presentation"
+          onClick={() => setShowOrgChoiceInfo(false)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="org-choice-info-title"
+            className="w-full max-w-[320px] rounded-[28px] bg-bg p-6 shadow-[0_20px_48px_rgba(0,0,0,0.18)]"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h3 id="org-choice-info-title" className="text-[1.55rem] font-semibold text-strong">
+              About your choice
+            </h3>
+            <p className="mt-3 text-[1.1rem] leading-7 text-text-secondary">
+              You can only post in communities where you're verified. We'll ask you to verify next, so choose one
+              where you can verify with a work/school email or ID/badge.
+            </p>
+            <button
+              type="button"
+              onClick={() => setShowOrgChoiceInfo(false)}
+              className="mt-5 w-full rounded-full bg-bg-muted px-5 py-2.5 text-[1.18rem] font-semibold text-strong transition hover:bg-bg-muted/90"
+            >
+              Got it
+            </button>
+          </div>
+        </div>
+      ) : null}
+      {showSpecializationInfo && currentStep === "specialization_selection" ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 px-5 backdrop-blur-[2px]"
+          role="presentation"
+          onClick={() => setShowSpecializationInfo(false)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="specialization-info-title"
+            className="w-full max-w-[320px] rounded-[28px] bg-bg p-6 shadow-[0_20px_48px_rgba(0,0,0,0.18)]"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h3 id="specialization-info-title" className="text-[1.55rem] font-semibold text-strong">
+              About your selection
+            </h3>
+            <p className="mt-3 text-[1.1rem] leading-7 text-text-secondary">
+              Pick up to 2 {selectedOrgKind === "school" ? "majors" : "fields"} to join now. Your first selection is
+              your primary {selectedOrgKind === "school" ? "major" : "field"} for onboarding.
+            </p>
+            <button
+              type="button"
+              onClick={() => setShowSpecializationInfo(false)}
+              className="mt-5 w-full rounded-full bg-bg-muted px-5 py-2.5 text-[1.18rem] font-semibold text-strong transition hover:bg-bg-muted/90"
+            >
+              Got it
+            </button>
+          </div>
+        </div>
+      ) : null}
+      {showVerificationHowItWorks && currentStep === "verification_intro" ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-4 py-6"
+          role="presentation"
+          onClick={() => setShowVerificationHowItWorks(false)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            className="w-full max-w-3xl rounded-2xl border border-border bg-bg p-4 md:p-6"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <VerificationInfoContent
+              mode="modal"
+              onClose={() => setShowVerificationHowItWorks(false)}
+            />
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

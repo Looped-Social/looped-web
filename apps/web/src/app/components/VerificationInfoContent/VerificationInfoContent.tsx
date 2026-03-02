@@ -149,11 +149,21 @@ export function VerificationInfoContent({
       <p className="text-sm text-text-secondary">You can verify anytime from a community page.</p>
       <p className="text-sm text-text-secondary">
         Questions? Visit our{" "}
-        <Link to="/faq" className="font-semibold text-text-secondary underline underline-offset-2 transition hover:text-strong">
+        <Link
+          to="/faq"
+          className="text-secondary font-normal underline underline-offset-2 transition hover:text-strong"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
           FAQ
         </Link>{" "}
         or our{" "}
-        <Link to="/about" className="font-semibold text-text-secondary underline underline-offset-2 transition hover:text-strong">
+        <Link
+          to="/about"
+          className="text-secondary font-normal underline underline-offset-2 transition hover:text-strong"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
           About
         </Link>
         .

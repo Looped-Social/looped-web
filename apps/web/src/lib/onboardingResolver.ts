@@ -289,6 +289,7 @@ export function resolveOnboardingStep({
 
 export function canGoBackFromStep(step: OnboardingFlowStep): boolean {
   if (step === "profile_setup") return false;
+  if (step === "specialization_selection") return false;
   if (step === "verification_confirmation") return false;
   return true;
 }

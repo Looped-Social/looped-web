@@ -56,6 +56,7 @@ export type SpecializationOption = {
   id: string;
   name: string;
   type: "major" | "field" | "unknown";
+  memberCount?: number;
 };
 
 export type ProfileCompletionInput = {
@@ -222,7 +223,10 @@ function extractCommunityItems(payload: unknown): CommunityOption[] {
   return items.map(normalizeCommunityOption).filter((item): item is CommunityOption => Boolean(item));
 }
 
-function normalizeSpecializationOption(payload: unknown, fallbackType: "major" | "field"): SpecializationOption | null {
+function normalizeSpecializationOption(
+  payload: unknown,
+  fallbackType: "major" | "field" | "unknown"
+): SpecializationOption | null {
   if (!isRecord(payload)) return null;
   const id = getString(payload.id ?? payload.specialization_id ?? payload.specializationId);
   const name = getString(payload.name ?? payload.short_name ?? payload.shortName);
@@ -233,12 +237,38 @@ function normalizeSpecializationOption(payload: unknown, fallbackType: "major" |
     typeValue === "major" || typeValue === "field"
       ? typeValue
       : fallbackType;
+  const memberCount = getNumber(payload.member_count ?? payload.memberCount);
 
   return {
     id,
     name,
     type: normalizedType,
+    memberCount,
   };
+}
+
+function dedupeAndSortSpecializations(items: SpecializationOption[]): SpecializationOption[] {
+  const byId = new Map<string, SpecializationOption>();
+  for (const item of items) {
+    const existing = byId.get(item.id);
+    if (!existing) {
+      byId.set(item.id, item);
+      continue;
+    }
+    const existingCount = existing.memberCount ?? -1;
+    const nextCount = item.memberCount ?? -1;
+    if (nextCount > existingCount) {
+      byId.set(item.id, item);
+    }
+  }
+
+  return Array.from(byId.values()).sort((left, right) => {
+    const memberDelta = (right.memberCount ?? 0) - (left.memberCount ?? 0);
+    if (memberDelta !== 0) return memberDelta;
+    const nameDelta = left.name.localeCompare(right.name, undefined, { sensitivity: "base" });
+    if (nameDelta !== 0) return nameDelta;
+    return left.id.localeCompare(right.id);
+  });
 }
 
 async function getImageDimensions(file: File): Promise<{ width: number; height: number }> {
@@ -449,9 +479,15 @@ export async function fetchCommunityVerificationDomains(
   });
   if (!isRecord(data)) return [];
   const items = Array.isArray(data.items) ? data.items : [];
-  return items
-    .map((entry) => getString(entry))
-    .filter((entry): entry is string => Boolean(entry));
+  const normalized: string[] = [];
+  const seen = new Set<string>();
+  for (const entry of items) {
+    const next = getString(entry)?.trim().toLowerCase();
+    if (!next || seen.has(next)) continue;
+    seen.add(next);
+    normalized.push(next);
+  }
+  return normalized;
 }
 
 export async function startCommunityEmailVerification({
@@ -504,22 +540,95 @@ export async function joinSpecialization(communityOrSpecializationId: string | n
   }
 }
 
+export async function fetchRecommendedOnboardingSpecializations({
+  type = "all",
+  limit = 50,
+  signal,
+}: {
+  type?: "all" | "major" | "field";
+  limit?: number;
+  signal?: AbortSignal;
+}): Promise<SpecializationOption[]> {
+  const params = new URLSearchParams();
+  params.set("type", type);
+  params.set("limit", String(limit));
+  const { data } = await onboardingAuthFetch<unknown>(`/v1/specializations/recommended?${params.toString()}`, { signal });
+  const payload = isRecord(data) ? data : {};
+
+  const merged: SpecializationOption[] = [];
+  if (Array.isArray(payload.items)) {
+    merged.push(
+      ...payload.items
+        .map((entry) => normalizeSpecializationOption(entry, type === "all" ? "unknown" : type))
+        .filter((entry): entry is SpecializationOption => Boolean(entry))
+    );
+  }
+  if (Array.isArray(payload.majors)) {
+    merged.push(
+      ...payload.majors
+        .map((entry) => normalizeSpecializationOption(entry, "major"))
+        .filter((entry): entry is SpecializationOption => Boolean(entry))
+    );
+  }
+  if (Array.isArray(payload.fields)) {
+    merged.push(
+      ...payload.fields
+        .map((entry) => normalizeSpecializationOption(entry, "field"))
+        .filter((entry): entry is SpecializationOption => Boolean(entry))
+    );
+  }
+
+  const deduped = dedupeAndSortSpecializations(merged);
+  if (type === "all") return deduped;
+  return deduped.filter((entry) => entry.type === type);
+}
+
+export async function searchOnboardingSpecializations({
+  query,
+  kind,
+  limit = 50,
+  signal,
+}: {
+  query: string;
+  kind: "major" | "field";
+  limit?: number;
+  signal?: AbortSignal;
+}): Promise<SpecializationOption[]> {
+  const params = new URLSearchParams();
+  params.set("query", query);
+  params.set("limit", String(limit));
+  params.set("kind", kind);
+  const { data } = await onboardingAuthFetch<unknown>(`/v1/communities/search?${params.toString()}`, { signal });
+  const payload = isRecord(data) ? data : {};
+  const items = Array.isArray(payload.items) ? payload.items : [];
+
+  return dedupeAndSortSpecializations(
+    items
+      .map((entry) => normalizeSpecializationOption(entry, kind))
+      .filter((entry): entry is SpecializationOption => Boolean(entry))
+  );
+}
+
 export async function fetchMajorsForOnboarding(): Promise<SpecializationOption[]> {
   const { data } = await onboardingAuthFetch<unknown>("/v1/majors");
   const payload = isRecord(data) ? data : {};
   const items = Array.isArray(payload.items) ? payload.items : [];
-  return items
-    .map((item) => normalizeSpecializationOption(item, "major"))
-    .filter((item): item is SpecializationOption => Boolean(item));
+  return dedupeAndSortSpecializations(
+    items
+      .map((item) => normalizeSpecializationOption(item, "major"))
+      .filter((item): item is SpecializationOption => Boolean(item))
+  );
 }
 
 export async function fetchFieldsForOnboarding(): Promise<SpecializationOption[]> {
   const { data } = await onboardingAuthFetch<unknown>("/v1/fields");
   const payload = isRecord(data) ? data : {};
   const items = Array.isArray(payload.items) ? payload.items : [];
-  return items
-    .map((item) => normalizeSpecializationOption(item, "field"))
-    .filter((item): item is SpecializationOption => Boolean(item));
+  return dedupeAndSortSpecializations(
+    items
+      .map((item) => normalizeSpecializationOption(item, "field"))
+      .filter((item): item is SpecializationOption => Boolean(item))
+  );
 }
 
 export async function dismissProfileCompletionPrompt(): Promise<void> {
@@ -528,19 +637,56 @@ export async function dismissProfileCompletionPrompt(): Promise<void> {
   });
 }
 
+type ProfileUpdateDefaults = {
+  displayName: string;
+  bio: string;
+  isAnonymous: boolean;
+  showFollowerCount: boolean;
+  messagePermission: string;
+};
+
+function normalizeProfileUpdateDefaults(payload: unknown): ProfileUpdateDefaults {
+  const source = isRecord(payload) ? payload : {};
+  const user = isRecord(source.user) ? source.user : source;
+
+  return {
+    displayName: getString(user.display_name ?? user.displayName ?? user.name) ?? "",
+    bio: getString(user.bio) ?? "",
+    isAnonymous: getBoolean(user.is_anonymous ?? user.isAnonymous) ?? false,
+    showFollowerCount: getBoolean(user.show_follower_count ?? user.showFollowerCount) ?? true,
+    messagePermission: getString(user.message_permission ?? user.messagePermission) ?? "all",
+  };
+}
+
+async function fetchProfileUpdateDefaults(): Promise<ProfileUpdateDefaults> {
+  try {
+    const { data } = await onboardingAuthFetch<unknown>("/v1/users/me");
+    return normalizeProfileUpdateDefaults(data);
+  } catch {
+    const { data } = await onboardingAuthFetch<unknown>("/v1/me");
+    return normalizeProfileUpdateDefaults(data);
+  }
+}
+
 export async function saveProfileCompletionDraft({
   bio,
   displayName,
   profilePhotoFile,
 }: ProfileCompletionInput): Promise<void> {
+  const defaults = await fetchProfileUpdateDefaults();
+
   let profileMediaAssetId: string | number | undefined;
   if (profilePhotoFile) {
     profileMediaAssetId = await uploadProfilePhoto(profilePhotoFile);
   }
 
-  const body: Record<string, unknown> = {};
-  if (typeof bio === "string") body.bio = bio;
-  if (typeof displayName === "string") body.displayName = displayName;
+  const body: Record<string, unknown> = {
+    displayName: typeof displayName === "string" ? displayName : defaults.displayName,
+    bio: typeof bio === "string" ? bio : defaults.bio,
+    isAnonymous: defaults.isAnonymous,
+    showFollowerCount: defaults.showFollowerCount,
+    messagePermission: defaults.messagePermission,
+  };
   if (profileMediaAssetId !== undefined) body.profileMediaAssetId = profileMediaAssetId;
 
   await onboardingAuthFetch("/v1/users/me", {

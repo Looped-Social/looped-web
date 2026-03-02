@@ -12,6 +12,7 @@ export type SessionBootstrapProfileCompletion = {
 
 export type SessionBootstrapOnboardingContext = {
   selectedOrgId: string | null;
+  selectedOrgName: string | null;
   selectedOrgKind: string | null;
   verificationPath: string | null;
   verificationStatus: string | null;
@@ -126,6 +127,9 @@ function normalizeContext(payload: Record<string, unknown>): SessionBootstrapOnb
   const selectedOrgId =
     getString(rawContext.selected_org_id ?? rawContext.selectedOrgId) ??
     getString(payload.selected_org_id ?? payload.selectedOrgId);
+  const selectedOrgName =
+    getString(rawContext.selected_org_name ?? rawContext.selectedOrgName) ??
+    getString(payload.selected_org_name ?? payload.selectedOrgName);
   const selectedOrgKind =
     getString(rawContext.selected_org_kind ?? rawContext.selectedOrgKind) ??
     getString(payload.selected_org_kind ?? payload.selectedOrgKind);
@@ -158,6 +162,7 @@ function normalizeContext(payload: Record<string, unknown>): SessionBootstrapOnb
 
   return {
     selectedOrgId,
+    selectedOrgName,
     selectedOrgKind,
     verificationPath,
     verificationStatus,

@@ -144,6 +144,18 @@ function stateForLoadedDomains({
   return submittedEmail.trim().length > 0 ? "enter_code" : "enter_email";
 }
 
+function normalizeDomains(rawDomains: string[]): string[] {
+  const nextDomains: string[] = [];
+  const seen = new Set<string>();
+  for (const rawDomain of rawDomains) {
+    const normalized = rawDomain.trim().toLowerCase();
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    nextDomains.push(normalized);
+  }
+  return nextDomains;
+}
+
 export function useEmailVerificationMachine({
   enabled,
   communityId,
@@ -248,54 +260,75 @@ export function useEmailVerificationMachine({
     const requestId = ++loadRequestRef.current;
     setState("loading_domains");
     setErrorMessage(null);
+    let terminalError: unknown = null;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        if (signal?.aborted) return;
+        if (adapterRef.current.beforeLoadDomains) {
+          await adapterRef.current.beforeLoadDomains({ communityId });
+        }
+        if (signal?.aborted) return;
 
-    try {
-      if (signal?.aborted) return;
-      if (adapterRef.current.beforeLoadDomains) {
-        await adapterRef.current.beforeLoadDomains({ communityId });
-      }
-      if (signal?.aborted) return;
+        const loadedDomains = await apiRef.current.loadDomains({
+          communityId,
+          signal,
+        });
+        if (signal?.aborted) return;
+        if (requestId !== loadRequestRef.current) return;
 
-      const loadedDomains = await apiRef.current.loadDomains({
-        communityId,
-        signal,
-      });
-      if (signal?.aborted) return;
-      if (requestId !== loadRequestRef.current) return;
+        const normalizedDomains = normalizeDomains(loadedDomains);
+        setDomains(normalizedDomains);
+        if (normalizedDomains.length === 0) {
+          setErrorMessage("No email domains available for this community.");
+          setState("domains_error");
+          return;
+        }
 
-      setDomains(loadedDomains);
-      const nextDomain =
-        loadedDomains.includes(selectedDomainRef.current) || loadedDomains.length === 0
-          ? selectedDomainRef.current
-          : loadedDomains[0] ?? "";
-      if (nextDomain !== selectedDomainRef.current) {
-        onDraftChangeRef.current({ selectedDomain: nextDomain });
-      }
-      setState(
-        stateForLoadedDomains({
-          preferredState: preferredStateRef.current,
-          submittedEmail: submittedEmailRef.current,
-        })
-      );
-    } catch (error) {
-      if (signal?.aborted) return;
-      if (requestId !== loadRequestRef.current) return;
-      if (await onSyncRecoverableError(error)) {
-        setState("done");
+        const currentSelectedDomain = selectedDomainRef.current.trim().toLowerCase();
+        const nextDomain = normalizedDomains.includes(currentSelectedDomain)
+          ? currentSelectedDomain
+          : normalizedDomains[0] ?? "";
+        if (nextDomain !== selectedDomainRef.current) {
+          onDraftChangeRef.current({ selectedDomain: nextDomain });
+        }
+        setState(
+          stateForLoadedDomains({
+            preferredState: preferredStateRef.current,
+            submittedEmail: submittedEmailRef.current,
+          })
+        );
         return;
-      }
+      } catch (error) {
+        if (signal?.aborted) return;
+        if (requestId !== loadRequestRef.current) return;
 
-      const code = normalizeErrorCode(error);
-      const retryAfterSeconds = extractRetryAfterSeconds(error);
-      setErrorMessage(
-        mapVerificationErrorMessage({
-          code,
-          fallback: normalizeErrorMessage(error),
-          retryAfterSeconds,
-        })
-      );
-      setState("domains_error");
+        const code = normalizeErrorCode(error);
+        const canRetrySyncError = isSyncRecoverableCode(code) && attempt === 0;
+        if (canRetrySyncError) {
+          await new Promise((resolve) => window.setTimeout(resolve, 220));
+          continue;
+        }
+
+        terminalError = error;
+        break;
+      }
     }
+
+    if (await onSyncRecoverableError(terminalError)) {
+      setState("done");
+      return;
+    }
+
+    const code = normalizeErrorCode(terminalError);
+    const retryAfterSeconds = extractRetryAfterSeconds(terminalError);
+    setErrorMessage(
+      mapVerificationErrorMessage({
+        code,
+        fallback: normalizeErrorMessage(terminalError),
+        retryAfterSeconds,
+      })
+    );
+    setState("domains_error");
   }, [
     communityId,
     enabled,

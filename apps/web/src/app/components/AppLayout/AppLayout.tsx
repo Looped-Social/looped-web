@@ -189,7 +189,10 @@ export function AppLayout({ activeNavId = 'home', children, rightRail }: AppLayo
   const [expandedRailSectionId, setExpandedRailSectionId] = useState<string | null>(null);
   const [showFinishProfilePrompt, setShowFinishProfilePrompt] = useState(false);
   const pathname = location.pathname;
-  const shouldPromptProfileCompletion = accessState === 'active' && Boolean(bootstrap?.profileCompletion?.shouldPrompt);
+  const shouldPromptProfileCompletion =
+    accessState === 'active' &&
+    Boolean(bootstrap?.onboardingComplete) &&
+    Boolean(bootstrap?.profileCompletion?.shouldPrompt);
 
   const hideMobileBottomNav =
     /^\/app\/post\/[^/]+\/comments$/.test(pathname) ||
@@ -394,7 +397,10 @@ export function AppLayout({ activeNavId = 'home', children, rightRail }: AppLayo
         defaultAvatarUrl={user?.profileImageUrl ?? undefined}
         onComplete={async () => {
           setShowFinishProfilePrompt(false);
-          await Promise.allSettled([refreshSession(), refreshCurrentUser()]);
+          await refreshSession();
+          window.setTimeout(() => {
+            void refreshCurrentUser();
+          }, 1500);
         }}
       />
     </>

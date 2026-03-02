@@ -139,9 +139,15 @@ export async function fetchCommunityVerificationDomains(
   const response = await settingsAuthFetch<unknown>(`/v1/communities/${communityId}/domains`, {
     signal: options?.signal,
   });
-  return extractItemsArray(response)
-    .map((entry) => normalizeOptional(entry))
-    .filter((value): value is string => Boolean(value));
+  const normalized: string[] = [];
+  const seen = new Set<string>();
+  for (const entry of extractItemsArray(response)) {
+    const next = normalizeOptional(entry)?.trim().toLowerCase();
+    if (!next || seen.has(next)) continue;
+    seen.add(next);
+    normalized.push(next);
+  }
+  return normalized;
 }
 
 export async function finishCommunityVerification({

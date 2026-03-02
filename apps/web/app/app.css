@@ -67,3 +67,12 @@
     transform: translateX(-50%);
   }
 }
+
+@layer base {
+  :where(p a, li a) {
+    color: var(--color-secondary);
+    font-weight: 400;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+}
