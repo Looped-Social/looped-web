@@ -11,6 +11,28 @@ Primary repo instructions:
 - Public marketing routes live at `/` (and `/privacy`, `/terms`, etc).
 - Authenticated app routes live under `/app/*` and should be auth-gated.
 - Tech: React Router v7 + Vite + Tailwind v4.
+- Signed-in users who hit `/` should be redirected into `/app`.
+
+## Current auth + onboarding model (web)
+
+- Auth is Firebase in-browser (Google/Apple/email-password); backend does not expose a separate web login endpoint.
+- Always bootstrap session with `GET /v1/me` after auth token acquisition.
+- Treat onboarding as server-driven FSM, not as local page index.
+- Primary server fields:
+  - `onboarding_complete`
+  - `onboarding_stage_v2`
+  - `onboarding_context`
+  - `allowed_next_stages_v2` (when returned on conflict/error)
+  - `profile_completion.should_prompt`
+- Resume priority:
+  - server stage/context
+  - `allowed_next_stages_v2`
+  - legacy `onboarding_step`
+  - sanitized local persisted step
+- Web onboarding verification policy:
+  - email verification only
+  - no photo ID onboarding flow on web
+  - onboarding path must still set `verification_path=email` via onboarding-v2 endpoint
 
 ## Environment variables
 
@@ -47,6 +69,46 @@ The web app expects:
   - `looped-web/apps/web/src/lib/feedbackApi.ts`
     - Calls `POST /v1/feedback` with optional auth
 
+## Onboarding-v2 endpoint usage (web)
+
+- Profile bootstrap:
+  - `POST /v1/users/onboard`
+  - `GET /v1/users/username/availability?username=...`
+- Onboarding-v2 progression:
+  - `POST /v1/users/me/onboarding-v2/info-screen/viewed`
+  - `PUT /v1/users/me/onboarding-v2/org`
+  - `PUT /v1/users/me/onboarding-v2/verification-choice`
+  - `POST /v1/users/me/onboarding-v2/email-verification/success`
+  - `POST /v1/users/me/onboarding-v2/specialization`
+  - `POST /v1/users/me/onboarding-v2/skip-explainer/ack`
+  - `POST /v1/users/me/onboarding-v2/finalize`
+  - `POST /v1/users/me/onboarding-v2/complete-after-community-request`
+
+## Email verification reuse rules
+
+- Reuse one email verification engine for both onboarding and community/profile verification.
+- Shared endpoints in both modes:
+  - `GET /v1/communities/{id}/domains`
+  - `POST /v1/communities/{id}/verification/start`
+  - `POST /v1/communities/{id}/verification/finish`
+- Onboarding mode only:
+  - ensure `verification-choice=email`
+  - call `email-verification/success` after verify success
+- Profile/settings mode:
+  - never call onboarding-v2 progression endpoints
+  - refresh community/user state after finish success
+
+## Community request flow modes
+
+- Onboarding org-selection side flow:
+  - `POST /v1/community-requests`
+  - then `POST /v1/users/me/onboarding-v2/complete-after-community-request`
+- Regular app/settings flow:
+  - `POST /v1/community-requests` only (no onboarding completion endpoint)
+- For request payloads:
+  - if `notifyWhenAvailable=true`, `contactEmail` must be provided
+  - onboarding mode request type options are restricted to `company|school`
+
 ### Session hook
 - `looped-web/apps/web/src/hooks/useUserSession.ts`
   - Centralizes “who is logged in” state for the web UI.
@@ -79,4 +141,3 @@ The current requirement is:
   - (and any “composer/draft” UI)
 
 Reading + interactions (like/save/comment/follow/messaging/notifications) can be implemented as needed.
-

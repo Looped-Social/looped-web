@@ -25,28 +25,28 @@ const navItems: NavItem[] = [
     label: 'Home',
     href: '/app',
     iconSrc: '/icons/nav/home.svg',
-    activeIconSrc: '/icons/nav/home-active.svg',
+    activeIconSrc: '/icons/nav/nav-selected/house-selected.svg',
   },
   {
     id: 'search',
     label: 'Search',
     href: '/app/search',
     iconSrc: '/icons/nav/search.svg',
-    activeIconSrc: '/icons/nav/search-active.svg',
+    activeIconSrc: '/icons/nav/nav-selected/selected.svg',
   },
   {
     id: 'messages',
     label: 'Messages',
     href: '/app/messages',
     iconSrc: '/icons/nav/messages.svg',
-    activeIconSrc: '/icons/nav/messages-active.svg',
+    activeIconSrc: '/icons/nav/nav-selected/plane-tilt-red.svg',
   },
   {
     id: 'notifications',
     label: 'Notifications',
     href: '/app/notifications',
     iconSrc: '/icons/nav/notifications.svg',
-    activeIconSrc: '/icons/nav/notifications-active.svg',
+    activeIconSrc: '/icons/nav/nav-selected/bell-fill.svg',
   },
   {
     id: 'create',
@@ -66,7 +66,7 @@ const navItems: NavItem[] = [
     label: 'Settings',
     href: '/app/settings',
     iconSrc: '/icons/nav/settings.svg',
-    activeIconSrc: '/icons/nav/settings-active.svg',
+    activeIconSrc: '/icons/nav/nav-selected/settings-active.svg',
   },
 ];
 const mobileNavOrder = ['home', 'messages', 'create', 'search', 'notifications', 'profile'] as const;
@@ -180,6 +180,16 @@ function NavMaskIcon({
   );
 }
 
+function getNavIconSrc(item: NavItem, isActive: boolean): string {
+  if (item.id === 'profile') {
+    return item.iconSrc;
+  }
+  if (isActive && item.activeIconSrc) {
+    return item.activeIconSrc;
+  }
+  return item.iconSrc;
+}
+
 export function AppLayout({ activeNavId = 'home', children, rightRail }: AppLayoutProps) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -258,7 +268,7 @@ export function AppLayout({ activeNavId = 'home', children, rightRail }: AppLayo
                         />
                       ) : item.iconSrc ? (
                         <NavMaskIcon
-                          src={item.iconSrc}
+                          src={getNavIconSrc(item, isActive)}
                           className={`h-7 w-7 shrink-0 ${
                             isActive ? 'bg-current' : 'bg-text-secondary dark:bg-text-light'
                           }`}
@@ -368,7 +378,7 @@ export function AppLayout({ activeNavId = 'home', children, rightRail }: AppLayo
                     className="h-7 w-7 shrink-0 rounded-full object-cover"
                   />
                 ) : item.iconSrc ? (
-                  <NavMaskIcon src={item.iconSrc} className="h-7 w-7 shrink-0 bg-current" />
+                  <NavMaskIcon src={getNavIconSrc(item, isActive)} className="h-7 w-7 shrink-0 bg-current" />
                 ) : (
                   <MenuDots className="h-7 w-7 shrink-0 text-shell-text-muted" />
                 );

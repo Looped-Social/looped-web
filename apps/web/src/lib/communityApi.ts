@@ -2,10 +2,12 @@ import { ApiError, getApiBase, notifyAuthGateFromHttpError } from "./apiBase";
 import { getFirebaseIdToken } from "./firebaseClient";
 
 export type CommunityRequestPayload = {
-  type: "company" | "school";
+  type: "company" | "school" | "field" | "major";
   name: string;
   about: string;
   imageKey?: string;
+  contactEmail?: string;
+  notifyWhenAvailable?: boolean;
 };
 
 export type CommunityRequestResponse = {

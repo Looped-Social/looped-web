@@ -6,6 +6,7 @@ import { Logo } from "@looped/ui";
 import { CameraIcon } from "@/app/components/AppIcons/AppIcons";
 import { useToast } from "@/app/components/AppToast/AppToast";
 import { AvatarCropModal } from "@/app/components/AvatarCropModal/AvatarCropModal";
+import { CommunityRequestFlow } from "@/app/components/CommunityRequestFlow/CommunityRequestFlow";
 import { OnboardingContinueButton } from "@/app/components/OnboardingContinueButton/OnboardingContinueButton";
 import { VerificationEmailFlow } from "@/app/components/VerificationEmailFlow/VerificationEmailFlow";
 import { VerificationInfoContent } from "@/app/components/VerificationInfoContent/VerificationInfoContent";
@@ -357,6 +358,24 @@ function CheckIcon({ className }: { className?: string }) {
   );
 }
 
+function PlusIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+    >
+      <path d="M12 5v14" />
+      <path d="M5 12h14" />
+    </svg>
+  );
+}
+
 function OnboardingBackButton({
   onClick,
   disabled = false,
@@ -413,6 +432,7 @@ export function OnboardingPage() {
   const [orgSearchError, setOrgSearchError] = useState<string | null>(null);
   const [isOrgSearchFocused, setIsOrgSearchFocused] = useState(false);
   const [orgSearchRefreshNonce, setOrgSearchRefreshNonce] = useState(0);
+  const [showCommunityRequestFlow, setShowCommunityRequestFlow] = useState(false);
   const [showOrgChoiceInfo, setShowOrgChoiceInfo] = useState(false);
   const [showVerificationHowItWorks, setShowVerificationHowItWorks] = useState(false);
   const [specializationOptions, setSpecializationOptions] = useState<SpecializationOption[]>([]);
@@ -884,6 +904,12 @@ export function OnboardingPage() {
       savePersisted({ latestStep: "org_selection" });
     }
   }, [currentStep, resolvedSelectedOrgName, savePersisted, selectedOrgId]);
+
+  useEffect(() => {
+    if (currentStep === "org_selection") return;
+    if (!showCommunityRequestFlow) return;
+    setShowCommunityRequestFlow(false);
+  }, [currentStep, showCommunityRequestFlow]);
 
   useEffect(() => {
     if (currentStep === "verification_intro") return;
@@ -1473,24 +1499,31 @@ export function OnboardingPage() {
     }
   };
 
-  const handleCompleteAfterCommunityRequest = async () => {
-    setBusy(true);
+  const handleCompleteAfterCommunityRequestFlow = useCallback(async () => {
     try {
       await completeAfterCommunityRequest();
       await refreshSession();
       routeToAppAfterOnboarding();
     } catch (error) {
       if (isInvalidOnboardingStateError(error)) {
-        await recoverFromInvalidOnboardingStep(
-          "Your onboarding state changed. We refreshed your current step."
-        );
-      } else {
-        showOnboardingError(mapOnboardingError(error));
+        try {
+          await refreshSession();
+        } catch {
+          // best effort resync
+        }
       }
-    } finally {
-      setBusy(false);
+      throw error;
     }
-  };
+  }, [refreshSession, routeToAppAfterOnboarding]);
+
+  const mapCommunityRequestCompletionError = useCallback((error: unknown) => {
+    const base = "Your request was submitted, but onboarding could not be finished yet.";
+    if (isInvalidOnboardingStateError(error)) {
+      return `${base} We refreshed your onboarding state. Close this and choose an existing community.`;
+    }
+    const reason = mapOnboardingError(error);
+    return `${base} ${reason}`;
+  }, []);
 
   const toggleSpecialization = (id: string) => {
     const current = persisted.specializationDraft.selectedIds;
@@ -1997,7 +2030,13 @@ export function OnboardingPage() {
 
                   {showOrgLoadingState ? <p className="text-sm text-text-light">Loading organizations...</p> : null}
                   {showOrgStartTypingState ? <p className="text-sm text-text-light">Start typing to search.</p> : null}
-                  {showOrgNoMatchesState ? <p className="text-sm text-text-light">No matches found.</p> : null}
+                  {showOrgNoMatchesState ? (
+                    <div className="space-y-1 pb-0.5 text-center">
+                      <p className="text-sm text-text-secondary">No matches found.</p>
+                      <p className="text-sm font-medium text-text-secondary">Don&apos;t see your community?</p>
+                      <p className="text-sm text-text-light">No worries. Request it here and we&apos;ll be on it.</p>
+                    </div>
+                  ) : null}
                   {orgSearchError ? (
                     <div className="rounded-xl border border-border bg-bg-muted/40 p-3">
                       <p className="text-sm text-brand">{orgSearchError}</p>
@@ -2055,7 +2094,7 @@ export function OnboardingPage() {
                     })}
                   </div>
 
-                  <div className="space-y-2">
+                  <div className="space-y-1.5">
                     <OnboardingContinueButton
                       label="Continue"
                       loadingLabel="Continuing..."
@@ -2068,14 +2107,19 @@ export function OnboardingPage() {
                     />
 
                     {showRequestCommunityCta ? (
-                      <button
-                        type="button"
-                        disabled={transitionLock}
-                        onClick={handleCompleteAfterCommunityRequest}
-                        className="w-full rounded-full border border-border px-5 py-2.5 text-sm font-semibold text-text-secondary transition hover:text-strong"
-                      >
-                        Request community and continue later
-                      </button>
+                      <div className="text-center">
+                        <button
+                          type="button"
+                          disabled={transitionLock}
+                          onClick={() => setShowCommunityRequestFlow(true)}
+                          className="inline-flex h-10 w-full max-w-[360px] items-center justify-center gap-2 rounded-full bg-brand px-5 text-sm font-semibold text-white transition hover:bg-brand/90 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-white text-brand">
+                            <PlusIcon className="h-3 w-3" />
+                          </span>
+                          Request your community
+                        </button>
+                      </div>
                     ) : null}
                   </div>
                 </div>
@@ -2402,6 +2446,19 @@ export function OnboardingPage() {
           </div>
         </div>
       </div>
+      {showCommunityRequestFlow && currentStep === "org_selection" ? (
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-3 sm:items-center sm:p-6">
+          <div className="h-[min(92vh,760px)] w-full max-w-5xl overflow-y-auto rounded-2xl border border-border bg-bg p-4 shadow-xl sm:p-6">
+            <CommunityRequestFlow
+              mode="onboarding"
+              initialName={activeOrgQuery}
+              onClose={() => setShowCommunityRequestFlow(false)}
+              onCompleteOnboardingAfterSubmit={handleCompleteAfterCommunityRequestFlow}
+              mapOnboardingCompletionError={mapCommunityRequestCompletionError}
+            />
+          </div>
+        </div>
+      ) : null}
       <AvatarCropModal
         open={Boolean(finishCropSourceUrl)}
         imageSrc={finishCropSourceUrl}

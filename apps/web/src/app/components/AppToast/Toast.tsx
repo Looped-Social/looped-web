@@ -8,6 +8,32 @@ type ToastViewportProps = {
   tabBarHeight?: number;
 };
 
+const TOAST_ICON_SRC_BY_KIND = {
+  info: "/icons/toasts/warning-toast.svg",
+  warning: "/icons/toasts/warning-toast.svg",
+  success: "/icons/toasts/success-toast.svg",
+  error: "/icons/toasts/error-toast.svg",
+} as const;
+
+function ToastGlyph({ src }: { src: string }) {
+  return (
+    <span
+      className="looped-toast__icon-glyph"
+      style={{
+        maskImage: `url('${src}')`,
+        WebkitMaskImage: `url('${src}')`,
+        maskRepeat: "no-repeat",
+        WebkitMaskRepeat: "no-repeat",
+        maskPosition: "center",
+        WebkitMaskPosition: "center",
+        maskSize: "contain",
+        WebkitMaskSize: "contain",
+      }}
+      aria-hidden="true"
+    />
+  );
+}
+
 function ToastIcon({ kind }: { kind: "info" | "warning" | "loading" | "success" | "error" }) {
   if (kind === "loading") {
     return (
@@ -18,38 +44,7 @@ function ToastIcon({ kind }: { kind: "info" | "warning" | "loading" | "success" 
     );
   }
 
-  if (kind === "success") {
-    return (
-      <svg viewBox="0 0 24 24" className="looped-toast__icon-svg" aria-hidden="true">
-        <path d="m8.8 12.3 2.1 2.1 4.3-4.3" fill="none" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
-    );
-  }
-
-  if (kind === "error") {
-    return (
-      <svg viewBox="0 0 24 24" className="looped-toast__icon-svg" aria-hidden="true">
-        <path d="m9 9 6 6" fill="none" strokeWidth="2.4" strokeLinecap="round" />
-        <path d="m15 9-6 6" fill="none" strokeWidth="2.4" strokeLinecap="round" />
-      </svg>
-    );
-  }
-
-  if (kind === "warning") {
-    return (
-      <svg viewBox="0 0 24 24" className="looped-toast__icon-svg" aria-hidden="true">
-        <path d="M12 7.5v5.2" fill="none" strokeWidth="2.4" strokeLinecap="round" />
-        <circle cx="12" cy="16.2" r="1.1" />
-      </svg>
-    );
-  }
-
-  return (
-    <svg viewBox="0 0 24 24" className="looped-toast__icon-svg" aria-hidden="true">
-      <path d="M12 10v5" fill="none" strokeWidth="2.4" strokeLinecap="round" />
-      <circle cx="12" cy="7.6" r="1.1" />
-    </svg>
-  );
+  return <ToastGlyph src={TOAST_ICON_SRC_BY_KIND[kind]} />;
 }
 
 function CloseIcon() {
@@ -70,7 +65,8 @@ export function ToastViewport({ tabBarHeight = 0 }: ToastViewportProps) {
     if (toast.kind === "loading") return "looped-toast--loading";
     if (toast.kind === "success") return "looped-toast--success";
     if (toast.kind === "error") return "looped-toast--error";
-    return "looped-toast--secondary";
+    if (toast.kind === "warning") return "looped-toast--warning";
+    return "looped-toast--info";
   }, [toast]);
 
   if (!toast) return null;
