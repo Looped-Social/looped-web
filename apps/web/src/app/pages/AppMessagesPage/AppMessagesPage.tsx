@@ -629,12 +629,12 @@ function Avatar({ avatarUrl }: { avatarUrl?: string }) {
 
 function SkeletonRow() {
   return (
-    <div className="animate-pulse px-4 py-3">
+    <div className="px-4 py-3">
       <div className="flex items-center gap-3">
-        <div className="h-12 w-12 rounded-full bg-bg-muted" aria-hidden="true" />
+        <div className="looped-skeleton looped-skeleton-shimmer h-12 w-12 rounded-full" aria-hidden="true" />
         <div className="min-w-0 flex-1">
-          <div className="h-3.5 w-1/3 rounded-full bg-bg-muted" aria-hidden="true" />
-          <div className="mt-2 h-3 w-2/3 rounded-full bg-bg-muted" aria-hidden="true" />
+          <div className="looped-skeleton looped-skeleton-shimmer h-3.5 w-1/3 rounded-full" aria-hidden="true" />
+          <div className="looped-skeleton looped-skeleton-shimmer mt-2 h-3 w-2/3 rounded-full" aria-hidden="true" />
         </div>
       </div>
     </div>
@@ -1080,9 +1080,9 @@ export function AppMessagesPage() {
 
             {isLoadingMessages ? (
               <>
-                <SkeletonRow />
-                <SkeletonRow />
-                <SkeletonRow />
+                {Array.from({ length: 10 }, (_, index) => (
+                  <SkeletonRow key={`messages-skeleton-${index}`} />
+                ))}
               </>
             ) : null}
 
@@ -1153,8 +1153,9 @@ export function AppMessagesPage() {
           <>
             {isLoadingRequests ? (
               <>
-                <SkeletonRow />
-                <SkeletonRow />
+                {Array.from({ length: 8 }, (_, index) => (
+                  <SkeletonRow key={`requests-skeleton-${index}`} />
+                ))}
               </>
             ) : null}
 

@@ -56,34 +56,32 @@ function saveFeedRouteSnapshot(locationKey: string, snapshot: FeedRouteSnapshot)
 function FeedPostSkeleton() {
   return (
     <article className="bg-bg px-4 py-4">
-      <div className="animate-pulse">
-        <div className="flex gap-3">
-          <div className="h-10 w-10 shrink-0 rounded-full bg-bg-muted" aria-hidden="true" />
-          <div className="min-w-0 flex-1">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0 flex-1 space-y-2">
-                <div className="h-3.5 w-2/5 rounded-full bg-bg-muted" aria-hidden="true" />
-                <div className="h-3 w-1/3 rounded-full bg-bg-muted" aria-hidden="true" />
-              </div>
-              <div className="h-3 w-4 rounded-full bg-bg-muted" aria-hidden="true" />
+      <div className="flex gap-3">
+        <div className="looped-skeleton looped-skeleton-shimmer h-10 w-10 shrink-0 rounded-full" aria-hidden="true" />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 flex-1 space-y-2">
+              <div className="looped-skeleton looped-skeleton-shimmer h-3.5 w-2/5 rounded-full" aria-hidden="true" />
+              <div className="looped-skeleton looped-skeleton-shimmer h-3 w-1/3 rounded-full" aria-hidden="true" />
             </div>
-
-            <div className="mt-4 space-y-2">
-              <div className="h-3.5 w-full rounded-full bg-bg-muted" aria-hidden="true" />
-              <div className="h-3.5 w-5/6 rounded-full bg-bg-muted" aria-hidden="true" />
-            </div>
-
-            <div className="mt-4 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="h-5 w-10 rounded-full bg-bg-muted" aria-hidden="true" />
-                <div className="h-5 w-10 rounded-full bg-bg-muted" aria-hidden="true" />
-                <div className="h-5 w-10 rounded-full bg-bg-muted" aria-hidden="true" />
-              </div>
-              <div className="h-5 w-5 rounded-sm bg-bg-muted" aria-hidden="true" />
-            </div>
-
-            <div className="mt-3 h-3 w-20 rounded-full bg-bg-muted" aria-hidden="true" />
+            <div className="looped-skeleton looped-skeleton-shimmer h-3 w-4 rounded-full" aria-hidden="true" />
           </div>
+
+          <div className="mt-4 space-y-2">
+            <div className="looped-skeleton looped-skeleton-shimmer h-3.5 w-full rounded-full" aria-hidden="true" />
+            <div className="looped-skeleton looped-skeleton-shimmer h-3.5 w-5/6 rounded-full" aria-hidden="true" />
+          </div>
+
+          <div className="mt-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="looped-skeleton looped-skeleton-shimmer h-5 w-10 rounded-full" aria-hidden="true" />
+              <div className="looped-skeleton looped-skeleton-shimmer h-5 w-10 rounded-full" aria-hidden="true" />
+              <div className="looped-skeleton looped-skeleton-shimmer h-5 w-10 rounded-full" aria-hidden="true" />
+            </div>
+            <div className="looped-skeleton looped-skeleton-shimmer h-5 w-5 rounded-sm" aria-hidden="true" />
+          </div>
+
+          <div className="looped-skeleton looped-skeleton-shimmer mt-3 h-3 w-20 rounded-full" aria-hidden="true" />
         </div>
       </div>
     </article>
@@ -1216,7 +1214,7 @@ export function AppFeedPage() {
 
         {feedStatus === "loading" && posts.length === 0 && !feedError ? (
           <>
-            {Array.from({ length: 5 }, (_, index) => (
+            {Array.from({ length: 6 }, (_, index) => (
               <FeedPostSkeleton key={`feed-skeleton-${index}`} />
             ))}
           </>

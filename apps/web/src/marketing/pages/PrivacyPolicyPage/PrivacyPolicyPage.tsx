@@ -1,6 +1,7 @@
 import { Link } from "react-router";
 
 import { LegalPage, type LegalSection } from "@/marketing/components/LegalPage/LegalPage";
+import { SITE_URL } from "@/lib/seo";
 
 const sections: LegalSection[] = [
   {
@@ -9,7 +10,7 @@ const sections: LegalSection[] = [
       "This Privacy Notice for Vance and Preston (doing business as Looped Social) (\"we,\" \"us,\" or \"our\"), describes how and why we might access, collect, store, use, and/or share (\"process\") your personal information when you use our services (\"Services\"), including when you:",
     ],
     bullets: [
-      "Visit our website at https://www.mylooped.app or any website of ours that links to this Privacy Notice",
+      `Visit our website at ${SITE_URL} or any website of ours that links to this Privacy Notice`,
       "Use Looped Inc.. Looped Inc. provides a social connection platform designed to help users form authentic communities online, with content made by people for people. We maintain every post comes from a verified user with verified credentials.",
       "Engage with us in other related ways, including any sales, marketing, or events",
     ],
@@ -34,7 +35,7 @@ const sections: LegalSection[] = [
       "How do we process your information? To provide, improve, administer Services, communicate, ensure security, prevent fraud, and comply with law.",
       "How do we keep your information safe? Through organizational and technical safeguards, though no system is 100% secure.",
       "What are your rights? Rights vary by location and may include access, correction, deletion, and opt-out rights.",
-      "How do you exercise your rights? Visit https://www.mylooped.app/terms or contact us.",
+      `How do you exercise your rights? Visit ${new URL("/terms", SITE_URL).toString()} or contact us.`,
     ],
   },
   {
@@ -247,7 +248,7 @@ const sections: LegalSection[] = [
       <>
         Requests can be submitted at:{" "}
         <Link className="font-semibold text-brand hover:text-brand/90" to="/delete-account">
-          https://www.mylooped.app/delete-account
+          {new URL("/delete-account", SITE_URL).toString()}
         </Link>
       </>,
     ],

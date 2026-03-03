@@ -185,10 +185,12 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 function SettingsRowLabel({
   label,
   iconSrc,
+  iconClassName,
   labelClassName = "text-sm font-semibold text-strong",
 }: {
   label: string;
   iconSrc?: string;
+  iconClassName?: string;
   labelClassName?: string;
 }) {
   return (
@@ -198,7 +200,7 @@ function SettingsRowLabel({
           src={iconSrc}
           alt=""
           aria-hidden="true"
-          className="h-5 w-5 shrink-0 object-contain"
+          className={`h-5 w-5 shrink-0 object-contain ${iconClassName ?? ""}`}
           loading="lazy"
           onError={(event) => {
             event.currentTarget.style.display = "none";
@@ -214,14 +216,16 @@ function LinkRow({
   label,
   to,
   iconSrc,
+  iconClassName,
 }: {
   label: string;
   to: string;
   iconSrc?: string;
+  iconClassName?: string;
 }) {
   return (
     <Link to={to} className="flex items-center justify-between gap-3 px-4 py-3 transition hover:bg-bg-muted/30">
-      <SettingsRowLabel label={label} iconSrc={iconSrc} />
+      <SettingsRowLabel label={label} iconSrc={iconSrc} iconClassName={iconClassName} />
       <ChevronRightIcon className="h-4 w-4 shrink-0 text-text-light" />
     </Link>
   );
@@ -950,6 +954,7 @@ export function AppSettingsPage() {
                   label="Community Verifications"
                   to="/app/settings/verifications"
                   iconSrc={SETTINGS_ICON.verified}
+                  iconClassName="dark:invert dark:brightness-110 dark:opacity-90"
                 />
               </div>
             </Section>

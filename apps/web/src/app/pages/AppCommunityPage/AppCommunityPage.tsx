@@ -198,6 +198,41 @@ function StatusBadgeIcon({
   );
 }
 
+function CommunityPostSkeleton() {
+  return (
+    <article className="bg-bg px-4 py-4">
+      <div className="flex gap-3">
+        <div className="looped-skeleton looped-skeleton-shimmer h-10 w-10 shrink-0 rounded-full" aria-hidden="true" />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 flex-1 space-y-2">
+              <div className="looped-skeleton looped-skeleton-shimmer h-3.5 w-2/5 rounded-full" aria-hidden="true" />
+              <div className="looped-skeleton looped-skeleton-shimmer h-3 w-1/3 rounded-full" aria-hidden="true" />
+            </div>
+            <div className="looped-skeleton looped-skeleton-shimmer h-3 w-4 rounded-full" aria-hidden="true" />
+          </div>
+
+          <div className="mt-4 space-y-2">
+            <div className="looped-skeleton looped-skeleton-shimmer h-3.5 w-full rounded-full" aria-hidden="true" />
+            <div className="looped-skeleton looped-skeleton-shimmer h-3.5 w-5/6 rounded-full" aria-hidden="true" />
+          </div>
+
+          <div className="mt-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="looped-skeleton looped-skeleton-shimmer h-5 w-10 rounded-full" aria-hidden="true" />
+              <div className="looped-skeleton looped-skeleton-shimmer h-5 w-10 rounded-full" aria-hidden="true" />
+              <div className="looped-skeleton looped-skeleton-shimmer h-5 w-10 rounded-full" aria-hidden="true" />
+            </div>
+            <div className="looped-skeleton looped-skeleton-shimmer h-5 w-5 rounded-sm" aria-hidden="true" />
+          </div>
+
+          <div className="looped-skeleton looped-skeleton-shimmer mt-3 h-3 w-20 rounded-full" aria-hidden="true" />
+        </div>
+      </div>
+    </article>
+  );
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
@@ -936,9 +971,9 @@ export function AppCommunityPage({ communityId }: AppCommunityPageProps) {
     <AppLayout activeNavId="home">
       {detailStatus === "loading" ? (
         <div className="space-y-3 bg-bg px-4 py-6">
-          <div className="h-5 w-1/3 animate-pulse rounded-full bg-bg-muted" />
-          <div className="h-4 w-2/3 animate-pulse rounded-full bg-bg-muted" />
-          <div className="h-20 animate-pulse rounded-2xl bg-bg-muted" />
+          <div className="looped-skeleton looped-skeleton-shimmer h-5 w-1/3 rounded-full" />
+          <div className="looped-skeleton looped-skeleton-shimmer h-4 w-2/3 rounded-full" />
+          <div className="looped-skeleton looped-skeleton-shimmer h-20 rounded-2xl" />
         </div>
       ) : null}
 
@@ -1155,7 +1190,11 @@ export function AppCommunityPage({ communityId }: AppCommunityPageProps) {
               ))}
 
               {postsStatus === "loading" && posts.length === 0 && !postsError ? (
-                <div className="px-4 py-5 text-sm text-text-secondary">Loading posts...</div>
+                <div className="looped-fade-swap">
+                  {Array.from({ length: 6 }, (_, index) => (
+                    <CommunityPostSkeleton key={`community-post-skeleton-${index}`} />
+                  ))}
+                </div>
               ) : null}
 
               {posts.length === 0 && postsStatus === "idle" && !postsError ? (
@@ -1204,7 +1243,11 @@ export function AppCommunityPage({ communityId }: AppCommunityPageProps) {
               ))}
 
               {hashtagsStatus === "loading" && hashtags.length === 0 && !hashtagsError ? (
-                <div className="px-4 py-5 text-sm text-text-secondary">Loading hashtag posts...</div>
+                <div className="looped-fade-swap">
+                  {Array.from({ length: 6 }, (_, index) => (
+                    <CommunityPostSkeleton key={`community-hashtag-skeleton-${index}`} />
+                  ))}
+                </div>
               ) : null}
 
               {hashtags.length === 0 && hashtagsStatus === "idle" && !hashtagsError ? (

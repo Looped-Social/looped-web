@@ -350,7 +350,7 @@ export function VerificationEmailFlow({
           <p className="text-sm text-text-secondary">{domainSupportCopy}</p>
           <p className="text-sm text-text-secondary">
             <a
-              href="https://mylooped.app/contact"
+              href="/contact"
               target="_blank"
               rel="noreferrer"
               className="text-secondary underline underline-offset-2 hover:text-secondary/80"

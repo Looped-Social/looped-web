@@ -10,7 +10,7 @@ type ProfileShareMeta = {
 };
 
 const APP_STORE_ID = "6758413180";
-const FALLBACK_IMAGE_URL = "https://mylooped.app/main-logo.svg";
+const FALLBACK_IMAGE_PATH = "/main-logo.svg";
 
 function normalizeSlug(raw: string | undefined): string {
   const value = raw?.trim() ?? "";
@@ -72,10 +72,10 @@ function preferredDisplayName(value: unknown): string | undefined {
   ]);
 }
 
-function toAbsoluteUrl(value: string | undefined): string | undefined {
+function toAbsoluteUrl(value: string | undefined, origin: string): string | undefined {
   if (!value) return undefined;
   try {
-    return new URL(value, "https://mylooped.app").toString();
+    return new URL(value, origin).toString();
   } catch {
     return undefined;
   }
@@ -96,7 +96,7 @@ function buildFallbackMeta(username: string, origin: string): ProfileShareMeta {
     title: `Looped — @${username}`,
     description: `Check out @${username}'s public Looped profile.`,
     canonicalUrl,
-    previewImageUrl: FALLBACK_IMAGE_URL,
+    previewImageUrl: new URL(FALLBACK_IMAGE_PATH, origin).toString(),
     iosDeepLink: `looped://profile/${encodeURIComponent(username)}`,
   };
 }
@@ -170,7 +170,9 @@ export async function loader({ params, request }: Route.LoaderArgs) {
       title: `${displayName} (@${publicUsername}) | Looped`,
       description,
       canonicalUrl: `${origin}/u/${encodeURIComponent(publicUsername)}`,
-      previewImageUrl: toAbsoluteUrl(pickString(profile, ["profile_image_url", "profileImageUrl"])) ?? FALLBACK_IMAGE_URL,
+      previewImageUrl:
+        toAbsoluteUrl(pickString(profile, ["profile_image_url", "profileImageUrl"]), origin) ??
+        new URL(FALLBACK_IMAGE_PATH, origin).toString(),
       iosDeepLink: `looped://profile/${encodeURIComponent(publicUsername)}`,
     } satisfies ProfileShareMeta;
   } catch {
@@ -180,7 +182,15 @@ export async function loader({ params, request }: Route.LoaderArgs) {
 
 export function meta({ params, data }: Route.MetaArgs) {
   const username = normalizeSlug(params.username);
-  const shareMeta = (data as ProfileShareMeta | undefined) ?? buildFallbackMeta(username, "https://mylooped.app");
+  const shareMeta =
+    (data as ProfileShareMeta | undefined) ??
+    ({
+      title: `Looped — @${username}`,
+      description: `Check out @${username}'s public Looped profile.`,
+      canonicalUrl: `/u/${encodeURIComponent(username)}`,
+      previewImageUrl: FALLBACK_IMAGE_PATH,
+      iosDeepLink: `looped://profile/${encodeURIComponent(username)}`,
+    } satisfies ProfileShareMeta);
   const title = shareMeta.title;
   const description = shareMeta.description;
   const canonicalUrl = shareMeta.canonicalUrl;

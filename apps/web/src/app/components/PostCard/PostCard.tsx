@@ -8,6 +8,7 @@ import { EntityText } from "@/app/components/EntityText/EntityText";
 import { useEntityNavigation } from "@/app/hooks/useEntityNavigation";
 import type { CommunityPermissions } from "@/lib/communityPermissionsApi";
 import { getCommunityPermissions } from "@/lib/communityPermissionsApi";
+import { SITE_URL } from "@/lib/seo";
 import { type ResolvedMediaAsset, resolveMediaAssets } from "@/lib/mediaApi";
 import {
   emitAuthorBlocked,
@@ -401,7 +402,7 @@ export function PostCard({ post }: PostCardProps) {
   );
   const sharePath = useMemo(() => `/p/${encodeURIComponent(post.id)}`, [post.id]);
   const shareUrl = useMemo(() => {
-    if (typeof window === "undefined") return `https://mylooped.app${sharePath}`;
+    if (typeof window === "undefined") return `${SITE_URL}${sharePath}`;
     return `${window.location.origin}${sharePath}`;
   }, [sharePath]);
   const mediaAssetIdsKey = (post.mediaAssetIds ?? []).join(",");

@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { useNavigate } from "react-router";
 
 import { useUserSession } from "@/hooks/useUserSession";
-import { buildMarketingPageMeta } from "@/lib/seo";
+import { buildMarketingPageMeta, SITE_URL, DEFAULT_SOCIAL_IMAGE_PATH, toSiteUrl } from "@/lib/seo";
 import type { Route } from "./+types/home";
 import { HomePage } from "@/marketing/pages/HomePage/HomePage";
 
@@ -10,8 +10,8 @@ const ORGANIZATION_JSON_LD = {
   "@context": "https://schema.org",
   "@type": "Organization",
   name: "Looped",
-  url: "https://mylooped.app",
-  logo: "https://mylooped.app/main-logo.svg",
+  url: SITE_URL,
+  logo: toSiteUrl(DEFAULT_SOCIAL_IMAGE_PATH),
   sameAs: ["https://apps.apple.com/us/app/looped-social/id6758413180"],
 };
 
@@ -21,7 +21,7 @@ const MOBILE_APP_JSON_LD = {
   name: "Looped Social",
   applicationCategory: "SocialNetworkingApplication",
   operatingSystem: "iOS",
-  url: "https://mylooped.app",
+  url: SITE_URL,
   downloadUrl: "https://apps.apple.com/us/app/looped-social/id6758413180",
   description:
     "Looped is a verified social network for workplaces and colleges where employees and students can post pseudonymously.",

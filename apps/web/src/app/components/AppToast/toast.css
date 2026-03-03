@@ -60,38 +60,31 @@
 
 .looped-toast__icon {
   flex: 0 0 auto;
-  width: 30px;
-  height: 30px;
-  border-radius: 999px;
+  width: 24px;
+  height: 24px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: color-mix(in srgb, var(--toast-secondary) 14%, transparent);
   color: var(--toast-secondary);
 }
 
 .looped-toast--success .looped-toast__icon {
-  background: color-mix(in srgb, var(--toast-success) 18%, transparent);
   color: var(--toast-success);
 }
 
 .looped-toast--error .looped-toast__icon {
-  background: color-mix(in srgb, var(--toast-error) 18%, transparent);
   color: var(--toast-error);
 }
 
 .looped-toast--warning .looped-toast__icon {
-  background: color-mix(in srgb, var(--toast-warning) 20%, transparent);
   color: var(--toast-warning);
 }
 
 .looped-toast--info .looped-toast__icon {
-  background: color-mix(in srgb, var(--toast-secondary) 18%, transparent);
   color: var(--toast-secondary);
 }
 
 .looped-toast--loading .looped-toast__icon {
-  background: color-mix(in srgb, var(--toast-secondary) 16%, transparent);
   color: var(--toast-secondary);
 }
 

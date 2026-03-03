@@ -1,8 +1,18 @@
 import type { MetaDescriptor } from "react-router";
 
-const SITE_NAME = "Looped";
-const SITE_URL = "https://mylooped.app";
-const DEFAULT_SOCIAL_IMAGE_PATH = "/main-logo.svg";
+export const SITE_NAME = "Looped";
+// Used for canonical URLs + OG tags on marketing pages.
+// Override per-environment (e.g. new Cloudflare domain) with `VITE_SITE_URL`.
+export const SITE_URL =
+  (typeof import.meta !== "undefined" ? import.meta.env?.VITE_SITE_URL : undefined)?.trim() || "https://mylooped.app";
+export const SITE_HOST = (() => {
+  try {
+    return new URL(SITE_URL).host;
+  } catch {
+    return "mylooped.app";
+  }
+})();
+export const DEFAULT_SOCIAL_IMAGE_PATH = "/main-logo.svg";
 
 type MarketingMetaInput = {
   title: string;
@@ -28,7 +38,7 @@ function normalizePath(path: string): string {
   return trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
 }
 
-function toSiteUrl(pathOrUrl: string): string {
+export function toSiteUrl(pathOrUrl: string): string {
   try {
     return new URL(pathOrUrl, SITE_URL).toString();
   } catch {
