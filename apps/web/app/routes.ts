@@ -2,6 +2,7 @@ import { type RouteConfig, index, route } from '@react-router/dev/routes';
 
 export default [
   route('.well-known/apple-app-site-association', 'routes/marketing/apple-app-site-association.tsx'),
+  route('favicon.ico', 'routes/marketing/favicon-ico.tsx'),
   route('robots.txt', 'routes/marketing/robots.tsx'),
   route('sitemap.xml', 'routes/marketing/sitemap.tsx'),
   index('routes/marketing/home.tsx'),
