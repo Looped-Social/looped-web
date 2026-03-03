@@ -2,7 +2,7 @@ import { type CSSProperties, type SyntheticEvent, useCallback, useEffect, useMem
 
 import type { PeopleRecommendationItem, PeopleRecommendationRailPage, PeopleRecommendationReason } from "@/lib/peopleRecommendationsApi";
 
-const DEFAULT_PROFILE_IMAGE_SRC = "/ios-icons/pfp2.svg";
+const DEFAULT_PROFILE_IMAGE_SRC = "/icons/profile/default-avatar.svg";
 
 type PeopleRecommendationRailProps = {
   rail: PeopleRecommendationRailPage;

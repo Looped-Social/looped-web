@@ -20,6 +20,7 @@ const FEEDBACK_FLUSH_INTERVAL_MS = 2_000;
 const FEEDBACK_MAX_BATCH_SIZE = 200;
 const INITIAL_RAIL_LIMIT = 10;
 const PAGED_RAIL_LIMIT = 20;
+const RECOMMENDATIONS_REQUEST_TIMEOUT_MS = 12_000;
 
 function randomEventId(): string {
   if (typeof globalThis !== "undefined" && globalThis.crypto && typeof globalThis.crypto.randomUUID === "function") {
@@ -74,6 +75,25 @@ function mergeUniqueRecommendationItems(existing: PeopleRecommendationItem[], in
     next.push(item);
   }
   return next;
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMessage: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timeoutId = window.setTimeout(() => {
+      reject(new Error(timeoutMessage));
+    }, timeoutMs);
+
+    promise.then(
+      (value) => {
+        window.clearTimeout(timeoutId);
+        resolve(value);
+      },
+      (error) => {
+        window.clearTimeout(timeoutId);
+        reject(error);
+      }
+    );
+  });
 }
 
 function buildFeedbackEvent(
@@ -268,11 +288,15 @@ export function usePeopleRecommendations() {
     }
 
     try {
-      const bundle = await fetchPeopleRecommendationRails({
-        surface: "search",
-        rails: ["pymk"],
-        limitPerRail: INITIAL_RAIL_LIMIT,
-      });
+      const bundle = await withTimeout(
+        fetchPeopleRecommendationRails({
+          surface: "search",
+          rails: ["pymk"],
+          limitPerRail: INITIAL_RAIL_LIMIT,
+        }),
+        RECOMMENDATIONS_REQUEST_TIMEOUT_MS,
+        "Timed out loading recommendations."
+      );
       const nextRail = bundle.rails.find((entry) => entry.rail === "pymk") ?? null;
 
       if (!isMountedRef.current) return;
@@ -305,12 +329,16 @@ export function usePeopleRecommendations() {
 
     setIsLoadingMore(true);
     try {
-      const page = await fetchPeopleRecommendationRailPage({
-        rail: "pymk",
-        surface: "search",
-        limit: PAGED_RAIL_LIMIT,
-        cursor: currentRail.nextCursor,
-      });
+      const page = await withTimeout(
+        fetchPeopleRecommendationRailPage({
+          rail: "pymk",
+          surface: "search",
+          limit: PAGED_RAIL_LIMIT,
+          cursor: currentRail.nextCursor,
+        }),
+        RECOMMENDATIONS_REQUEST_TIMEOUT_MS,
+        "Timed out loading more recommendations."
+      );
 
       if (!isMountedRef.current) return;
 

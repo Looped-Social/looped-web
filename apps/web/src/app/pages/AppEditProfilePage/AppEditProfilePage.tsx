@@ -20,9 +20,10 @@ import {
 } from "@/lib/profileEditApi";
 import { fetchMyShareLink, fetchSlugAvailability, fetchUserMe, fetchUserProfile, parseUserApiError, updateMyShareLink } from "@/lib/userApi";
 import { isValidUsername, normalizeUsername } from "@/lib/settingsValidation";
+import { SITE_HOST, SITE_URL } from "@/lib/seo";
 import { refreshCurrentUser } from "@/stores/currentUserStore";
 
-const DEFAULT_PROFILE_IMAGE_SRC = "/ios-icons/pfp2.svg";
+const DEFAULT_PROFILE_IMAGE_SRC = "/icons/profile/default-avatar.svg";
 const SHARE_HANDLE_PATTERN = /^[a-z0-9_]{3,30}$/;
 
 type SelectOption = {
@@ -579,7 +580,7 @@ export function AppEditProfilePage() {
   const profileShareUrl = useMemo(() => {
     const activeSlug = normalizedShareDraft || effectiveUsernameSlug;
     if (!activeSlug) return null;
-    if (typeof window === "undefined") return `https://mylooped.app/u/${activeSlug}`;
+    if (typeof window === "undefined") return `${SITE_URL}/u/${activeSlug}`;
     return `${window.location.origin}/u/${activeSlug}`;
   }, [effectiveUsernameSlug, normalizedShareDraft]);
   const profileShareDisplay = useMemo(() => (profileShareUrl ? displayUrlWithoutProtocol(profileShareUrl) : null), [profileShareUrl]);
@@ -1038,7 +1039,7 @@ export function AppEditProfilePage() {
               <div className="rounded-xl border border-border/70 bg-bg-muted px-3 py-3">
                 <p className="text-[1.08rem] font-semibold text-strong">Share Link</p>
                 <div className="mt-2 flex items-center gap-2 rounded-xl border border-border/70 bg-bg px-3 py-2">
-                  <span className="shrink-0 text-sm text-text-secondary">mylooped.app/u/</span>
+                  <span className="shrink-0 text-sm text-text-secondary">{SITE_HOST}/u/</span>
                   <input
                     value={shareLinkDraft}
                     onChange={(event) => setShareLinkDraft(event.currentTarget.value.toLowerCase())}

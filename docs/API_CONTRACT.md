@@ -2,6 +2,8 @@
 
 This document is a consolidated, client-facing API contract for Looped. It’s written for `looped-web` implementers, but it mirrors how iOS works today.
 
+Last updated: 2026-03-02
+
 Authoritative backend references:
 - Security / auth gates: `looped-services/apps/api/src/main/java/com/looped/auth/SecurityConfig.java`
 - Controllers (routes): `looped-services/apps/api/src/main/java/com/looped/**/**/*Controller.java`
@@ -20,6 +22,7 @@ Authoritative iOS references:
 - Firebase ID token:
   - `Authorization: Bearer <Firebase ID token>`
 - Most `/v1/**` and `/anon/**` routes require auth, except a small allow-list (media presign/callback/resolve, feedback, and anon-capable actions). See `SecurityConfig.java`.
+- Web auth is Firebase in-browser (Google/Apple/email-password). There is no separate backend web login endpoint.
 
 ### Anonymous actor (no JWT)
 For anon-capable endpoints, there are two mutually exclusive modes:
@@ -79,11 +82,21 @@ Backend: `looped-services/apps/api/src/main/java/com/looped/settings/AppConfigCo
 - `GET /v1/me` (auth required)
   - Includes:
     - Firebase token identity (`sub`, `iss`, `aud`, `email?`)
-    - Onboarding state (`onboarding_complete`, `onboarding_step`)
+    - Onboarding state:
+      - `onboarding_complete`
+      - `onboarding_step` (legacy)
+      - `onboarding_stage_v2`
+      - `onboarding_context`
+      - `allowed_next_stages_v2` (present on some conflict/resume responses)
+    - Profile completion:
+      - `profile_completion.should_prompt`
+      - `profile_completion.missing_photo|missing_bio|missing_specialization`
     - Provisioning state (`provisioned`)
     - `user` payload when provisioned
   - Special cases:
     - `409 { error: "account_delete_pending", account_delete_pending: true, provisioned: false }` while deletion is active
+    - `409 { error: "user_not_provisioned" }` for newly authenticated users before profile bootstrap
+    - `409 { error: "onboarding_incomplete" }` for mid-onboarding users
     - `account_deleted: true` can be returned after retention purge logic.
 
 Backend: `looped-services/apps/api/src/main/java/com/looped/auth/MeController.java`
@@ -99,11 +112,28 @@ Used by iOS: `looped-iOS/looped-iOS/Services/UserService.swift`
     - `409` for conflicts (e.g., username taken)
     - `409 { error: "account_delete_pending" }` when prior delete is still active for the account
     - `422` for invalid inputs
-- `PUT /v1/users/me/onboarding` (auth required)
-  - Body: `{ step: "profile_setup|select_company|verification|verification_notifications" }`
-  - Response: `{ onboarding_complete, onboarding_step }`
 - `GET /v1/users/username/availability?username=...` (auth required)
   - Response: `{ username, available, owned_by_me? }`
+
+Onboarding-v2 progression endpoints:
+- `POST /v1/users/me/onboarding-v2/info-screen/viewed`
+- `PUT /v1/users/me/onboarding-v2/org`
+  - Body: `{ org_id }` (snake_case preferred; backend may accept aliases)
+- `PUT /v1/users/me/onboarding-v2/verification-choice`
+  - Body: `{ verification_path: "email|skip|photo_id" }`
+  - Web onboarding policy: use `"email"` only for verification flow.
+- `POST /v1/users/me/onboarding-v2/email-verification/success`
+- `POST /v1/users/me/onboarding-v2/specialization`
+  - Body: `{ specialization_id }` or alias
+- `POST /v1/users/me/onboarding-v2/skip-explainer/ack`
+- `POST /v1/users/me/onboarding-v2/photo-pending-explainer/ack`
+- `POST /v1/users/me/onboarding-v2/finalize`
+- `POST /v1/users/me/onboarding-v2/complete-after-community-request`
+
+Web onboarding resolver guidance:
+- Use server stage/context as source of truth (`onboarding_stage_v2` + `onboarding_context`).
+- Local drafts/last-step are fallback only.
+- If backend returns incompatible photo-id stage on web onboarding, recover by setting `verification_path=email`, refetching identity, and rerunning resolver.
 
 Backend: `looped-services/apps/api/src/main/java/com/looped/users/UsersController.java`
 
@@ -152,10 +182,13 @@ Backend:
   - Body supports:
     - `displayName?: string|null`
     - `bio?: string|null`
-    - `isAnonymous?: boolean`
+    - `isAnonymous?: boolean` (include explicitly in web payloads; web should send `false`)
     - `showFollowerCount?: boolean|null`
     - `messagePermission?: string|null`
     - `profileMediaAssetId?: number|null`
+- Finish-profile prompt dismiss:
+  - `POST /v1/me/profile-completion/dismiss` (auth required)
+  - Used for both “Skip for now” and successful “Continue” completion path.
 - Legacy alias:
   - `PUT /users/me` (auth required)
 
@@ -191,6 +224,8 @@ Backend: `looped-services/apps/api/src/main/java/com/looped/users/UsersControlle
 - Delete status polling:
   - `GET /v1/users/me/delete-status` (auth required)
   - Response fields include `deletion_status`, `delete_pending`, `operation_id`, timestamps (`requested_at`, `updated_at`, `completed_at?`), and optional `error`
+  - Web handling rule:
+    - if initial delete returns pending, poll this endpoint and treat delete as complete only when `deletion_status="completed"` and `delete_pending=false`
 - Alternate (HTTP DELETE):
   - `DELETE /v1/users/me?mode=soft|hard`
 
@@ -332,17 +367,37 @@ Backend:
 ### Community permissions + verification
 - Permissions:
   - `GET /v1/communities/{id}/permissions` → `{ can_post, requires_verification, requires_join }`
-- Verification:
+- Email verification (shared by onboarding + profile/settings verify):
   - `POST /v1/communities/{id}/verification/start`
+    - Body: `{ method: "email", email: "name@domain.com" }`
   - `POST /v1/communities/{id}/verification/finish`
+    - Body: `{ method: "email", code: "123456", email: "name@domain.com" }`
   - `DELETE /v1/communities/{id}/verification` (unverify)
   - `GET /v1/communities/verifications` (list)
+
+Mode-specific rule:
+- Onboarding verification must also call onboarding-v2 endpoints for progression (`verification-choice`, then `email-verification/success` after finish).
+- Profile/settings verification must not call onboarding-v2 progression endpoints.
 
 Backend: `looped-services/apps/api/src/main/java/com/looped/communities/CommunityVerificationController.java`
 
 ### Community requests (request a new company/school/etc)
 - `POST /v1/community-requests` (auth required)
+  - Body:
+    - `type: "company|school|field|major"`
+    - `name: string`
+    - `about: string`
+    - `imageKey?: string`
+    - `contactEmail?: string`
+    - `notifyWhenAvailable: boolean`
+  - Important validation:
+    - if `notifyWhenAvailable=true`, `contactEmail` is required
 - `GET /v1/community-requests?status=...` (auth required)
+
+Onboarding side-flow completion:
+- After successful request creation in onboarding org-selection side flow:
+  - `POST /v1/users/me/onboarding-v2/complete-after-community-request`
+- Do not call this endpoint in regular settings/profile request flow.
 
 Backend: `looped-services/apps/api/src/main/java/com/looped/communities/CommunityRequestsController.java`
 Used by web today: `looped-web/apps/web/src/lib/communityApi.ts`
@@ -369,6 +424,8 @@ Backend:
 - Follow/join/joined/limits: `looped-services/apps/api/src/main/java/com/looped/communities/SpecializationsController.java`
 
 ## Photo ID verification
+
+Backend supports photo ID endpoints below, but web onboarding policy is currently email-only (no photo ID path in web onboarding UX).
 
 Global photo ID verification:
 - `POST /v1/verification/photo-id/start`

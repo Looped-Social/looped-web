@@ -27,8 +27,9 @@ import {
   setUserFollowing,
   updateMyShareLink,
 } from "@/lib/userApi";
+import { SITE_HOST, SITE_URL } from "@/lib/seo";
 
-const DEFAULT_PROFILE_IMAGE_SRC = "/ios-icons/pfp2.svg";
+const DEFAULT_PROFILE_IMAGE_SRC = "/icons/profile/default-avatar.svg";
 const FOLLOW_STORE_KEY = "looped-following-user-ids";
 const SHARE_HANDLE_PATTERN = /^[a-z0-9_]{3,30}$/;
 
@@ -623,8 +624,8 @@ function SettingsIcon({ className }: { className?: string }) {
     <span
       className={`inline-block shrink-0 ${className ?? ""}`}
       style={{
-        maskImage: "url('/ios-icons/nav-settings.svg')",
-        WebkitMaskImage: "url('/ios-icons/nav-settings.svg')",
+        maskImage: "url('/icons/nav/settings.svg')",
+        WebkitMaskImage: "url('/icons/nav/settings.svg')",
         maskRepeat: "no-repeat",
         WebkitMaskRepeat: "no-repeat",
         maskPosition: "center",
@@ -663,6 +664,41 @@ function ReplyContentCard({ item }: { item: ReplyFeedData }) {
   return <article className="bg-bg px-4 py-4">{body}</article>;
 }
 
+function ProfileFeedPostSkeleton() {
+  return (
+    <article className="bg-bg px-4 py-4">
+      <div className="flex gap-3">
+        <div className="looped-skeleton looped-skeleton-shimmer h-10 w-10 shrink-0 rounded-full" aria-hidden="true" />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 flex-1 space-y-2">
+              <div className="looped-skeleton looped-skeleton-shimmer h-3.5 w-2/5 rounded-full" aria-hidden="true" />
+              <div className="looped-skeleton looped-skeleton-shimmer h-3 w-1/3 rounded-full" aria-hidden="true" />
+            </div>
+            <div className="looped-skeleton looped-skeleton-shimmer h-3 w-4 rounded-full" aria-hidden="true" />
+          </div>
+
+          <div className="mt-4 space-y-2">
+            <div className="looped-skeleton looped-skeleton-shimmer h-3.5 w-full rounded-full" aria-hidden="true" />
+            <div className="looped-skeleton looped-skeleton-shimmer h-3.5 w-5/6 rounded-full" aria-hidden="true" />
+          </div>
+
+          <div className="mt-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="looped-skeleton looped-skeleton-shimmer h-5 w-10 rounded-full" aria-hidden="true" />
+              <div className="looped-skeleton looped-skeleton-shimmer h-5 w-10 rounded-full" aria-hidden="true" />
+              <div className="looped-skeleton looped-skeleton-shimmer h-5 w-10 rounded-full" aria-hidden="true" />
+            </div>
+            <div className="looped-skeleton looped-skeleton-shimmer h-5 w-5 rounded-sm" aria-hidden="true" />
+          </div>
+
+          <div className="looped-skeleton looped-skeleton-shimmer mt-3 h-3 w-20 rounded-full" aria-hidden="true" />
+        </div>
+      </div>
+    </article>
+  );
+}
+
 export function AppProfilePage({ profileUserId }: AppProfilePageProps) {
   const navigate = useNavigate();
   const { showToast } = useToast();
@@ -680,6 +716,7 @@ export function AppProfilePage({ profileUserId }: AppProfilePageProps) {
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [feedStatus, setFeedStatus] = useState<"idle" | "loading" | "loading-more" | "error">("idle");
   const [feedError, setFeedError] = useState<string | null>(null);
+  const [showDelayedFeedSkeleton, setShowDelayedFeedSkeleton] = useState(false);
 
   const [isFollowing, setIsFollowing] = useState(false);
   const [isFollowLoading, setIsFollowLoading] = useState(false);
@@ -717,7 +754,7 @@ export function AppProfilePage({ profileUserId }: AppProfilePageProps) {
       return shareLink.canonicalUrl;
     }
     if (!profileSharePath) return null;
-    if (typeof window === "undefined") return `https://mylooped.app${profileSharePath}`;
+    if (typeof window === "undefined") return `${SITE_URL}${profileSharePath}`;
     return `${window.location.origin}${profileSharePath}`;
   }, [isCurrentUser, profileSharePath, shareLink?.canonicalUrl]);
   const profileShareDisplay = useMemo(
@@ -725,7 +762,7 @@ export function AppProfilePage({ profileUserId }: AppProfilePageProps) {
       profileShareUrl
         ? displayUrlWithoutProtocol(profileShareUrl)
         : normalizedShareHandle
-          ? `mylooped.app/u/${normalizedShareHandle}`
+          ? `${SITE_HOST}/u/${normalizedShareHandle}`
           : null,
     [normalizedShareHandle, profileShareUrl]
   );
@@ -926,6 +963,26 @@ export function AppProfilePage({ profileUserId }: AppProfilePageProps) {
     setNextCursor(null);
     void loadFeedPage({ replace: true });
   }, [activeTabId, loadFeedPage, profileStatus, targetUserId]);
+
+  useEffect(() => {
+    const shouldShowDelayed =
+      profileStatus !== "loading" &&
+      feedStatus === "loading" &&
+      feedItems.length === 0;
+
+    if (!shouldShowDelayed) {
+      setShowDelayedFeedSkeleton(false);
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      setShowDelayedFeedSkeleton(true);
+    }, 220);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [feedItems.length, feedStatus, profileStatus]);
 
   const loadMoreFeed = useCallback(async () => {
     if (!nextCursor || feedStatus === "loading-more") return;
@@ -1197,7 +1254,7 @@ export function AppProfilePage({ profileUserId }: AppProfilePageProps) {
       showToast({
         title: nextCustomSlug ? "Profile link updated" : "Profile link reset",
         message: nextCustomSlug
-          ? `Your profile link is now mylooped.app/u/${nextCustomSlug}.`
+          ? `Your profile link is now ${SITE_HOST}/u/${nextCustomSlug}.`
           : "Your profile link now uses your username.",
       });
     } catch (error) {
@@ -1318,22 +1375,15 @@ export function AppProfilePage({ profileUserId }: AppProfilePageProps) {
         ? "No saved posts yet."
         : "No reposts yet.";
 
-  const loadingLabel =
-    activeTabId === "content"
-      ? "Loading content..."
-      : activeTabId === "saved"
-        ? "Loading saved posts..."
-        : "Loading reposts...";
-
   return (
     <AppLayout activeNavId={isCurrentUser ? "profile" : ""} rightRail={rightRail}>
       <AppMobileHeader title="Profile" showAction={false} showBack={!isCurrentUser} backHref="/app" />
 
       {profileStatus === "loading" ? (
         <div className="space-y-3 bg-bg px-4 py-6">
-          <div className="h-5 w-1/3 animate-pulse rounded-full bg-bg-muted" />
-          <div className="h-4 w-1/2 animate-pulse rounded-full bg-bg-muted" />
-          <div className="h-20 animate-pulse rounded-2xl bg-bg-muted" />
+          <div className="looped-skeleton looped-skeleton-shimmer h-5 w-1/3 rounded-full" />
+          <div className="looped-skeleton looped-skeleton-shimmer h-4 w-1/2 rounded-full" />
+          <div className="looped-skeleton looped-skeleton-shimmer h-20 rounded-2xl" />
         </div>
       ) : null}
 
@@ -1638,7 +1688,7 @@ export function AppProfilePage({ profileUserId }: AppProfilePageProps) {
               <p className="text-xs text-text-light">
                 Link preview:{" "}
                 <span className="font-semibold text-text-secondary">
-                  mylooped.app/u/{(shareLinkDraft.trim().replace(/^@/, "").toLowerCase() || shareLink?.usernameSlug || "username")}
+                  {SITE_HOST}/u/{(shareLinkDraft.trim().replace(/^@/, "").toLowerCase() || shareLink?.usernameSlug || "username")}
                 </span>
               </p>
 
@@ -1669,8 +1719,12 @@ export function AppProfilePage({ profileUserId }: AppProfilePageProps) {
           item.kind === "post" ? <PostCard key={item.key} post={item.post} /> : <ReplyContentCard key={item.key} item={item.reply} />
         )}
 
-        {feedStatus === "loading" && profileStatus !== "loading" ? (
-          <div className="px-4 py-6 text-sm text-text-secondary">{loadingLabel}</div>
+        {showDelayedFeedSkeleton ? (
+          <div className="looped-fade-swap">
+            {Array.from({ length: 6 }, (_, index) => (
+              <ProfileFeedPostSkeleton key={`profile-feed-skeleton-${index}`} />
+            ))}
+          </div>
         ) : null}
 
         {feedItems.length === 0 && feedStatus === "idle" ? (

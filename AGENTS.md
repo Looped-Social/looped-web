@@ -31,5 +31,19 @@ This repository contains the Looped web experience served from `mylooped.app` (m
 ## Deployment Model
 - `apps/web` serves both marketing + app routes on `mylooped.app` (public routes at `/`, `/privacy`, `/terms`, etc., app routes under `/app/*`).
 
+## Current Product Contract (Web Auth + Onboarding)
+- Web auth entry supports both sign in and sign up (Google, Apple, email/password) from a unified auth surface.
+- Web onboarding must be server-driven from `GET /v1/me` (`onboarding_stage_v2`, `onboarding_context`, `allowed_next_stages_v2`), with local drafts as fallback only.
+- Web onboarding verification is **email-only**. Do not expose photo ID onboarding paths on web.
+- Onboarding email flow uses:
+  - `PUT /v1/users/me/onboarding-v2/verification-choice`
+  - `POST /v1/communities/{id}/verification/start`
+  - `POST /v1/communities/{id}/verification/finish`
+  - `POST /v1/users/me/onboarding-v2/email-verification/success`
+- Community profile/settings verification reuses domains/start/finish endpoints but must not call onboarding-v2 progression endpoints.
+- Organization-request side path during onboarding completes through:
+  - `POST /v1/community-requests`
+  - `POST /v1/users/me/onboarding-v2/complete-after-community-request`
+
 ## Notes
 - This frontend never owns backend business rules or server-side rendering logic; it only consumes APIs from the Spring Boot service.

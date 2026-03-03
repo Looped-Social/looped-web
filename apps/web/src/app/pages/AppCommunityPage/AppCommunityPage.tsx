@@ -1,10 +1,13 @@
-import { useCallback, useEffect, useState } from "react";
-import { RiVerifiedBadgeFill } from "react-icons/ri";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 
 import { AppLayout } from "@/app/components/AppLayout/AppLayout";
 import { useToast } from "@/app/components/AppToast/AppToast";
+import { OnboardingContinueButton } from "@/app/components/OnboardingContinueButton/OnboardingContinueButton";
 import { PostCard, type PostData } from "@/app/components/PostCard/PostCard";
+import { VerificationEmailFlow } from "@/app/components/VerificationEmailFlow/VerificationEmailFlow";
+import verifyFirstIllustration from "@/assets/illustrations/verify-first.png";
+import { useEmailVerificationMachine, type EmailVerificationDraft, type EmailVerificationState } from "@/lib/emailVerificationMachine";
 import { extractMediaAssetIds } from "@/lib/postMediaIds";
 import { normalizePostPoll } from "@/lib/postPoll";
 import { extractViewerCapabilitiesFromPost } from "@/lib/postViewerCapabilities";
@@ -18,6 +21,11 @@ import {
   setSpecializationFollowing,
   setSpecializationJoined,
 } from "@/lib/communityDetailApi";
+import {
+  fetchCommunityVerificationDomains,
+  finishCommunityVerification,
+  startCommunityVerification,
+} from "@/lib/verificationApi";
 
 type AppCommunityPageProps = {
   communityId: string;
@@ -60,6 +68,10 @@ type JoinLimitInfo = {
   blockedReason?: string;
 };
 
+type VerificationModalStep = "intro" | "method" | "email" | "confirmed";
+
+const VERIFIED_ICON_SRC = "/icons/verified.svg";
+
 function BackIcon({ className }: { className?: string }) {
   return (
     <svg
@@ -73,6 +85,40 @@ function BackIcon({ className }: { className?: string }) {
       aria-hidden="true"
     >
       <path d="M15 18l-6-6 6-6" />
+    </svg>
+  );
+}
+
+function ChevronRightIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+    >
+      <path d="m9 6 6 6-6 6" />
+    </svg>
+  );
+}
+
+function CloseIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+    >
+      <path d="m6 6 12 12M18 6 6 18" />
     </svg>
   );
 }
@@ -103,7 +149,20 @@ function StatusBadgeIcon({
   return (
     <span className={className} style={style}>
       {icon === "check" && tone === "verified" ? (
-        <RiVerifiedBadgeFill className="h-7 w-7" aria-hidden="true" />
+        <span
+          className="h-7 w-7 bg-current"
+          aria-hidden="true"
+          style={{
+            maskImage: `url('${VERIFIED_ICON_SRC}')`,
+            WebkitMaskImage: `url('${VERIFIED_ICON_SRC}')`,
+            maskRepeat: "no-repeat",
+            WebkitMaskRepeat: "no-repeat",
+            maskPosition: "center",
+            WebkitMaskPosition: "center",
+            maskSize: "contain",
+            WebkitMaskSize: "contain",
+          }}
+        />
       ) : null}
       {icon === "check" ? (
         <svg
@@ -136,6 +195,41 @@ function StatusBadgeIcon({
         </svg>
       ) : null}
     </span>
+  );
+}
+
+function CommunityPostSkeleton() {
+  return (
+    <article className="bg-bg px-4 py-4">
+      <div className="flex gap-3">
+        <div className="looped-skeleton looped-skeleton-shimmer h-10 w-10 shrink-0 rounded-full" aria-hidden="true" />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 flex-1 space-y-2">
+              <div className="looped-skeleton looped-skeleton-shimmer h-3.5 w-2/5 rounded-full" aria-hidden="true" />
+              <div className="looped-skeleton looped-skeleton-shimmer h-3 w-1/3 rounded-full" aria-hidden="true" />
+            </div>
+            <div className="looped-skeleton looped-skeleton-shimmer h-3 w-4 rounded-full" aria-hidden="true" />
+          </div>
+
+          <div className="mt-4 space-y-2">
+            <div className="looped-skeleton looped-skeleton-shimmer h-3.5 w-full rounded-full" aria-hidden="true" />
+            <div className="looped-skeleton looped-skeleton-shimmer h-3.5 w-5/6 rounded-full" aria-hidden="true" />
+          </div>
+
+          <div className="mt-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="looped-skeleton looped-skeleton-shimmer h-5 w-10 rounded-full" aria-hidden="true" />
+              <div className="looped-skeleton looped-skeleton-shimmer h-5 w-10 rounded-full" aria-hidden="true" />
+              <div className="looped-skeleton looped-skeleton-shimmer h-5 w-10 rounded-full" aria-hidden="true" />
+            </div>
+            <div className="looped-skeleton looped-skeleton-shimmer h-5 w-5 rounded-sm" aria-hidden="true" />
+          </div>
+
+          <div className="looped-skeleton looped-skeleton-shimmer mt-3 h-3 w-20 rounded-full" aria-hidden="true" />
+        </div>
+      </div>
+    </article>
   );
 }
 
@@ -468,7 +562,7 @@ function messageForActionCode(code?: string, fallback = "Action unavailable righ
     case "specialization_verification_required":
     case "verification_required":
     case "verify_school":
-      return "Verification required. Verify in the iOS app.";
+      return "Verification required. Verify your organization email to continue.";
     case "specialization_not_joined":
       return "Join this major or field first.";
     case "specialization_join_limit":
@@ -476,7 +570,7 @@ function messageForActionCode(code?: string, fallback = "Action unavailable righ
     case "specialization_join_cooldown":
       return "You can't rejoin this yet.";
     case "verification_expired":
-      return "Your verification expired. Re-verify in the iOS app.";
+      return "Your verification expired. Re-verify your organization email.";
     case "community_banned":
       return "This community is currently unavailable.";
     default:
@@ -557,6 +651,19 @@ export function AppCommunityPage({ communityId }: AppCommunityPageProps) {
   const [hashtagsCursor, setHashtagsCursor] = useState<string | null>(null);
   const [hashtagsStatus, setHashtagsStatus] = useState<LoadStatus>("idle");
   const [hashtagsError, setHashtagsError] = useState<string | null>(null);
+  const [activeVerificationCommunity, setActiveVerificationCommunity] = useState<{
+    communityId: string;
+    communityName: string;
+  } | null>(null);
+  const [verificationModalStep, setVerificationModalStep] = useState<VerificationModalStep>("intro");
+  const [verificationNotice, setVerificationNotice] = useState<string | null>(null);
+  const [verificationDraft, setVerificationDraft] = useState<EmailVerificationDraft>({
+    emailLocalPart: "",
+    selectedDomain: "",
+    submittedEmail: "",
+    pendingCode: "",
+    cooldownUntil: null,
+  });
 
   const loadCommunity = useCallback(async () => {
     setDetailStatus("loading");
@@ -619,6 +726,19 @@ export function AppCommunityPage({ communityId }: AppCommunityPageProps) {
   useEffect(() => {
     void loadCommunity();
   }, [loadCommunity]);
+
+  useEffect(() => {
+    if (!activeVerificationCommunity) return;
+    setVerificationModalStep("intro");
+    setVerificationNotice(null);
+    setVerificationDraft({
+      emailLocalPart: "",
+      selectedDomain: "",
+      submittedEmail: "",
+      pendingCode: "",
+      cooldownUntil: null,
+    });
+  }, [activeVerificationCommunity]);
 
   const loadPosts = useCallback(
     async ({ cursor, replace }: { cursor?: string; replace: boolean }) => {
@@ -744,17 +864,116 @@ export function AppCommunityPage({ communityId }: AppCommunityPageProps) {
     }
   }, [community, joinLoading, showToast]);
 
+  const updateVerificationDraft = useCallback((nextDraft: Partial<EmailVerificationDraft>) => {
+    setVerificationDraft((previous) => ({
+      ...previous,
+      ...nextDraft,
+    }));
+  }, []);
+
+  const closeVerificationModal = useCallback(() => {
+    setActiveVerificationCommunity(null);
+    setVerificationModalStep("intro");
+    setVerificationNotice(null);
+  }, []);
+
+  const verificationApi = useMemo(
+    () => ({
+      loadDomains: ({ communityId, signal }: { communityId: string; signal?: AbortSignal }) =>
+        fetchCommunityVerificationDomains(communityId, { signal }),
+      sendCode: ({ communityId, email }: { communityId: string; email: string }) =>
+        startCommunityVerification({ communityId, method: "email", email }),
+      verifyCode: ({ communityId, email, code }: { communityId: string; email: string; code: string }) =>
+        finishCommunityVerification({ communityId, method: "email", code, email }),
+    }),
+    []
+  );
+
+  const verificationAdapter = useMemo(
+    () => ({
+      afterVerifySuccess: async () => {
+        await loadCommunity();
+        setVerificationNotice("Verification complete.");
+      },
+    }),
+    [loadCommunity]
+  );
+
+  const verificationMachine = useEmailVerificationMachine({
+    enabled: Boolean(activeVerificationCommunity) && verificationModalStep === "email",
+    communityId: activeVerificationCommunity?.communityId ?? null,
+    draft: verificationDraft,
+    onDraftChange: updateVerificationDraft,
+    api: verificationApi,
+    adapter: verificationAdapter,
+    initialPreferredState: verificationDraft.submittedEmail ? "enter_code" : "enter_email",
+    defaultCooldownSeconds: 60,
+    onDone: () => {
+      setVerificationModalStep("confirmed");
+    },
+  });
+
+  const handleVerificationBack = useCallback(() => {
+    if (verificationModalStep === "method") {
+      setVerificationModalStep("intro");
+      return;
+    }
+
+    if (verificationModalStep === "email") {
+      const codeStates = new Set<EmailVerificationState>([
+        "enter_code",
+        "verifying_code",
+        "enter_code_error",
+        "verified_local",
+        "done",
+      ]);
+      if (codeStates.has(verificationMachine.state)) {
+        verificationMachine.resetToEmailEntry();
+        return;
+      }
+      setVerificationModalStep("method");
+      return;
+    }
+  }, [verificationMachine, verificationModalStep]);
+
+  const openVerificationModal = useCallback(() => {
+    if (!community || community.isSpecialization) return;
+    setActiveVerificationCommunity({
+      communityId: community.id,
+      communityName: community.name,
+    });
+  }, [community]);
+
+  const finishVerificationFlow = useCallback(async () => {
+    await loadCommunity();
+    closeVerificationModal();
+    showToast({
+      title: "Verification updated",
+      message: "Your community verification status was refreshed.",
+      tone: "info",
+    });
+  }, [closeVerificationModal, loadCommunity, showToast]);
+
   const communityHasBanner = isImageUrl(community?.bannerImageUrl);
   const verificationInfo = community?.verificationInfo ?? { label: "Unverified", status: "unknown" as const };
   const joinLimitInfo = community?.joinLimitInfo ?? {};
+  const canShowModalBack =
+    verificationModalStep !== "confirmed" && verificationModalStep !== "intro";
+  const handleVerificationModalBack = () => {
+    if (verificationModalStep === "intro") {
+      closeVerificationModal();
+      return;
+    }
+    handleVerificationBack();
+  };
 
   return (
     <AppLayout activeNavId="home">
       {detailStatus === "loading" ? (
         <div className="space-y-3 bg-bg px-4 py-6">
-          <div className="h-5 w-1/3 animate-pulse rounded-full bg-bg-muted" />
-          <div className="h-4 w-2/3 animate-pulse rounded-full bg-bg-muted" />
-          <div className="h-20 animate-pulse rounded-2xl bg-bg-muted" />
+          <div className="looped-skeleton looped-skeleton-shimmer h-5 w-1/3 rounded-full" />
+          <div className="looped-skeleton looped-skeleton-shimmer h-4 w-2/3 rounded-full" />
+          <div className="looped-skeleton looped-skeleton-shimmer h-20 rounded-2xl" />
         </div>
       ) : null}
 
@@ -843,48 +1062,59 @@ export function AppCommunityPage({ communityId }: AppCommunityPageProps) {
                 </button>
               </div>
 
-              <div className="mt-4 rounded-[10px] border border-border/40 bg-bg-muted/70 px-2.5 py-2 text-left">
+              <div className="mt-4">
                 {community.isSpecialization ? (
-                  <div className="flex items-start gap-3">
-                    <StatusBadgeIcon icon={community.isJoined ? "check" : "warning"} tone={community.isJoined ? "brand" : "muted"} />
-                    <div className="min-w-0">
-                      <p className="text-base font-semibold text-strong">{community.isJoined ? "Joined" : "Not joined"}</p>
-                      <p className="mt-0.5 text-sm text-text-secondary">
-                        {joinLimitInfo.summary ?? "Join limits apply"}
-                      </p>
+                  <div className="rounded-[10px] border border-border/40 bg-bg-muted/70 px-2.5 py-2 text-left">
+                    <div className="flex items-start gap-3">
+                      <StatusBadgeIcon icon={community.isJoined ? "check" : "warning"} tone={community.isJoined ? "brand" : "muted"} />
+                      <div className="min-w-0">
+                        <p className="text-base font-semibold text-strong">{community.isJoined ? "Joined" : "Not joined"}</p>
+                        <p className="mt-0.5 text-sm text-text-secondary">
+                          {joinLimitInfo.summary ?? "Join limits apply"}
+                        </p>
+                      </div>
                     </div>
                   </div>
                 ) : (
-                  <div className="flex items-start gap-3">
-                    <StatusBadgeIcon
-                      icon={
-                        verificationInfo.label === "Verified"
-                          ? "check"
-                          : verificationInfo.label === "Pending"
-                            ? "clock"
-                            : verificationInfo.label === "Rejected"
-                              ? "x"
-                              : "warning"
-                      }
-                      tone={
-                        verificationInfo.label === "Verified"
-                          ? "verified"
-                          : verificationInfo.label === "Rejected"
-                            ? "error"
-                            : "muted"
-                      }
-                    />
-                    <div className="min-w-0">
-                      <p className="text-base font-semibold text-strong">{verificationInfo.label}</p>
-                      <p className="mt-0.5 text-sm text-text-secondary">
-                        {verificationInfo.label === "Verified" && verificationInfo.expiresAt
-                          ? `Expires ${formatDateMDY(verificationInfo.expiresAt)}`
-                          : verificationInfo.label === "Unverified"
-                            ? "Verification required to post, like, or comment. Verify in the iOS app."
-                            : "Verification state shown from your community access"}
-                      </p>
+                  <button
+                    type="button"
+                    onClick={openVerificationModal}
+                    className="w-full rounded-[10px] border border-border/40 bg-bg-muted/70 px-2.5 py-2 text-left transition hover:border-[var(--color-contrast)]"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex min-w-0 items-start gap-3">
+                        <StatusBadgeIcon
+                          icon={
+                            verificationInfo.label === "Verified"
+                              ? "check"
+                              : verificationInfo.label === "Pending"
+                                ? "clock"
+                                : verificationInfo.label === "Rejected"
+                                  ? "x"
+                                  : "warning"
+                          }
+                          tone={
+                            verificationInfo.label === "Verified"
+                              ? "verified"
+                              : verificationInfo.label === "Rejected"
+                                ? "error"
+                                : "muted"
+                          }
+                        />
+                        <div className="min-w-0">
+                          <p className="text-base font-semibold text-strong">{verificationInfo.label}</p>
+                          <p className="mt-0.5 text-sm text-text-secondary">
+                            {verificationInfo.label === "Verified" && verificationInfo.expiresAt
+                              ? `Expires ${formatDateMDY(verificationInfo.expiresAt)}`
+                              : verificationInfo.label === "Unverified"
+                                ? "Tap to verify"
+                                : "Tap to manage verification"}
+                          </p>
+                        </div>
+                      </div>
+                      <ChevronRightIcon className="mt-1 h-5 w-5 shrink-0 text-text-light" />
                     </div>
-                  </div>
+                  </button>
                 )}
               </div>
 
@@ -960,7 +1190,11 @@ export function AppCommunityPage({ communityId }: AppCommunityPageProps) {
               ))}
 
               {postsStatus === "loading" && posts.length === 0 && !postsError ? (
-                <div className="px-4 py-5 text-sm text-text-secondary">Loading posts...</div>
+                <div className="looped-fade-swap">
+                  {Array.from({ length: 6 }, (_, index) => (
+                    <CommunityPostSkeleton key={`community-post-skeleton-${index}`} />
+                  ))}
+                </div>
               ) : null}
 
               {posts.length === 0 && postsStatus === "idle" && !postsError ? (
@@ -1009,7 +1243,11 @@ export function AppCommunityPage({ communityId }: AppCommunityPageProps) {
               ))}
 
               {hashtagsStatus === "loading" && hashtags.length === 0 && !hashtagsError ? (
-                <div className="px-4 py-5 text-sm text-text-secondary">Loading hashtag posts...</div>
+                <div className="looped-fade-swap">
+                  {Array.from({ length: 6 }, (_, index) => (
+                    <CommunityPostSkeleton key={`community-hashtag-skeleton-${index}`} />
+                  ))}
+                </div>
               ) : null}
 
               {hashtags.length === 0 && hashtagsStatus === "idle" && !hashtagsError ? (
@@ -1039,6 +1277,161 @@ export function AppCommunityPage({ communityId }: AppCommunityPageProps) {
             </div>
           )}
         </>
+      ) : null}
+
+      {activeVerificationCommunity ? (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 sm:items-center sm:p-6">
+          <div className="flex h-[min(84vh,620px)] w-full max-w-[560px] flex-col rounded-2xl border border-border/70 bg-bg p-4 shadow-xl sm:p-6">
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <div className="flex min-w-0 items-start gap-3">
+                {canShowModalBack ? (
+                  <button
+                    type="button"
+                    onClick={handleVerificationModalBack}
+                    disabled={verificationMachine.transitionLocked}
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-bg-muted text-text-secondary transition hover:text-strong disabled:cursor-not-allowed disabled:opacity-60"
+                    aria-label="Back"
+                  >
+                    <BackIcon className="h-5 w-5" />
+                  </button>
+                ) : null}
+                <div className="min-w-0">
+                  <h2 className="text-xl font-semibold text-strong">
+                    {verificationModalStep === "confirmed"
+                      ? "You're verified"
+                      : verificationModalStep === "email"
+                        ? "Verify Your Email"
+                        : verificationModalStep === "method"
+                          ? "Verify with email"
+                          : "Verification"}
+                  </h2>
+                  <p className="mt-1 text-sm text-text-secondary">{activeVerificationCommunity.communityName}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={closeVerificationModal}
+                disabled={verificationMachine.transitionLocked}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-bg-muted text-text-secondary transition hover:text-strong disabled:cursor-not-allowed disabled:opacity-60"
+                aria-label="Close"
+              >
+                <CloseIcon className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto pr-1">
+              {verificationNotice && verificationModalStep !== "confirmed" ? (
+                <p className="mb-3 rounded-xl border border-secondary/30 bg-secondary/10 px-3 py-2 text-sm text-secondary">
+                  {verificationNotice}
+                </p>
+              ) : null}
+
+              {verificationModalStep === "intro" ? (
+                <div className="space-y-5">
+                  <div className="flex justify-center">
+                    <img
+                      src={verifyFirstIllustration}
+                      alt=""
+                      className="w-full max-w-[240px] object-contain"
+                      loading="lazy"
+                    />
+                  </div>
+                  <div className="space-y-2 text-center">
+                    <h3 className="text-2xl font-semibold leading-tight text-strong">
+                      Verify your identity for {activeVerificationCommunity.communityName}
+                    </h3>
+                    <p className="mx-auto max-w-xl text-sm leading-6 text-text-secondary">
+                      Verify with your organization email to unlock posting permissions in this community.
+                    </p>
+                  </div>
+                  <div className="flex justify-center">
+                    <OnboardingContinueButton
+                      label="Continue"
+                      loadingLabel="Continuing..."
+                      onClick={() => setVerificationModalStep("method")}
+                      variant="primary"
+                      className="w-full max-w-xs"
+                    />
+                  </div>
+                </div>
+              ) : null}
+
+              {verificationModalStep === "method" ? (
+                <div className="flex min-h-full items-center justify-center py-2">
+                  <div className="w-full max-w-3xl space-y-5 text-center">
+                    <div className="space-y-2">
+                      <p className="text-2xl font-semibold text-strong">Web currently supports email verification only.</p>
+                      <p className="mx-auto max-w-2xl text-base leading-8 text-text-secondary">
+                        If you want to verify with photo ID, download Looped on iOS. We&apos;re working on bringing photo ID
+                        verification to web.
+                      </p>
+                    </div>
+                    <div className="flex justify-center pt-1">
+                      <OnboardingContinueButton
+                        label="Continue"
+                        loadingLabel="Continuing..."
+                        onClick={() => setVerificationModalStep("email")}
+                        variant="primary"
+                        className="w-full max-w-sm"
+                      />
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              {verificationModalStep === "email" ? (
+                <VerificationEmailFlow
+                  state={verificationMachine.state}
+                  communityName={activeVerificationCommunity.communityName}
+                  draft={verificationDraft}
+                  domains={verificationMachine.domains}
+                  errorMessage={verificationMachine.errorMessage}
+                  resendHelperText={verificationMachine.resendHelperText}
+                  canSendCode={verificationMachine.canSendCode}
+                  canVerifyCode={verificationMachine.canVerifyCode}
+                  canResendCode={verificationMachine.canResendCode}
+                  transitionLocked={verificationMachine.transitionLocked}
+                  overlayTitle={verificationMachine.overlayTitle}
+                  showBack={false}
+                  onBack={handleVerificationBack}
+                  showSkip={false}
+                  onEmailLocalPartChange={verificationMachine.setEmailLocalPart}
+                  onDomainChange={verificationMachine.setSelectedDomain}
+                  onCodeChange={verificationMachine.setCode}
+                  onSendCode={() => {
+                    void verificationMachine.sendCode();
+                  }}
+                  onVerifyCode={() => {
+                    void verificationMachine.verifyCode();
+                  }}
+                  onResendCode={() => {
+                    void verificationMachine.resendCode();
+                  }}
+                  onRetryDomains={() => {
+                    void verificationMachine.retryDomains();
+                  }}
+                />
+              ) : null}
+
+              {verificationModalStep === "confirmed" ? (
+                <div className="space-y-4">
+                  <p className="text-sm leading-6 text-text-secondary">
+                    Your email is now verified for {activeVerificationCommunity.communityName}. You can close this and continue.
+                  </p>
+                  <OnboardingContinueButton
+                    label="Done"
+                    loadingLabel="Saving..."
+                    onClick={() => {
+                      void finishVerificationFlow();
+                    }}
+                    variant="primary"
+                    className="w-full sm:w-auto"
+                  />
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </div>
       ) : null}
     </AppLayout>
   );

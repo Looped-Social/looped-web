@@ -10,7 +10,7 @@ type CommunityShareMeta = {
 };
 
 const APP_STORE_ID = "6758413180";
-const FALLBACK_IMAGE_URL = "https://mylooped.app/main-logo.svg";
+const FALLBACK_IMAGE_PATH = "/main-logo.svg";
 
 function pickString(source: Record<string, unknown>, keys: string[]): string | undefined {
   for (const key of keys) {
@@ -34,10 +34,10 @@ function pickNumber(source: Record<string, unknown>, keys: string[]): number | u
   return undefined;
 }
 
-function toAbsoluteUrl(value: string | undefined): string | undefined {
+function toAbsoluteUrl(value: string | undefined, origin: string): string | undefined {
   if (!value) return undefined;
   try {
-    return new URL(value, "https://mylooped.app").toString();
+    return new URL(value, origin).toString();
   } catch {
     return undefined;
   }
@@ -58,7 +58,7 @@ function buildFallbackMeta(communityId: string, origin: string): CommunityShareM
     title: "Looped — Community",
     description: "View this shared Looped community.",
     canonicalUrl,
-    previewImageUrl: FALLBACK_IMAGE_URL,
+    previewImageUrl: new URL(FALLBACK_IMAGE_PATH, origin).toString(),
     iosDeepLink: `looped://community/${encodeURIComponent(communityId)}`,
   };
 }
@@ -124,7 +124,8 @@ export async function loader({ params, request }: Route.LoaderArgs) {
       description,
       canonicalUrl: `${origin}/c/${encodeURIComponent(communityId)}`,
       previewImageUrl:
-        toAbsoluteUrl(pickString(node, ["image_url", "imageUrl", "icon_url", "iconUrl"])) ?? FALLBACK_IMAGE_URL,
+        toAbsoluteUrl(pickString(node, ["image_url", "imageUrl", "icon_url", "iconUrl"]), origin) ??
+        new URL(FALLBACK_IMAGE_PATH, origin).toString(),
       iosDeepLink: `looped://community/${encodeURIComponent(communityId)}`,
     } satisfies CommunityShareMeta;
   } catch {
@@ -136,8 +137,8 @@ export function meta({ data }: Route.MetaArgs) {
   const shareMeta = data as CommunityShareMeta | undefined;
   const title = shareMeta?.title ?? "Looped — Community";
   const description = shareMeta?.description ?? "View this shared Looped community.";
-  const canonicalUrl = shareMeta?.canonicalUrl ?? "https://mylooped.app/c";
-  const previewImageUrl = shareMeta?.previewImageUrl ?? FALLBACK_IMAGE_URL;
+  const canonicalUrl = shareMeta?.canonicalUrl ?? "/c";
+  const previewImageUrl = shareMeta?.previewImageUrl ?? FALLBACK_IMAGE_PATH;
   const iosDeepLink = shareMeta?.iosDeepLink ?? "looped://community";
 
   return [

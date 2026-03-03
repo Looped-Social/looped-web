@@ -1,0 +1,15 @@
+{
+  "$schema": "https://developers.cloudflare.com/wrangler/config-schema.json",
+  "name": "looped-web",
+  "compatibility_date": "2026-03-03",
+  "compatibility_flags": ["nodejs_compat"],
+
+  // React Router v7 SSR build output (see `apps/web/package.json` -> `react-router build`).
+  "main": "./apps/web/build/server/index.js",
+
+  // Static client assets (hashed Vite output + `public/` files).
+  "assets": {
+    "directory": "./apps/web/build/client"
+  }
+}
+

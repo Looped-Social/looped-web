@@ -8,6 +8,8 @@
   --color-thread-bubble-them: #eef2f7;
   --color-thread-video-overlay: rgba(0, 0, 0, 0.45);
   --color-thread-media-time: rgba(0, 0, 0, 0.55);
+  --skeleton-base: color-mix(in srgb, var(--color-bg-muted) 86%, var(--color-bg));
+  --skeleton-highlight-alpha: 0.55;
 }
 
 .app-store-img-light {
@@ -38,6 +40,8 @@
   --color-thread-bubble-them: #1a1a1a;
   --color-thread-video-overlay: rgba(0, 0, 0, 0.52);
   --color-thread-media-time: rgba(0, 0, 0, 0.62);
+  --skeleton-base: color-mix(in srgb, var(--color-bg-muted) 74%, var(--color-bg));
+  --skeleton-highlight-alpha: 0.18;
 }
 
 [data-theme="dark"] .app-store-img-light {
@@ -65,5 +69,47 @@
 
   100% {
     transform: translateX(-50%);
+  }
+}
+
+@keyframes looped-skeleton-shimmer {
+  to {
+    transform: rotate(18deg) translateX(80%);
+  }
+}
+
+@layer base {
+  :where(p a, li a) {
+    color: var(--color-secondary);
+    font-weight: 400;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+}
+
+@layer utilities {
+  .looped-skeleton {
+    position: relative;
+    overflow: hidden;
+    background: var(--skeleton-base);
+  }
+
+  .looped-skeleton-shimmer::after {
+    content: "";
+    position: absolute;
+    inset: -40% -120%;
+    background: linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0) 0%,
+      rgba(255, 255, 255, var(--skeleton-highlight-alpha)) 50%,
+      rgba(255, 255, 255, 0) 100%
+    );
+    transform: rotate(18deg) translateX(-80%);
+    animation: looped-skeleton-shimmer 1.25s linear infinite;
+    pointer-events: none;
+  }
+
+  .looped-fade-swap {
+    transition: opacity 0.22s ease-in-out;
   }
 }

@@ -35,10 +35,9 @@ type SharedCommunityPost = {
   createdAtLabel: string;
   likesCount: number;
   commentsCount: number;
-  sharesCount: number;
 };
 
-const DEFAULT_PROFILE_IMAGE_SRC = "/ios-icons/pfp2.svg";
+const DEFAULT_PROFILE_IMAGE_SRC = "/icons/profile/default-avatar.svg";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -215,7 +214,6 @@ function normalizeSharedCommunityPost(payload: unknown): SharedCommunityPost | n
     createdAtLabel: formatTimeAgo(node.created_at ?? node.createdAt ?? node.timestamp ?? node.created),
     likesCount: pickNumber(node, ["likes_count", "likesCount", "like_count", "likeCount"]) ?? 0,
     commentsCount: pickNumber(node, ["comments_count", "commentsCount", "comment_count", "commentCount"]) ?? 0,
-    sharesCount: pickNumber(node, ["share_count", "shareCount", "shares_count", "sharesCount"]) ?? 0,
   };
 }
 
@@ -509,7 +507,7 @@ export function CommunitySharePage({ communityId }: CommunitySharePageProps) {
                         )}
 
                         <p className="mt-3 text-[0.92rem] text-text-light">
-                          {formatCount(post.likesCount)} likes · {formatCount(post.commentsCount)} comments · {formatCount(post.sharesCount)} shares
+                          {formatCount(post.likesCount)} likes · {formatCount(post.commentsCount)} comments
                         </p>
                       </article>
                     ))}

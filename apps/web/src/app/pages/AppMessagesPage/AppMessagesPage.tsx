@@ -53,7 +53,7 @@ type MessageRequestRow = {
 };
 
 const SEARCH_DEBOUNCE_MS = 250;
-const DEFAULT_PROFILE_IMAGE_SRC = "/ios-icons/pfp2.svg";
+const DEFAULT_PROFILE_IMAGE_SRC = "/icons/profile/default-avatar.svg";
 
 function handleProfileImageError(event: SyntheticEvent<HTMLImageElement>) {
   const image = event.currentTarget;
@@ -629,12 +629,12 @@ function Avatar({ avatarUrl }: { avatarUrl?: string }) {
 
 function SkeletonRow() {
   return (
-    <div className="animate-pulse px-4 py-3">
+    <div className="px-4 py-3">
       <div className="flex items-center gap-3">
-        <div className="h-12 w-12 rounded-full bg-bg-muted" aria-hidden="true" />
+        <div className="looped-skeleton looped-skeleton-shimmer h-12 w-12 rounded-full" aria-hidden="true" />
         <div className="min-w-0 flex-1">
-          <div className="h-3.5 w-1/3 rounded-full bg-bg-muted" aria-hidden="true" />
-          <div className="mt-2 h-3 w-2/3 rounded-full bg-bg-muted" aria-hidden="true" />
+          <div className="looped-skeleton looped-skeleton-shimmer h-3.5 w-1/3 rounded-full" aria-hidden="true" />
+          <div className="looped-skeleton looped-skeleton-shimmer mt-2 h-3 w-2/3 rounded-full" aria-hidden="true" />
         </div>
       </div>
     </div>
@@ -1017,7 +1017,7 @@ export function AppMessagesPage() {
     activeTabId === "messages" && isAnonymousViewer && normalizedQuery.length > 0 && !shouldSearchApi;
 
   return (
-    <AppLayout activeNavId="messages">
+    <AppLayout activeNavId="messages" onMobileFabClick={openComposer}>
       <AppMobileHeader title="Messages" showAction={false} />
 
       <header className="border-b border-border/70 bg-bg px-4 pb-4 pt-4 sm:px-6">
@@ -1080,9 +1080,9 @@ export function AppMessagesPage() {
 
             {isLoadingMessages ? (
               <>
-                <SkeletonRow />
-                <SkeletonRow />
-                <SkeletonRow />
+                {Array.from({ length: 10 }, (_, index) => (
+                  <SkeletonRow key={`messages-skeleton-${index}`} />
+                ))}
               </>
             ) : null}
 
@@ -1153,8 +1153,9 @@ export function AppMessagesPage() {
           <>
             {isLoadingRequests ? (
               <>
-                <SkeletonRow />
-                <SkeletonRow />
+                {Array.from({ length: 8 }, (_, index) => (
+                  <SkeletonRow key={`requests-skeleton-${index}`} />
+                ))}
               </>
             ) : null}
 
@@ -1188,30 +1189,6 @@ export function AppMessagesPage() {
           </>
         )}
       </section>
-
-      <button
-        type="button"
-        onClick={openComposer}
-        className={`fixed bottom-[calc(5.25rem+env(safe-area-inset-bottom))] right-5 z-50 inline-flex h-14 w-14 items-center justify-center rounded-full bg-brand text-white transition hover:bg-brand-hover sm:hidden ${
-          activeTabId !== "messages" ? "pointer-events-none opacity-0" : ""
-        }`}
-        aria-label="New message"
-      >
-        <span
-          className="relative left-[0.5px] top-[0.5px] h-7 w-7 bg-white"
-          style={{
-            maskImage: "url('/ios-icons/action-send.svg')",
-            WebkitMaskImage: "url('/ios-icons/action-send.svg')",
-            maskRepeat: "no-repeat",
-            WebkitMaskRepeat: "no-repeat",
-            maskPosition: "center",
-            WebkitMaskPosition: "center",
-            maskSize: "contain",
-            WebkitMaskSize: "contain",
-          }}
-          aria-hidden="true"
-        />
-      </button>
 
       <MessageRecipientComposer
         open={isComposerOpen}

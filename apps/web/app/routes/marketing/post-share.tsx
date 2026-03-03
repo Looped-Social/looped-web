@@ -11,7 +11,7 @@ type PostShareMeta = {
 };
 
 const APP_STORE_ID = "6758413180";
-const FALLBACK_IMAGE_URL = "https://mylooped.app/main-logo.svg";
+const FALLBACK_IMAGE_PATH = "/main-logo.svg";
 
 function pickString(source: Record<string, unknown>, keys: string[]): string | undefined {
   for (const key of keys) {
@@ -59,10 +59,10 @@ function preferredDisplayName(value: unknown): string | undefined {
   return pickString(value as Record<string, unknown>, ["short_name", "shortName", "name", "display_name", "displayName", "label", "title"]);
 }
 
-function toAbsoluteUrl(value: string | undefined): string | undefined {
+function toAbsoluteUrl(value: string | undefined, origin: string): string | undefined {
   if (!value) return undefined;
   try {
-    return new URL(value, "https://mylooped.app").toString();
+    return new URL(value, origin).toString();
   } catch {
     return undefined;
   }
@@ -83,12 +83,16 @@ function buildFallbackMeta(postId: string, origin: string): PostShareMeta {
     title: "Looped — Shared Post",
     description: "View a shared Looped post.",
     canonicalUrl,
-    previewImageUrl: FALLBACK_IMAGE_URL,
+    previewImageUrl: new URL(FALLBACK_IMAGE_PATH, origin).toString(),
     iosDeepLink: `looped://post/${encodeURIComponent(postId)}`,
   };
 }
 
-async function resolvePreviewImageFromMedia(apiBase: string, postPayload: Record<string, unknown>): Promise<string | undefined> {
+async function resolvePreviewImageFromMedia(
+  apiBase: string,
+  postPayload: Record<string, unknown>,
+  origin: string
+): Promise<string | undefined> {
   const mediaAssetIds = extractMediaAssetIds(postPayload);
   if (mediaAssetIds.length === 0) return undefined;
 
@@ -116,7 +120,8 @@ async function resolvePreviewImageFromMedia(apiBase: string, postPayload: Record
     ) as Record<string, unknown> | undefined;
     if (!firstItem) return undefined;
     return toAbsoluteUrl(
-      pickString(firstItem, ["thumbnail_url", "thumbnailUrl", "cdn_url", "cdnUrl", "url", "download_url", "downloadUrl"])
+      pickString(firstItem, ["thumbnail_url", "thumbnailUrl", "cdn_url", "cdnUrl", "url", "download_url", "downloadUrl"]),
+      origin
     );
   } catch {
     return undefined;
@@ -199,16 +204,17 @@ export async function loader({ params, request }: Route.LoaderArgs) {
         .join(" • ")
     );
 
-    const resolvedPreviewUrl = await resolvePreviewImageFromMedia(apiBase, post);
+    const resolvedPreviewUrl = await resolvePreviewImageFromMedia(apiBase, post, origin);
     const directPreviewUrl = toAbsoluteUrl(
-      pickString(post, ["thumbnail_url", "thumbnailUrl", "cdn_url", "cdnUrl", "media_url", "mediaUrl", "image_url", "imageUrl"])
+      pickString(post, ["thumbnail_url", "thumbnailUrl", "cdn_url", "cdnUrl", "media_url", "mediaUrl", "image_url", "imageUrl"]),
+      origin
     );
 
     return {
       title,
       description,
       canonicalUrl: `${origin}/p/${encodeURIComponent(postId)}`,
-      previewImageUrl: resolvedPreviewUrl ?? directPreviewUrl ?? FALLBACK_IMAGE_URL,
+      previewImageUrl: resolvedPreviewUrl ?? directPreviewUrl ?? new URL(FALLBACK_IMAGE_PATH, origin).toString(),
       iosDeepLink: `looped://post/${encodeURIComponent(postId)}`,
     } satisfies PostShareMeta;
   } catch {
@@ -220,8 +226,8 @@ export function meta({ data }: Route.MetaArgs) {
   const shareMeta = data as PostShareMeta | undefined;
   const title = shareMeta?.title ?? "Looped — Shared Post";
   const description = shareMeta?.description ?? "View a shared Looped post.";
-  const canonicalUrl = shareMeta?.canonicalUrl ?? "https://mylooped.app/p";
-  const previewImageUrl = shareMeta?.previewImageUrl ?? FALLBACK_IMAGE_URL;
+  const canonicalUrl = shareMeta?.canonicalUrl ?? "/p";
+  const previewImageUrl = shareMeta?.previewImageUrl ?? FALLBACK_IMAGE_PATH;
   const iosDeepLink = shareMeta?.iosDeepLink ?? "looped://post";
 
   return [

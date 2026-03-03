@@ -2,9 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
 
 import { AppStoreButton } from "@/marketing/components/AppStoreButton/AppStoreButton";
-import { PageShell } from "@/marketing/components/PageShell/PageShell";
-import { LoginCard } from "@/marketing/components/Auth/LoginCard";
 import { AuthCard } from "@/marketing/components/Auth/AuthCard";
+import { LoginCard } from "@/marketing/components/Auth/LoginCard";
+import { PageShell } from "@/marketing/components/PageShell/PageShell";
 import { useUserSession } from "@/hooks/useUserSession";
 import { loginStatusFromAuthGateCode } from "@/lib/apiBase";
 import { getFirebaseErrorMessage, sendPasswordReset } from "@/lib/firebaseClient";
@@ -46,8 +46,18 @@ function resolveStatusMessage(statusCode: LoginStatusCode | null): string | null
 }
 
 export function LoginPage() {
-  const { status, user, error, signIn, signInWithGoogle, signInWithApple, signOut, authGateCode, accessState, onboardingStep } =
-    useUserSession();
+  const {
+    status,
+    user,
+    error,
+    signInOrSignUp,
+    signInWithGoogle,
+    signInWithApple,
+    signOut,
+    authGateCode,
+    accessState,
+    onboardingStep,
+  } = useUserSession();
   const navigate = useNavigate();
   const location = useLocation();
   const isBusy = status === "checking";
@@ -66,13 +76,19 @@ export function LoginPage() {
   const isOnboardingBlocked = effectiveStatusCode === "onboarding-required" || accessState === "signed_in_blocked";
   const isDeletedBlocked = effectiveStatusCode === "account-deleted" || accessState === "deleted";
   const isDeletePendingBlocked = effectiveStatusCode === "delete-pending" || accessState === "delete_pending";
-  const shouldShowBlockingCard = status !== "authenticated" && (isOnboardingBlocked || isDeletedBlocked || isDeletePendingBlocked);
+  const shouldShowBlockingCard =
+    (isDeletedBlocked || isDeletePendingBlocked) ||
+    (status !== "authenticated" && isOnboardingBlocked);
 
   useEffect(() => {
     if (status === "authenticated") {
-      navigate(postSignInDestination, { replace: true });
+      if (accessState === "signed_in_blocked") {
+        navigate("/onboarding", { replace: true });
+      } else if (accessState === "active") {
+        navigate(postSignInDestination, { replace: true });
+      }
     }
-  }, [navigate, postSignInDestination, status]);
+  }, [accessState, navigate, postSignInDestination, status]);
 
   useEffect(() => {
     setPostLogoutNotice(consumePostLogoutNotice());
@@ -100,16 +116,15 @@ export function LoginPage() {
     <PageShell>
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-10 lg:flex-row lg:items-start lg:gap-16">
         <div className="flex-1 space-y-6">
-          <h1 className="text-4xl font-semibold tracking-tight text-strong md:text-5xl">Sign in to Looped</h1>
+          <h1 className="text-4xl font-semibold tracking-tight text-strong md:text-5xl">Sign in or sign up</h1>
           <p className="text-lg leading-8 text-text-secondary">
-            <span className="font-semibold text-brand">Web sign-up is not supported.</span> Create your account in the
-            iOS app first, then sign in here on web using that same account.{" "}
-            <span className="font-semibold text-brand">Web is sign-in only right now.</span> Android is not available yet.
+            Sign up and complete onboarding directly on web. Verification is email-only on web for now, and photo ID
+            verification remains iOS-only.
           </p>
           <ul className="space-y-3 text-base text-text-secondary">
-            <li>Web sign-up is not supported.</li>
-            <li>Create your account in the Looped iOS app first.</li>
-            <li>After sign-up, use web to sign in and access your account.</li>
+            <li>Sign up or sign in with email/password.</li>
+            <li>Complete onboarding on web with organization email verification.</li>
+            <li>Continue in the app when onboarding is complete.</li>
           </ul>
           <div className="space-y-3">
             <p className="text-sm font-semibold uppercase tracking-wide text-text-light">Need the app?</p>
@@ -162,19 +177,19 @@ export function LoginPage() {
               ) : null}
               {shouldShowBlockingCard ? (
                 <AuthCard
-                  title={isDeletePendingBlocked ? "Deletion in progress" : isDeletedBlocked ? "Account unavailable" : "Finish account setup on iOS"}
+                  title={isDeletePendingBlocked ? "Deletion in progress" : isDeletedBlocked ? "Account unavailable" : "Finish account setup"}
                   description={
                     isDeletePendingBlocked
                       ? "Your account is still being deleted. Sign-in is blocked until processing completes."
                       : isDeletedBlocked
                       ? "This account was deleted. If this is unexpected, contact support."
-                      : "Finish account setup in the Looped iOS app before using web."
+                      : "Continue onboarding on web to finish account setup."
                   }
                 >
                   <div className="space-y-4">
                     {!isDeletedBlocked && !isDeletePendingBlocked ? (
                       <div className="rounded-lg border border-border bg-bg-muted px-4 py-3 text-sm text-text-secondary">
-                        Finish account setup on iOS to continue.
+                        Continue onboarding to finish account setup.
                         {onboardingStep ? ` Current step: ${onboardingStep}.` : ""}
                       </div>
                     ) : isDeletePendingBlocked ? (
@@ -188,7 +203,14 @@ export function LoginPage() {
                     )}
 
                     <div className="space-y-3">
-                      {!isDeletedBlocked && !isDeletePendingBlocked ? <AppStoreButton size={5.5} /> : null}
+                      {!isDeletedBlocked && !isDeletePendingBlocked ? (
+                        <Link
+                          to="/onboarding"
+                          className="inline-flex w-full items-center justify-center rounded-lg bg-brand px-4 py-2.5 text-sm font-semibold text-white transition hover:-translate-y-px hover:bg-brand/90"
+                        >
+                          Continue onboarding
+                        </Link>
+                      ) : null}
                       <Link
                         to={isDeletedBlocked || isDeletePendingBlocked ? "/contact" : "/faq"}
                         className="inline-flex w-full items-center justify-center rounded-lg border border-border px-4 py-2.5 text-sm font-semibold text-text-primary transition hover:bg-bg-muted"
@@ -207,14 +229,14 @@ export function LoginPage() {
                 </AuthCard>
               ) : (
                 <LoginCard
-                  onSubmit={signIn}
+                  onSubmit={signInOrSignUp}
                   onGoogle={signInWithGoogle}
                   onApple={signInWithApple}
                   onForgotPassword={handleForgotPassword}
                   error={error}
                   resetMessage={resetMessage}
                   resetTone={resetTone}
-                  note="No web sign-up. Create your account in the Looped iOS app first, then sign in here."
+                  note="Use the same form to sign in or create your account on web."
                   isBusy={isBusy || status === "loading"}
                 />
               )}

@@ -1,10 +1,11 @@
 import { LegalPage, type LegalSection } from "@/marketing/components/LegalPage/LegalPage";
+import { SITE_HOST, SITE_URL } from "@/lib/seo";
 
 const sections: LegalSection[] = [
   {
     title: "Overview",
     paragraphs: [
-      "This Cookie Policy explains how Looped Social (\"Looped\", Company, \"we,\" \"us,\" and \"our\") uses cookies and similar technologies to recognize you when you visit our website at https://www.mylooped.app (\"Website\"). It explains what these technologies are and why we use them, as well as your rights to control our use of them.",
+      `This Cookie Policy explains how Looped Social ("Looped", Company, "we," "us," and "our") uses cookies and similar technologies to recognize you when you visit our website at ${SITE_URL} ("Website"). It explains what these technologies are and why we use them, as well as your rights to control our use of them.`,
       "In some cases we may use cookies to collect personal information, or that becomes personal information if we combine it with other information.",
     ],
   },
@@ -36,7 +37,7 @@ const sections: LegalSection[] = [
     ],
     bullets: [
       "Name: looped-theme",
-      "Provider: www.mylooped.app",
+      `Provider: ${SITE_HOST}`,
       "Type: html_local_storage",
       "Expires in: persistent",
     ],

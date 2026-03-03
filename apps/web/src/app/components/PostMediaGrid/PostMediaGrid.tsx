@@ -9,12 +9,12 @@ type PostMediaGridProps = {
   viewerFooter?: ReactNode;
 };
 
-const MUTE_ICON_SRC = "/video-icons/mute-icon.svg";
-const VOLUME_ICON_SRC = "/video-icons/volume-one.svg";
-const PLAY_ICON_SRC = "/video-icons/play-button.svg";
-const PAUSE_ICON_SRC = "/video-icons/pause-button.svg";
-const MINIMIZE_ICON_SRC = "/video-icons/minizmize.svg";
-const REWATCH_ICON_SRC = "/video-icons/rewatch.svg";
+const MUTE_ICON_SRC = "/icons/media/mute.svg";
+const VOLUME_ICON_SRC = "/icons/media/volume.svg";
+const PLAY_ICON_SRC = "/icons/media/play.svg";
+const PAUSE_ICON_SRC = "/icons/media/pause.svg";
+const MINIMIZE_ICON_SRC = "/icons/media/minimize.svg";
+const REWATCH_ICON_SRC = "/icons/media/rewatch.svg";
 
 function isVideo(asset: ResolvedMediaAsset): boolean {
   if (asset.mimeType?.toLowerCase().startsWith("video/")) return true;

@@ -4,6 +4,7 @@
   --toast-text: #6b7280;
   --toast-success: #12b76a;
   --toast-error: #d92d20;
+  --toast-warning: #f59e0b;
   --toast-secondary: #15bfb5;
   --toast-border-base: #0f0f0f;
 }
@@ -14,6 +15,7 @@
   --toast-text: #9ca3af;
   --toast-success: #22c55e;
   --toast-error: #ff5a5f;
+  --toast-warning: #fbbf24;
   --toast-secondary: #15bfb5;
   --toast-border-base: #ffffff;
 }
@@ -58,52 +60,46 @@
 
 .looped-toast__icon {
   flex: 0 0 auto;
-  width: 30px;
-  height: 30px;
-  border-radius: 999px;
+  width: 24px;
+  height: 24px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: color-mix(in srgb, var(--toast-secondary) 14%, transparent);
   color: var(--toast-secondary);
 }
 
 .looped-toast--success .looped-toast__icon {
-  background: var(--toast-success);
   color: var(--toast-success);
 }
 
 .looped-toast--error .looped-toast__icon {
-  background: var(--toast-error);
   color: var(--toast-error);
 }
 
-.looped-toast--secondary .looped-toast__icon {
-  background: color-mix(in srgb, var(--toast-secondary) 18%, transparent);
+.looped-toast--warning .looped-toast__icon {
+  color: var(--toast-warning);
+}
+
+.looped-toast--info .looped-toast__icon {
   color: var(--toast-secondary);
 }
 
 .looped-toast--loading .looped-toast__icon {
-  background: color-mix(in srgb, var(--toast-secondary) 16%, transparent);
   color: var(--toast-secondary);
 }
 
-.looped-toast__icon-svg,
+.looped-toast__icon-glyph,
 .looped-toast__icon-spinner {
   width: 24px;
   height: 24px;
-  stroke: currentColor;
 }
 
-.looped-toast__icon-svg {
-  color: #ffffff;
-}
-
-.looped-toast--secondary .looped-toast__icon-svg {
-  color: var(--toast-secondary);
+.looped-toast__icon-glyph {
+  background: currentColor;
 }
 
 .looped-toast__icon-spinner {
+  stroke: currentColor;
   animation: looped-toast-spin 0.9s linear infinite;
 }
 

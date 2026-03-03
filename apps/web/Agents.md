@@ -30,6 +30,21 @@ All backend business logic and data persistence live in a separately deployed Sp
 - **Public routes**: `/`, `/privacy`, `/terms`, `/about`, `/download`, etc. stay accessible without auth.
 - **App routes**: everything under `/app/*` is gated and requires auth.
 - **Root behavior**: signed-in users visiting `/` should be redirected to `/app`; unauthenticated users visiting `/app/*` should be redirected to `/` (or `/signin` if added later).
+- **Auth providers on web**: Google, Apple, and email/password are supported via Firebase browser auth (no separate backend web login endpoint).
+
+## Current Onboarding Contract (Web)
+- Use `GET /v1/me` as the source of truth for onboarding state.
+- Resolve onboarding from `onboarding_stage_v2` + `onboarding_context`; local persisted step is fallback only.
+- Web onboarding verification is email-only.
+- Onboarding email flow sequence:
+  - `PUT /v1/users/me/onboarding-v2/verification-choice` (`verification_path=email`)
+  - `POST /v1/communities/{id}/verification/start`
+  - `POST /v1/communities/{id}/verification/finish`
+  - `POST /v1/users/me/onboarding-v2/email-verification/success`
+- Community/profile verification reuses domains/start/finish endpoints but must not call onboarding-v2 completion/progression endpoints.
+- Onboarding community-request side flow completes through:
+  - `POST /v1/community-requests`
+  - `POST /v1/users/me/onboarding-v2/complete-after-community-request`
 
 ## Development Best Practices
 

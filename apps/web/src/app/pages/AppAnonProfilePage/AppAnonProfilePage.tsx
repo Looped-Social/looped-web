@@ -545,8 +545,8 @@ export function AppAnonProfilePage({ anonProfileId }: AppAnonProfilePageProps) {
                   <span
                     className="inline-block h-full w-full bg-secondary"
                     style={{
-                      maskImage: "url('/ios-icons/pfp2.svg')",
-                      WebkitMaskImage: "url('/ios-icons/pfp2.svg')",
+                      maskImage: "url('/icons/profile/default-avatar.svg')",
+                      WebkitMaskImage: "url('/icons/profile/default-avatar.svg')",
                       maskRepeat: "no-repeat",
                       WebkitMaskRepeat: "no-repeat",
                       maskPosition: "center",

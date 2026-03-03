@@ -120,7 +120,7 @@ type SearchResultsState = {
 const RECENT_SEARCHES_KEY = "recentSearches";
 const RECENT_SEARCH_LIMIT = 5;
 const SEARCH_DEBOUNCE_MS = 300;
-const DEFAULT_PROFILE_IMAGE_SRC = "/ios-icons/pfp2.svg";
+const DEFAULT_PROFILE_IMAGE_SRC = "/icons/profile/default-avatar.svg";
 const TRENDING_LIMIT = 3;
 const RECOMMENDED_COMMUNITIES_LIMIT = 8;
 const SPECIALIZATIONS_INITIAL_LIMIT = 24;
@@ -2050,14 +2050,14 @@ export function AppSearchPage() {
               </div>
 
               {landingStatus === "loading" ? (
-                <div className="space-y-3">
+                <div className="looped-fade-swap space-y-3">
                   {Array.from({ length: 2 }, (_, index) => (
-                    <div key={`trending-skeleton-${index}`} className="animate-pulse overflow-hidden rounded-3xl border border-border/60 bg-bg">
-                      <div className="h-40 w-full bg-bg-muted" />
+                    <div key={`trending-skeleton-${index}`} className="overflow-hidden rounded-3xl border border-border/60 bg-bg">
+                      <div className="looped-skeleton looped-skeleton-shimmer h-40 w-full" />
                       <div className="space-y-2 px-4 py-4">
-                        <div className="h-4 w-2/3 rounded-full bg-bg-muted" />
-                        <div className="h-3 w-1/2 rounded-full bg-bg-muted" />
-                        <div className="h-3 w-full rounded-full bg-bg-muted" />
+                        <div className="looped-skeleton looped-skeleton-shimmer h-4 w-2/3 rounded-full" />
+                        <div className="looped-skeleton looped-skeleton-shimmer h-3 w-1/2 rounded-full" />
+                        <div className="looped-skeleton looped-skeleton-shimmer h-3 w-full rounded-full" />
                       </div>
                     </div>
                   ))}
@@ -2160,8 +2160,22 @@ export function AppSearchPage() {
             {peopleRecommendationsStatus === "loading" && !peopleRecommendationsRail ? (
               <section className="space-y-3">
                 <SectionHeader title="Recommended for you" />
-                <div className="rounded-2xl border border-border/70 bg-bg px-4 py-3">
-                  <p className="text-sm text-text-secondary">Loading recommendations...</p>
+                <div className="looped-fade-swap flex gap-3 overflow-hidden">
+                  {Array.from({ length: 3 }, (_, index) => (
+                    <div
+                      key={`people-skeleton-${index}`}
+                      className="w-[160px] shrink-0 rounded-[18px] border border-border/70 bg-bg px-3 py-3"
+                    >
+                      <div className="flex flex-col items-center gap-2.5">
+                        <div className="looped-skeleton looped-skeleton-shimmer h-14 w-14 rounded-full" aria-hidden="true" />
+                        <div className="w-full space-y-2">
+                          <div className="looped-skeleton looped-skeleton-shimmer mx-auto h-3.5 w-4/5 rounded-full" aria-hidden="true" />
+                          <div className="looped-skeleton looped-skeleton-shimmer mx-auto h-3 w-3/5 rounded-full" aria-hidden="true" />
+                        </div>
+                        <div className="looped-skeleton looped-skeleton-shimmer h-8 w-full rounded-full" aria-hidden="true" />
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </section>
             ) : null}
@@ -2179,6 +2193,15 @@ export function AppSearchPage() {
                 onCardVisibilityChange={trackRecommendationVisibility}
                 onReachEnd={() => void loadMoreRecommendations()}
               />
+            ) : null}
+
+            {peopleRecommendationsStatus === "empty" ? (
+              <section className="space-y-3">
+                <SectionHeader title="Recommended for you" />
+                <div className="rounded-2xl border border-border/70 bg-bg px-4 py-3">
+                  <p className="text-sm text-text-secondary">No recommendations available right now.</p>
+                </div>
+              </section>
             ) : null}
 
             {peopleRecommendationsStatus === "error" &&
@@ -2260,10 +2283,10 @@ export function AppSearchPage() {
                     </button>
                   ))}
                   {isLoadingMoreCommunities ? (
-                    <div className="w-[216px] shrink-0 animate-pulse rounded-2xl border border-border/60 bg-bg px-3 py-3">
-                      <div className="h-4 w-1/2 rounded-full bg-bg-muted" />
-                      <div className="mt-3 h-3 w-full rounded-full bg-bg-muted" />
-                      <div className="mt-2 h-3 w-2/3 rounded-full bg-bg-muted" />
+                    <div className="w-[216px] shrink-0 rounded-2xl border border-border/60 bg-bg px-3 py-3">
+                      <div className="looped-skeleton looped-skeleton-shimmer h-4 w-1/2 rounded-full" />
+                      <div className="looped-skeleton looped-skeleton-shimmer mt-3 h-3 w-full rounded-full" />
+                      <div className="looped-skeleton looped-skeleton-shimmer mt-2 h-3 w-2/3 rounded-full" />
                     </div>
                   ) : null}
                 </div>
@@ -2442,11 +2465,11 @@ export function AppSearchPage() {
               {resultsMode !== "results" ? (
                 <section className="space-y-3">
                   {feedStatus === "loading" ? (
-                    <div className="space-y-2">
+                    <div className="looped-fade-swap space-y-2">
                       {Array.from({ length: 4 }, (_, index) => (
-                        <div key={`feed-skeleton-${index}`} className="animate-pulse rounded-2xl border border-border/60 bg-bg px-4 py-3">
-                          <div className="h-3 w-1/3 rounded-full bg-bg-muted" />
-                          <div className="mt-2 h-3 w-2/3 rounded-full bg-bg-muted" />
+                        <div key={`feed-skeleton-${index}`} className="rounded-2xl border border-border/60 bg-bg px-4 py-3">
+                          <div className="looped-skeleton looped-skeleton-shimmer h-3 w-1/3 rounded-full" />
+                          <div className="looped-skeleton looped-skeleton-shimmer mt-2 h-3 w-2/3 rounded-full" />
                         </div>
                       ))}
                     </div>
@@ -2542,11 +2565,11 @@ export function AppSearchPage() {
                   ) : null}
 
                   {query.trim() && searchStatus === "loading" ? (
-                    <div className="space-y-2">
+                    <div className="looped-fade-swap space-y-2">
                       {Array.from({ length: 4 }, (_, index) => (
-                        <div key={`search-skeleton-${index}`} className="animate-pulse rounded-2xl border border-border/60 bg-bg px-4 py-3">
-                          <div className="h-3 w-1/3 rounded-full bg-bg-muted" />
-                          <div className="mt-2 h-3 w-2/3 rounded-full bg-bg-muted" />
+                        <div key={`search-skeleton-${index}`} className="rounded-2xl border border-border/60 bg-bg px-4 py-3">
+                          <div className="looped-skeleton looped-skeleton-shimmer h-3 w-1/3 rounded-full" />
+                          <div className="looped-skeleton looped-skeleton-shimmer mt-2 h-3 w-2/3 rounded-full" />
                         </div>
                       ))}
                     </div>

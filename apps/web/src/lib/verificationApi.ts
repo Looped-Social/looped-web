@@ -132,6 +132,24 @@ export async function startCommunityVerification({
   });
 }
 
+export async function fetchCommunityVerificationDomains(
+  communityId: string | number,
+  options?: { signal?: AbortSignal }
+): Promise<string[]> {
+  const response = await settingsAuthFetch<unknown>(`/v1/communities/${communityId}/domains`, {
+    signal: options?.signal,
+  });
+  const normalized: string[] = [];
+  const seen = new Set<string>();
+  for (const entry of extractItemsArray(response)) {
+    const next = normalizeOptional(entry)?.trim().toLowerCase();
+    if (!next || seen.has(next)) continue;
+    seen.add(next);
+    normalized.push(next);
+  }
+  return normalized;
+}
+
 export async function finishCommunityVerification({
   communityId,
   method,
@@ -148,8 +166,6 @@ export async function finishCommunityVerification({
     body: JSON.stringify({
       method,
       code,
-      mediaKey: null,
-      token: null,
       email,
     }),
   });

@@ -6,7 +6,7 @@ import { SettingsSubpageHeader } from "@/app/components/SettingsSubpageHeader/Se
 import { fetchBlockedUsers, type BlockedUserItem, unblockPrincipal } from "@/lib/settingsApi";
 import { normalizeSettingsError } from "@/lib/settingsHttp";
 
-const DEFAULT_PROFILE_IMAGE_SRC = "/ios-icons/pfp2.svg";
+const DEFAULT_PROFILE_IMAGE_SRC = "/icons/profile/default-avatar.svg";
 
 function handleProfileImageError(event: SyntheticEvent<HTMLImageElement>) {
   const image = event.currentTarget;

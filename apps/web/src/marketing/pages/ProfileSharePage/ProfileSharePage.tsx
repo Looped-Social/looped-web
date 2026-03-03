@@ -16,7 +16,7 @@ import {
 import { resolveSharedMediaAssets } from "@/lib/postShareApi";
 import { Navbar } from "@/marketing/components/Navbar/Navbar";
 
-const DEFAULT_PROFILE_IMAGE_SRC = "/ios-icons/pfp2.svg";
+const DEFAULT_PROFILE_IMAGE_SRC = "/icons/profile/default-avatar.svg";
 
 type ProfileSharePageProps = {
   username: string;
@@ -46,7 +46,6 @@ type SharedProfileFeedPost = {
   createdAtLabel: string;
   likesCount: number;
   commentsCount: number;
-  sharesCount: number;
   mediaAssetIds: string[];
   poll?: PostPoll;
 };
@@ -245,7 +244,6 @@ function normalizeSharedProfileFeedPost(payload: unknown): SharedProfileFeedPost
     createdAtLabel: formatTimeAgo(payload.created_at ?? payload.createdAt ?? payload.timestamp),
     likesCount: pickNumber(payload, ["likes_count", "likesCount"]) ?? 0,
     commentsCount: pickNumber(payload, ["comments_count", "commentsCount", "comment_count", "commentCount"]) ?? 0,
-    sharesCount: pickNumber(payload, ["share_count", "shareCount", "shares_count", "sharesCount"]) ?? 0,
     mediaAssetIds: extractMediaAssetIds(payload),
     poll: normalizePoll(payload.poll),
   };
@@ -316,7 +314,7 @@ function RepostIcon({ className }: { className?: string }) {
 function ShareIcon({ className }: { className?: string }) {
   return (
     <span
-      className={`inline-block bg-current [mask-image:url('/ios-icons/send-icon.svg')] [mask-repeat:no-repeat] [mask-position:center] [mask-size:contain] [-webkit-mask-image:url('/ios-icons/send-icon.svg')] [-webkit-mask-repeat:no-repeat] [-webkit-mask-position:center] [-webkit-mask-size:contain] ${className ?? ""}`}
+      className={`inline-block bg-current [mask-image:url('/icons/actions/send.svg')] [mask-repeat:no-repeat] [mask-position:center] [mask-size:contain] [-webkit-mask-image:url('/icons/actions/send.svg')] [-webkit-mask-repeat:no-repeat] [-webkit-mask-position:center] [-webkit-mask-size:contain] ${className ?? ""}`}
       aria-hidden="true"
     />
   );
@@ -458,9 +456,8 @@ function ReadOnlyProfilePostCard({
             <span className="inline-flex items-center text-[1rem] font-medium">
               <RepostIcon className="h-[24px] w-[24px] flex-none" />
             </span>
-            <span className="inline-flex items-center gap-1 text-[1rem] font-medium">
+            <span className="inline-flex items-center text-[1rem] font-medium">
               <ShareIcon className="h-[22px] w-[22px] flex-none" />
-              <span className="text-[1.02rem] font-medium tabular-nums">{post.sharesCount}</span>
             </span>
           </div>
           <span className="inline-flex items-center justify-center text-text-secondary">

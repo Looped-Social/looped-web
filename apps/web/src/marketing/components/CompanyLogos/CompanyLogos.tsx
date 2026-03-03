@@ -1,9 +1,9 @@
-import amazonLogo from "@/assets/images/company-logos/amazon.svg";
-import googleLogo from "@/assets/images/company-logos/google.svg";
-import jpmorganLogo from "@/assets/images/company-logos/jpmorgan.svg";
-import ncstateLogo from "@/assets/images/company-logos/ncstate.png";
-import uncLogo from "@/assets/images/company-logos/unc.svg";
-import walmartLogo from "@/assets/images/company-logos/walmart.svg";
+import amazonLogo from "@/assets/marketing/company-logos/amazon.svg";
+import googleLogo from "@/assets/marketing/company-logos/google.svg";
+import jpmorganLogo from "@/assets/marketing/company-logos/jpmorgan.svg";
+import ncstateLogo from "@/assets/marketing/company-logos/ncstate.png";
+import uncLogo from "@/assets/marketing/company-logos/unc.svg";
+import walmartLogo from "@/assets/marketing/company-logos/walmart.svg";
 
 const logos = [
   { src: uncLogo, alt: "University of North Carolina at Chapel Hill" },
