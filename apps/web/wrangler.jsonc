@@ -1,0 +1,14 @@
+{
+  "$schema": "https://developers.cloudflare.com/wrangler/config-schema.json",
+  "name": "looped-web",
+  "compatibility_date": "2026-03-03",
+
+  // Module Worker entrypoint that bridges React Router SSR to Cloudflare's runtime.
+  "main": "./workers/app.ts",
+
+  // React Router client build output (Vite).
+  "assets": {
+    "directory": "./build/client"
+  }
+}
+
