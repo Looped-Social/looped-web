@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router";
 
 import { Logo } from "@looped/ui";
@@ -6,6 +6,12 @@ import { Logo } from "@looped/ui";
 import { SocialIconLinks } from "../SocialIconLinks/SocialIconLinks";
 
 const APP_STORE_URL = "https://apps.apple.com/us/app/looped-social/id6758413180";
+const homeFooterLinks = [
+  { label: "about", to: "/about" },
+  { label: "privacy", to: "/privacy" },
+  { label: "terms", to: "/terms" },
+  { label: "FAQs", to: "/faq" },
+];
 
 export function HomeChoiceDialog({
   isOpen,
@@ -90,6 +96,7 @@ export function HomeLandingChrome({
 }: {
   tone: "light" | "dark";
 }) {
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const isDark = tone === "dark";
   const logoVariant = isDark ? "dark" : "light";
   const navTextClass = isDark ? "text-white/92" : "text-strong";
@@ -102,10 +109,32 @@ export function HomeLandingChrome({
   const signupClass = isDark
     ? "border-white/28 text-white hover:bg-white/10"
     : "border-strong/18 text-strong hover:bg-bg";
+  const mobileHeaderIconClass = isDark ? "text-white/90" : "text-strong";
+
+  useEffect(() => {
+    if (!isMobileMenuOpen) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setIsMobileMenuOpen(false);
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isMobileMenuOpen]);
+
+  const closeMobileMenu = () => {
+    setIsMobileMenuOpen(false);
+  };
 
   return (
     <div className="pointer-events-none fixed inset-x-0 top-0 z-[70]">
-      <div className="flex w-full items-center justify-between px-4 py-3 sm:px-6 lg:px-8">
+      <div className="hidden w-full items-center justify-between px-4 py-3 sm:px-6 lg:px-8 md:flex">
         <div className="pointer-events-auto origin-left scale-110 px-1 py-1">
           <Logo variant={logoVariant} />
         </div>
@@ -134,22 +163,46 @@ export function HomeLandingChrome({
         </div>
       </div>
 
-      <div className="pointer-events-none fixed inset-x-0 bottom-0">
+      <div className="flex w-full items-center justify-between px-4 py-3 md:hidden">
+        <div className="pointer-events-auto">
+          <Logo variant={logoVariant} imageClassName="h-10 w-auto" />
+        </div>
+
+        <div className="pointer-events-auto flex items-center gap-3">
+          <a
+            href={APP_STORE_URL}
+            target="_blank"
+            rel="noreferrer"
+            className={`text-sm font-semibold transition ${topLinkClass}`}
+          >
+            Get iOS App
+          </a>
+          <button
+            type="button"
+            className={`inline-flex h-10 w-10 items-center justify-center rounded-full transition ${mobileHeaderIconClass}`}
+            onClick={() => setIsMobileMenuOpen(true)}
+            aria-expanded={isMobileMenuOpen}
+            aria-controls="home-mobile-menu"
+            aria-label="Open menu"
+          >
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <line x1="4" y1="7" x2="20" y2="7" />
+              <line x1="4" y1="12" x2="20" y2="12" />
+              <line x1="4" y1="17" x2="20" y2="17" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <div className="pointer-events-none fixed inset-x-0 bottom-0 hidden md:block">
         <div className="mx-auto max-w-7xl px-4 pb-0 sm:px-6 sm:pb-0 lg:px-8 lg:pb-0">
           <div className={`pointer-events-auto flex flex-col gap-4 border-t px-5 pt-5 pb-4 sm:flex-row sm:items-center sm:justify-between ${borderClass}`}>
             <div className={`flex flex-wrap items-center gap-5 text-sm ${navTextClass}`}>
-              <Link className="font-semibold transition hover:opacity-70" to="/about">
-                about
-              </Link>
-              <Link className="font-semibold transition hover:opacity-70" to="/privacy">
-                privacy
-              </Link>
-              <Link className="font-semibold transition hover:opacity-70" to="/terms">
-                terms
-              </Link>
-              <Link className="font-semibold transition hover:opacity-70" to="/faq">
-                FAQs
-              </Link>
+              {homeFooterLinks.map((link) => (
+                <Link key={link.to} className="font-semibold transition hover:opacity-70" to={link.to}>
+                  {link.label}
+                </Link>
+              ))}
               <SocialIconLinks
                 className="gap-0.5"
                 linkClassName={`h-8 w-8 ${navTextClass}`}
@@ -160,6 +213,77 @@ export function HomeLandingChrome({
           </div>
         </div>
       </div>
+
+      {isMobileMenuOpen ? (
+        <div className="pointer-events-auto md:hidden">
+          <div
+            id="home-mobile-menu"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Site menu"
+            className="fixed inset-0 z-[90] bg-bg"
+          >
+            <div className="flex h-full flex-col px-6 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-[max(0.9rem,env(safe-area-inset-top))]">
+              <div className="flex items-center justify-between">
+                <Logo variant={logoVariant} imageClassName="h-10 w-auto" />
+                <button
+                  type="button"
+                  onClick={closeMobileMenu}
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-full text-strong transition"
+                  aria-label="Close menu"
+                >
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <line x1="18" y1="6" x2="6" y2="18" />
+                    <line x1="6" y1="6" x2="18" y2="18" />
+                  </svg>
+                </button>
+              </div>
+
+              <div className="mt-14 space-y-3">
+                <Link
+                  to="/login"
+                  className="block rounded-full bg-brand px-6 py-3 text-center text-lg font-semibold text-white transition hover:bg-brand/90"
+                  onClick={closeMobileMenu}
+                >
+                  log in
+                </Link>
+                <Link
+                  to="/signup"
+                  className="block rounded-full border border-border px-6 py-3 text-center text-lg font-semibold text-strong transition hover:bg-bg-muted"
+                  onClick={closeMobileMenu}
+                >
+                  sign up
+                </Link>
+                <a
+                  href={APP_STORE_URL}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-2 block text-center text-base font-semibold text-strong transition hover:opacity-75"
+                  onClick={closeMobileMenu}
+                >
+                  Get iOS App
+                </a>
+              </div>
+
+              <div className="mt-auto border-t border-border pt-6">
+                <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-3 text-[1.05rem] font-semibold text-strong">
+                  {homeFooterLinks.map((link) => (
+                    <Link key={`mobile-${link.to}`} to={link.to} onClick={closeMobileMenu}>
+                      {link.label}
+                    </Link>
+                  ))}
+                </div>
+                <SocialIconLinks
+                  className="mt-4 justify-center gap-1"
+                  linkClassName="h-10 w-10 text-strong"
+                  iconClassName="h-5 w-5"
+                />
+                <p className="mt-4 text-center text-sm text-text-secondary">2026 Looped Social. All rights reserved.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

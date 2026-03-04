@@ -40,8 +40,8 @@ export function Hero({ onOpenDialog }: HeroProps) {
         <div className="flex flex-1 flex-col items-center justify-center gap-10 lg:grid lg:grid-cols-[0.38fr_0.62fr] lg:items-center lg:gap-3">
           <div className="mx-auto flex max-w-4xl flex-col items-center text-center lg:mx-0 lg:-translate-y-20 lg:items-start lg:pl-6 lg:text-left xl:pl-8">
             <h1 className="flex flex-col items-center text-[2.8rem] font-semibold leading-[0.97] tracking-[-0.05em] text-strong sm:text-[3.7rem] lg:items-start lg:text-[4.9rem]">
-              <span className="block whitespace-nowrap">Verified connection</span>
-              <span className="flex items-baseline gap-[0.18em] whitespace-nowrap">
+              <span className="block text-balance">Verified connection</span>
+              <span className="flex flex-wrap items-baseline justify-center gap-x-[0.18em] gap-y-1 lg:justify-start">
                 <span className="block">in your</span>
                 <span
                   className={`inline-block min-w-[4.6ch] text-center text-brand transition-all duration-[550ms] ease-in-out lg:text-left ${
