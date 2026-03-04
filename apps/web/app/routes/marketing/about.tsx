@@ -5,7 +5,7 @@ import { AboutPage } from "@/marketing/pages/AboutPage/AboutPage";
 export function meta({}: Route.MetaArgs) {
   return buildMarketingPageMeta({
     title: "About Looped",
-    description: "Learn how Looped builds verified workplace and college communities for pseudonymous conversations.",
+    description: "Learn how Looped builds verified workplace and field communities for pseudonymous conversations.",
     path: "/about",
   });
 }

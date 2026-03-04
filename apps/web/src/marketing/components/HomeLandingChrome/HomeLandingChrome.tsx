@@ -88,7 +88,6 @@ export function HomeLandingChrome({
 }: {
   tone: "light" | "dark";
 }) {
-  const currentYear = new Date().getFullYear();
   const isDark = tone === "dark";
   const logoVariant = isDark ? "dark" : "light";
   const navTextClass = isDark ? "text-white/92" : "text-strong";
@@ -152,7 +151,7 @@ export function HomeLandingChrome({
                 iconClassName="h-4.5 w-4.5"
               />
             </div>
-            <p className={`text-sm ${mutedTextClass}`}>© {currentYear} Looped Social</p>
+            <p className={`text-sm ${mutedTextClass}`}>2026 Looped Social. All rights reserved.</p>
           </div>
         </div>
       </div>

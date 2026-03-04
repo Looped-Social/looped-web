@@ -4,7 +4,7 @@ type HeroProps = {
   onOpenDialog: () => void;
 };
 
-const rotatingWords = ["workplace", "community", "career"];
+const rotatingWords = ["workplace", "field", "career"];
 const rotationFadeDurationMs = 550;
 const rotationIntervalMs = 3200;
 
@@ -48,8 +48,8 @@ export function Hero({ onOpenDialog }: HeroProps) {
                 {rotatingWords[currentWordIndex]}.
               </span>
             </h1>
-            <p className="mt-6 max-w-[28ch] text-lg leading-8 text-text-secondary sm:text-xl">
-              Connect, grow and be yourself in your workplace.
+            <p className="mt-6 max-w-[30ch] text-lg leading-8 text-text-secondary sm:text-xl">
+              Connect, grow, and be yourself with people who understand your work.
             </p>
 
             <button
