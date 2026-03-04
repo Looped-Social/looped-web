@@ -49,11 +49,11 @@ export function PrivacyPage() {
   return (
     <PageShell>
       <div className="mx-auto flex max-w-5xl flex-col gap-12 px-2 md:gap-14">
-        <header className="mx-auto flex w-full max-w-4xl flex-col items-center space-y-4 text-center">
-          <h1 className="max-w-[10ch] text-[3rem] font-semibold leading-[0.95] tracking-[-0.05em] text-strong sm:text-[4rem] md:text-[4.6rem]">
+        <header className="mx-auto flex w-full max-w-6xl flex-col items-center space-y-4 text-center">
+          <h1 className="max-w-[16ch] text-[3rem] font-semibold leading-[0.95] tracking-[-0.05em] text-strong sm:text-[4rem] md:max-w-[18ch] md:text-[4.6rem]">
             Privacy that protects your identity
           </h1>
-          <p className="max-w-[38ch] text-lg leading-8 text-text-secondary md:text-xl">
+          <p className="max-w-[62ch] text-lg leading-8 text-text-secondary md:text-xl">
             Looped is a verified social platform for workplace and field communities with a full iOS app and a
             limited web experience. You can view posts on the web, but you verify in the iOS app to join and post in
             your workplace community. Joining your workplace unlocks field communities.
