@@ -152,7 +152,7 @@ function messageForWriteError(code?: string, fallbackMessage = "This action isn'
     return "Your verification expired. Re-verify your organization email.";
   }
   if (code === "specialization_not_joined") {
-    return "Join this major or field first.";
+    return "Join this field first.";
   }
   if (code === "community_banned") {
     return "This community is currently unavailable.";
@@ -289,7 +289,7 @@ function actionLockTitle(lockCode?: string): string {
 
 function actionLockMessage(lockCode: string | undefined, verb: string): string {
   if (lockCode === "specialization_not_joined") {
-    return `Join this major or field to ${verb}.`;
+    return `Join this field to ${verb}.`;
   }
   if (lockCode === "verification_expired") {
     return `Your verification expired. Verify again to ${verb}.`;

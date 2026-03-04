@@ -8,7 +8,6 @@ const APP_STORE_URL = "https://apps.apple.com/us/app/looped-social/id6758413180"
 
 export function Footer() {
   const { theme } = useTheme();
-  const currentYear = new Date().getFullYear();
   const motoSrc = theme === "dark" ? LoopedMotoDark : LoopedMoto;
 
   return (
@@ -118,7 +117,7 @@ export function Footer() {
         </div>
 
         <div className="mt-10 flex flex-col gap-3 border-t border-border pt-6 text-sm text-text-light sm:flex-row sm:items-center sm:justify-between sm:gap-4 md:gap-6">
-          <p className="text-left sm:text-left">© {currentYear} Looped Social All rights reserved.</p>
+          <p className="text-left sm:text-left">2026 Looped Social. All rights reserved.</p>
           <p className="text-left sm:text-right">iOS + limited web (no Android yet)</p>
         </div>
       </div>

@@ -48,7 +48,7 @@ export function CommunityRequestPage() {
         <header className="space-y-1 text-center">
           <h1 className="text-3xl font-semibold tracking-tight text-strong md:text-4xl">Request a new community</h1>
           <p className="text-sm leading-6 text-text-secondary md:text-base">
-            Tell us the company, school, field, or major you want to see on Looped.
+            Tell us the company or field you want to see on Looped.
           </p>
         </header>
         <div className="rounded-2xl border border-border bg-bg p-4 shadow-sm md:p-6">

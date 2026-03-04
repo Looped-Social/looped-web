@@ -252,7 +252,7 @@ export function useEmailVerificationMachine({
   const loadDomains = useCallback(async (signal?: AbortSignal) => {
     if (!enabled) return;
     if (!communityId) {
-      setErrorMessage("Select your school or workplace first.");
+      setErrorMessage("Select your workplace first.");
       setState("domains_error");
       return;
     }
@@ -378,7 +378,7 @@ export function useEmailVerificationMachine({
   const sendCode = useCallback(async () => {
     if (!communityId) {
       setState("enter_email_error");
-      setErrorMessage("Select your school or workplace first.");
+      setErrorMessage("Select your workplace first.");
       return;
     }
 
@@ -386,7 +386,7 @@ export function useEmailVerificationMachine({
     const domain = draft.selectedDomain.trim();
     if (!localPart || !domain) {
       setState("enter_email_error");
-      setErrorMessage("Enter your work or school email.");
+      setErrorMessage("Enter your work email.");
       return;
     }
 
@@ -489,13 +489,13 @@ export function useEmailVerificationMachine({
   const verifyCode = useCallback(async () => {
     if (!communityId) {
       setState("enter_code_error");
-      setErrorMessage("Select your school or workplace first.");
+      setErrorMessage("Select your workplace first.");
       return;
     }
     const submittedEmail = draft.submittedEmail.trim();
     if (!submittedEmail) {
       setState("enter_email_error");
-      setErrorMessage("Enter your work or school email.");
+      setErrorMessage("Enter your work email.");
       return;
     }
     const code = draft.pendingCode.trim();

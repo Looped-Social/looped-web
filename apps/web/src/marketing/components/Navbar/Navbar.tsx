@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 
-import { Logo, ThemeToggle } from "@looped/ui";
+import { Logo } from "@looped/ui";
 
 const APP_STORE_URL = "https://apps.apple.com/us/app/looped-social/id6758413180";
 
@@ -18,6 +18,8 @@ export function Navbar() {
   const [isFinePrintOpen, setIsFinePrintOpen] = useState(false);
   const [isMobileFinePrintOpen, setIsMobileFinePrintOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const loginClass = "bg-brand text-white hover:bg-brand/90";
+  const signupClass = "border-strong/18 text-strong hover:bg-bg";
 
   useEffect(() => {
     const handleScroll = () => setIsScrolled(window.scrollY > 10);
@@ -52,9 +54,11 @@ export function Navbar() {
         isScrolled ? "shadow-[0_2px_8px_rgba(0,0,0,0.08)] ring-1 ring-border/80" : ""
       }`}
     >
-      <div className="flex w-full items-center justify-between gap-8 px-4 py-4 sm:px-6 lg:px-8">
+      <div className="flex w-full items-center justify-between gap-8 px-4 py-3 sm:px-6 lg:px-8">
         <div className="flex items-center gap-8">
-          <Logo />
+          <div className="scale-110 origin-left">
+            <Logo />
+          </div>
 
           <nav className="hidden items-center text-[0.95rem] font-normal text-text-primary gap-6 md:flex">
             <Link className="transition-colors hover:text-strong" to="/about">
@@ -110,19 +114,27 @@ export function Navbar() {
           </nav>
         </div>
 
-        <div className="hidden items-center gap-4 md:flex">
-          <ThemeToggle />
-          <Link className="text-[0.95rem] font-normal text-text-primary transition hover:text-strong" to="/login">
-            Log in
-          </Link>
+        <div className="hidden items-center gap-3 md:flex">
           <a
             href={APP_STORE_URL}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center justify-center rounded-md bg-brand px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:-translate-y-px hover:bg-brand/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand/80"
+            className="text-sm font-semibold text-strong transition hover:text-strong/80"
           >
-            Get Looped
+            Get iOS App
           </a>
+          <Link
+            to="/login"
+            className={`inline-flex items-center justify-center rounded-full px-5 py-2.5 text-sm font-semibold shadow-sm transition ${loginClass}`}
+          >
+            Log in
+          </Link>
+          <Link
+            to="/signup"
+            className={`inline-flex items-center justify-center rounded-full border px-5 py-2.5 text-sm font-semibold transition ${signupClass}`}
+          >
+            Sign up
+          </Link>
         </div>
 
         <button
@@ -236,23 +248,29 @@ export function Navbar() {
             </nav>
 
             <div className="mt-auto space-y-3 pt-4">
-              <ThemeToggle className="inline-flex w-full justify-center" />
-              <Link
-                to="/login"
-                className="block rounded-full border border-border px-4 py-2.5 text-center text-sm font-semibold text-text-primary transition hover:bg-bg-muted"
-                onClick={() => setIsMobileOpen(false)}
-              >
-                Log in
-              </Link>
               <a
                 href={APP_STORE_URL}
                 target="_blank"
                 rel="noopener noreferrer"
+                className="block rounded-full border border-border px-4 py-2.5 text-center text-sm font-semibold text-text-primary transition hover:bg-bg-muted"
+                onClick={() => setIsMobileOpen(false)}
+              >
+                Get iOS App
+              </a>
+              <Link
+                to="/login"
                 className="block rounded-full bg-brand px-4 py-3 text-center text-sm font-semibold text-white shadow-sm transition hover:-translate-y-px hover:bg-brand/90"
                 onClick={() => setIsMobileOpen(false)}
               >
-                Get Looped
-              </a>
+                Log in
+              </Link>
+              <Link
+                to="/signup"
+                className="block rounded-full border border-border px-4 py-2.5 text-center text-sm font-semibold text-text-primary transition hover:bg-bg-muted"
+                onClick={() => setIsMobileOpen(false)}
+              >
+                Sign up
+              </Link>
             </div>
           </div>
         </div>

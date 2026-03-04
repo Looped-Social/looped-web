@@ -5,7 +5,7 @@ import { CommunityRequestPage } from "@/marketing/pages/CommunityRequestPage/Com
 export function meta({}: Route.MetaArgs) {
   return buildMarketingPageMeta({
     title: "Looped — Community Request",
-    description: "Request a new company, school, or field community on Looped.",
+    description: "Request a new company or field community on Looped.",
     path: "/community-request",
   });
 }

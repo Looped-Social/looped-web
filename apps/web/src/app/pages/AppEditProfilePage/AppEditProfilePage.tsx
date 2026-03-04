@@ -1091,7 +1091,7 @@ export function AppEditProfilePage() {
 
               <label className="block">
                 <span className="mb-2 block text-[1.08rem] font-semibold text-strong">Display Specialization</span>
-                <p className="mb-1.5 text-sm text-text-secondary">Choose a major or field to show on your profile.</p>
+                <p className="mb-1.5 text-sm text-text-secondary">Choose a field to show on your profile.</p>
                 <select
                   value={form.displaySpecializationId}
                   onChange={(event) => handleInput("displaySpecializationId", event.currentTarget.value)}
