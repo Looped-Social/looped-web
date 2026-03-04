@@ -242,7 +242,7 @@ function mapOnboardingError(error: unknown): string {
         return "This organization is not configured for email verification yet.";
       case "email_domain_not_allowed":
       case "domain_not_allowed":
-        return "Use an approved school or company email domain.";
+        return "Use an approved company email domain.";
       case "invalid_email":
         return "Enter a valid email address.";
       case "code_required":
@@ -1708,7 +1708,7 @@ export function OnboardingPage() {
     persisted.specializationDraft.selectedIds.filter((entry) => entry.length > 0).length > 0;
   const stepTitle =
     currentStep === "org_selection"
-      ? "Search for your school or place of work"
+      ? "Search for your workplace"
       : currentStep === "profile_setup"
         ? "Create your profile"
       : currentStep === "specialization_selection"
@@ -1799,12 +1799,12 @@ export function OnboardingPage() {
                   </h1>
                   {currentStep === "org_selection" ? (
                     <p className="mt-2 text-center text-sm leading-6 text-text-secondary">
-                      If you're in multiple schools or workplaces, choose one for now. You can verify others later.
+                      If you're in multiple workplaces, choose one for now. You can verify others later.
                     </p>
                   ) : null}
                   {currentStep === "specialization_selection" ? (
                     <p className="mt-2 text-center text-sm leading-6 text-text-secondary">
-                      Select up to 2 {selectedOrgKind === "school" ? "majors" : "fields"} to join now.
+                      Select up to 2 fields to join now.
                     </p>
                   ) : null}
                   {currentStep === "org_selection" ? (
@@ -2328,7 +2328,7 @@ export function OnboardingPage() {
               {currentStep === "verification_confirmation" ? (
                 <div className="space-y-4">
                   <p className="text-sm leading-6 text-text-secondary">
-                    You're verified for {selectedOrgLabel}. Your major or field is joined. Start posting.
+                    You're verified for {selectedOrgLabel}. Your field is joined. Start posting.
                   </p>
                   <OnboardingContinueButton
                     label="Continue"
@@ -2485,7 +2485,7 @@ export function OnboardingPage() {
             </h3>
             <p className="mt-3 text-[1.1rem] leading-7 text-text-secondary">
               You can only post in communities where you're verified. We'll ask you to verify next, so choose one
-              where you can verify with a work/school email or ID/badge.
+              where you can verify with a work email or ID/badge.
             </p>
             <button
               type="button"
@@ -2514,8 +2514,7 @@ export function OnboardingPage() {
               About your selection
             </h3>
             <p className="mt-3 text-[1.1rem] leading-7 text-text-secondary">
-              Pick up to 2 {selectedOrgKind === "school" ? "majors" : "fields"} to join now. Your first selection is
-              your primary {selectedOrgKind === "school" ? "major" : "field"} for onboarding.
+              Pick up to 2 fields to join now. Your first selection is your primary field for onboarding.
             </p>
             <button
               type="button"

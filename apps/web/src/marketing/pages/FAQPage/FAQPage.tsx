@@ -15,19 +15,19 @@ const faqs: FAQItemProps[] = [
     id: "what-is-looped",
     question: "What is Looped?",
     answer:
-      "Looped is a verified social platform for company and school communities. The full experience is on iOS, and a limited web app is available for signed-in members. After you join a company, you can join up to 2 Fields. After you join at least one school, you can join up to 2 Majors.",
+      "Looped is a verified social platform for workplace communities and fields. The full experience is on iOS, and a limited web app is available for signed-in members. After you join your workplace community, you can join up to 2 fields.",
   },
   {
     id: "can-i-view-posts-without-verification",
     question: "Can I view posts without verification?",
     answer:
-      "Yes. Anyone can view posts. Verification is required to join and post in company and school communities. Fields and majors unlock after you join a company or school, respectively.",
+      "Yes. Anyone can view posts. Verification is required to join and post in workplace communities. Fields unlock after you join your workplace community.",
   },
   {
     id: "how-does-verification-work",
     question: "How does verification work?",
     answer:
-      "Verification can be completed two ways in the iOS app. If you have a company or school email, we send a verification email and you are approved quickly. You can also upload a photo of your face and an ID, which takes longer. You must re-verify your information yearly.",
+      "Verification starts with your workplace email. In the iOS app, we send a verification email and approve you once it is confirmed. You must re-verify your information yearly.",
   },
   {
     id: "why-cant-i-verify-on-web",
@@ -89,13 +89,13 @@ const faqs: FAQItemProps[] = [
     id: "can-i-join-multiple-communities",
     question: "Can I join multiple communities?",
     answer:
-      "Yes. If you're verified at multiple companies and schools, you can participate in all of the communities you qualify for. After you join a company you can join up to 2 Fields, and after you join at least one school you can join up to 2 Majors.",
+      "Yes. If you're verified at multiple workplaces, you can participate in the communities you qualify for. After you join a workplace community, you can also join up to 2 fields.",
   },
   {
-    id: "how-do-major-and-department-communities-work",
-    question: "How do Fields and Majors work?",
+    id: "how-do-workplace-and-field-communities-work",
+    question: "How do workplace communities and fields work?",
     answer:
-      "Fields unlock after you join a company, and you can join up to 2. Majors unlock after you join at least one school, and you can join up to 2.",
+      "Your workplace community is your starting point. Once you join it, you can unlock and join up to 2 fields to connect with people doing similar work across companies.",
   },
   {
     id: "what-kind-of-content-is-allowed",

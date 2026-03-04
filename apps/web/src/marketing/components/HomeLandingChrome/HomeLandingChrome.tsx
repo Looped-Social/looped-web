@@ -48,8 +48,7 @@ export function HomeChoiceDialog({
       >
         <div className="flex items-start justify-between gap-4">
           <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-text-light">Get Looped</p>
-            <h2 className="mt-2 text-2xl font-semibold tracking-tight text-strong">Choose how to continue</h2>
+            <h2 className="text-2xl font-semibold tracking-tight text-strong">Choose how to continue</h2>
           </div>
           <button
             type="button"
@@ -57,7 +56,10 @@ export function HomeChoiceDialog({
             className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-bg-muted text-text-secondary transition hover:text-strong"
             aria-label="Close dialog"
           >
-            <span className="text-xl leading-none">x</span>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
           </button>
         </div>
 
@@ -103,8 +105,8 @@ export function HomeLandingChrome({
 
   return (
     <div className="pointer-events-none fixed inset-x-0 top-0 z-[70]">
-      <div className="flex w-full items-center justify-between px-4 pt-4 sm:px-6 sm:pt-5 lg:px-8 lg:pt-6">
-        <div className="pointer-events-auto px-1 py-1">
+      <div className="flex w-full items-center justify-between px-4 py-3 sm:px-6 lg:px-8">
+        <div className="pointer-events-auto origin-left scale-110 px-1 py-1">
           <Logo variant={logoVariant} />
         </div>
 
@@ -133,9 +135,12 @@ export function HomeLandingChrome({
       </div>
 
       <div className="pointer-events-none fixed inset-x-0 bottom-0">
-        <div className="mx-auto max-w-7xl px-4 pb-4 sm:px-6 sm:pb-5 lg:px-8 lg:pb-6">
-          <div className={`pointer-events-auto flex flex-col gap-4 border-t px-5 py-4 sm:flex-row sm:items-center sm:justify-between ${borderClass}`}>
+        <div className="mx-auto max-w-7xl px-4 pb-0 sm:px-6 sm:pb-0 lg:px-8 lg:pb-0">
+          <div className={`pointer-events-auto flex flex-col gap-4 border-t px-5 pt-5 pb-4 sm:flex-row sm:items-center sm:justify-between ${borderClass}`}>
             <div className={`flex flex-wrap items-center gap-5 text-sm ${navTextClass}`}>
+              <Link className="font-semibold transition hover:opacity-70" to="/about">
+                about
+              </Link>
               <Link className="font-semibold transition hover:opacity-70" to="/privacy">
                 privacy
               </Link>

@@ -520,8 +520,8 @@ function messageForWriteError(
   }
   if (code === "specialization_not_joined") {
     return actionVerb === "comment"
-      ? "Join this major or field to comment."
-      : "Join this major or field to interact.";
+      ? "Join this field to comment."
+      : "Join this field to interact.";
   }
   if (code === "community_banned") return "This community is currently unavailable.";
   if (code === "content_under_review") return "Your content is still under review.";
@@ -1056,8 +1056,8 @@ export function AppPostCommentsPage({ postId, overlayMode = false, onRequestClos
             title: "Join required",
             message:
               actionVerb === "comment"
-                ? "Join this major or field to comment."
-                : "Join this major or field to interact.",
+                ? "Join this field to comment."
+                : "Join this field to interact.",
           };
         }
       }

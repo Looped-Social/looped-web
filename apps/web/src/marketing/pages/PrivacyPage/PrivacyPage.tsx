@@ -3,7 +3,7 @@ import { PageShell } from "@/marketing/components/PageShell/PageShell";
 const verificationSteps = [
   {
     title: "Email verification",
-    copy: "Use your company or school email. We send a verification link and you are approved quickly.",
+    copy: "Use your company email. We send a verification link and you are approved quickly.",
   },
   {
     title: "Photo plus ID verification",
@@ -48,80 +48,91 @@ const backupSteps = [
 export function PrivacyPage() {
   return (
     <PageShell>
-      <div className="mx-auto flex max-w-5xl flex-col gap-14">
-        <header className="space-y-4 text-center">
-          <h1 className="text-4xl font-semibold tracking-tight text-strong md:text-5xl">
+      <div className="mx-auto flex max-w-5xl flex-col gap-12 px-2 md:gap-14">
+        <header className="mx-auto flex w-full max-w-4xl flex-col items-center space-y-4 text-center">
+          <h1 className="max-w-[10ch] text-[3rem] font-semibold leading-[0.95] tracking-[-0.05em] text-strong sm:text-[4rem] md:text-[4.6rem]">
             Privacy that protects your identity
           </h1>
-          <p className="text-lg leading-8 text-text-secondary md:text-xl">
-            Looped is a company- and school-verified social platform with a full iOS app and a limited web experience.
-            You can view any post, but you must verify to join and post in a company or school community. Joining a
-            company unlocks Fields, and joining a school unlocks Majors.
+          <p className="max-w-[38ch] text-lg leading-8 text-text-secondary md:text-xl">
+            Looped is a verified social platform for workplace and field communities with a full iOS app and a
+            limited web experience. You can view posts on the web, but you verify in the iOS app to join and post in
+            your workplace community. Joining your workplace unlocks field communities.
           </p>
         </header>
 
-        <section className="space-y-6">
-          <h2 className="text-2xl font-semibold text-strong">How verification works</h2>
-          <p className="text-base leading-7 text-text-secondary">
-            Verification currently happens in the iOS app. We are working on secure web verification support.
-          </p>
-          <div className="grid gap-6 md:grid-cols-3">
-            {verificationSteps.map((step, index) => (
-              <div key={step.title} className="rounded-2xl border border-border bg-bg p-6 shadow-sm">
-                <div className="mb-4 inline-flex h-10 w-10 items-center justify-center rounded-full bg-brand/10 text-sm font-semibold text-brand">
-                  {index + 1}
-                </div>
-                <h3 className="text-lg font-semibold text-strong">{step.title}</h3>
-                <p className="mt-2 text-base leading-7 text-text-secondary">{step.copy}</p>
+        <section className="mx-auto w-full max-w-4xl">
+          <div>
+            <h2 className="text-3xl font-semibold tracking-tight text-strong md:text-4xl">How verification works</h2>
+            <p className="mt-4 text-base leading-8 text-text-secondary">
+              Verification currently happens in the iOS app. We are working on secure web verification support.
+            </p>
+          </div>
+          <div className="mt-8 grid gap-4">
+            {verificationSteps.map((step) => (
+              <div
+                key={step.title}
+                className="rounded-[1.75rem] border border-border bg-white p-6 shadow-[0_12px_30px_rgba(15,23,42,0.035)]"
+              >
+                <h3 className="text-xl font-semibold text-strong">{step.title}</h3>
+                <p className="mt-3 text-base leading-7 text-text-secondary">{step.copy}</p>
               </div>
             ))}
           </div>
         </section>
 
-        <section className="space-y-6">
-          <h2 className="text-2xl font-semibold text-strong">Anonymous and public profiles</h2>
-          <p className="text-base leading-7 text-text-secondary">
-            Looped gives you two identities: one anonymous, one public. If you are anonymous123 and sallyandbob,
-            nobody can prove those are the same person. That separation is our guarantee.
-          </p>
-          <div className="grid gap-5 md:grid-cols-3">
+        <section className="mx-auto w-full max-w-4xl">
+          <div>
+            <h2 className="text-3xl font-semibold tracking-tight text-strong md:text-4xl">
+              Anonymous and public profiles
+            </h2>
+            <p className="mt-4 text-base leading-8 text-text-secondary">
+              Looped gives you two identities: one anonymous, one public. If you are anonymous123 and sallyandbob,
+              nobody can prove those are the same person. That separation is our guarantee.
+            </p>
+          </div>
+          <div className="mt-8 grid gap-4">
             {privacyGuarantees.map((item) => (
               <div
                 key={item.title}
-                className="rounded-2xl border border-border bg-bg-muted p-6 shadow-[0_14px_40px_rgba(15,23,42,0.06)]"
+                className="rounded-[1.75rem] border border-border bg-white p-6 shadow-[0_12px_30px_rgba(15,23,42,0.035)]"
               >
-                <h3 className="text-lg font-semibold text-strong">{item.title}</h3>
-                <p className="mt-2 text-base leading-7 text-text-secondary">{item.copy}</p>
+                <h3 className="text-xl font-semibold text-strong">{item.title}</h3>
+                <p className="mt-3 text-base leading-7 text-text-secondary">{item.copy}</p>
               </div>
             ))}
           </div>
         </section>
 
-        <section className="space-y-6">
-          <h2 className="text-2xl font-semibold text-strong">Anonymous backup is required</h2>
-          <p className="text-base leading-7 text-text-secondary">
-            Because your anonymous profile is not linked to your public profile, you must back it up manually.
-          </p>
-          <div className="grid gap-6 md:grid-cols-3">
-            {backupSteps.map((step, index) => (
-              <div key={step.title} className="rounded-2xl border border-border bg-bg p-6 shadow-sm">
-                <div className="mb-4 inline-flex h-10 w-10 items-center justify-center rounded-full bg-brand/10 text-sm font-semibold text-brand">
-                  {index + 1}
-                </div>
-                <h3 className="text-lg font-semibold text-strong">{step.title}</h3>
-                <p className="mt-2 text-base leading-7 text-text-secondary">{step.copy}</p>
+        <section className="mx-auto w-full max-w-4xl">
+          <div>
+            <h2 className="text-3xl font-semibold tracking-tight text-strong md:text-4xl">
+              Anonymous backup is required
+            </h2>
+            <p className="mt-4 text-base leading-8 text-text-secondary">
+              Because your anonymous profile is not linked to your public profile, you must back it up manually.
+            </p>
+          </div>
+
+          <div className="mt-8 grid gap-4">
+            {backupSteps.map((step) => (
+              <div
+                key={step.title}
+                className="rounded-[1.75rem] border border-border bg-white p-6 shadow-[0_12px_30px_rgba(15,23,42,0.035)]"
+              >
+                <h3 className="text-xl font-semibold text-strong">{step.title}</h3>
+                <p className="mt-3 text-base leading-7 text-text-secondary">{step.copy}</p>
               </div>
             ))}
           </div>
         </section>
 
-        <section className="rounded-3xl bg-bg-muted px-6 py-8 ring-1 ring-border md:px-10">
-          <h2 className="text-2xl font-semibold text-strong">If you lose your backup</h2>
-          <p className="mt-3 text-base leading-7 text-text-secondary">
+        <section className="mx-auto w-full max-w-4xl rounded-[2rem] bg-bg-muted/55 p-7 lg:p-8">
+          <h2 className="text-3xl font-semibold tracking-tight text-strong md:text-4xl">If you lose your backup</h2>
+          <p className="mt-4 max-w-4xl text-base leading-8 text-text-secondary">
             If you are signed out and lose your passphrase or backup code, we cannot recover your anonymous profile.
             You will need to create a new anonymous profile.
           </p>
-          <p className="mt-3 text-base leading-7 text-text-secondary">
+          <p className="mt-4 max-w-4xl text-base leading-8 text-text-secondary">
             If you are still signed in, you can create a new passphrase and copy a new backup code. The new backup
             replaces the old one.
           </p>

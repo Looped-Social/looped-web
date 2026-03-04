@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 
+import landingPagePhoto from "@/assets/marketing/landing-page/hero/landing-page-photo2.png";
+
 type HeroProps = {
   onOpenDialog: () => void;
 };
@@ -32,20 +34,22 @@ export function Hero({ onOpenDialog }: HeroProps) {
     <section
       id="get-looped"
       data-home-tone="light"
-      className="relative min-h-screen snap-start snap-always overflow-hidden bg-brand/8"
+      className="relative min-h-screen snap-start snap-always overflow-hidden bg-white"
     >
-      <div className="mx-auto flex min-h-screen max-w-7xl flex-col px-4 pb-32 pt-28 sm:px-6 sm:pb-36 sm:pt-32 lg:px-8 lg:pb-40 lg:pt-36">
-        <div className="flex flex-1 items-center justify-center">
-          <div className="mx-auto flex max-w-4xl flex-col items-center text-center">
-            <h1 className="flex flex-col items-center text-[2.8rem] font-semibold leading-[0.97] tracking-[-0.05em] text-strong sm:text-[3.7rem] lg:text-[4.9rem]">
+      <div className="mx-auto flex min-h-screen max-w-7xl flex-col px-4 pb-20 pt-24 sm:px-6 sm:pb-24 sm:pt-28 lg:px-8 lg:pb-28 lg:pt-32">
+        <div className="flex flex-1 flex-col items-center justify-center gap-10 lg:grid lg:grid-cols-[0.38fr_0.62fr] lg:items-center lg:gap-3">
+          <div className="mx-auto flex max-w-4xl flex-col items-center text-center lg:mx-0 lg:-translate-y-20 lg:items-start lg:pl-6 lg:text-left xl:pl-8">
+            <h1 className="flex flex-col items-center text-[2.8rem] font-semibold leading-[0.97] tracking-[-0.05em] text-strong sm:text-[3.7rem] lg:items-start lg:text-[4.9rem]">
               <span className="block whitespace-nowrap">Verified connection</span>
-              <span className="block whitespace-nowrap">in your</span>
-              <span
-                className={`block min-w-[10.5ch] whitespace-nowrap text-center text-brand transition-all duration-[550ms] ease-in-out ${
-                  isFading ? "translate-y-2 opacity-0" : "translate-y-0 opacity-100"
-                }`}
-              >
-                {rotatingWords[currentWordIndex]}.
+              <span className="flex items-baseline gap-[0.18em] whitespace-nowrap">
+                <span className="block">in your</span>
+                <span
+                  className={`inline-block min-w-[4.6ch] text-center text-brand transition-all duration-[550ms] ease-in-out lg:text-left ${
+                    isFading ? "translate-y-2 opacity-0" : "translate-y-0 opacity-100"
+                  }`}
+                >
+                  {rotatingWords[currentWordIndex]}.
+                </span>
               </span>
             </h1>
             <p className="mt-6 max-w-[30ch] text-lg leading-8 text-text-secondary sm:text-xl">
@@ -55,10 +59,20 @@ export function Hero({ onOpenDialog }: HeroProps) {
             <button
               type="button"
               onClick={onOpenDialog}
-              className="mt-10 inline-flex items-center justify-center rounded-full bg-brand px-7 py-3.5 text-base font-semibold text-white transition hover:bg-brand/90"
+              className="mt-7 inline-flex items-center justify-center rounded-full bg-brand px-8 py-4 text-lg font-semibold text-white transition hover:bg-brand/90"
             >
               get looped
             </button>
+          </div>
+
+          <div className="relative flex w-full justify-center lg:-translate-y-10 lg:justify-end">
+            <img
+              src={landingPagePhoto}
+              alt="Looped collage showing people connecting across workplace-style social posts."
+              loading="eager"
+              decoding="async"
+              className="h-auto w-[min(66vw,44rem)] max-w-full drop-shadow-[0_26px_80px_rgba(15,23,42,0.24)] lg:w-[min(60vw,54rem)] lg:max-w-none"
+            />
           </div>
         </div>
       </div>

@@ -65,7 +65,7 @@ type ActiveMentionToken = {
 
 const ERROR_MESSAGES_BY_CODE: Record<string, string> = {
   community_not_verified: "You must be verified in this community to post.",
-  specialization_not_joined: "Join this major or field to post.",
+  specialization_not_joined: "Join this field to post.",
   user_not_verified: "You must be verified before posting.",
   verification_expired: "Your verification expired. Verify again to post.",
   content_required: "Add a caption, media, or a poll.",

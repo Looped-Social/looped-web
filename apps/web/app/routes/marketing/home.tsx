@@ -24,7 +24,7 @@ const MOBILE_APP_JSON_LD = {
   url: SITE_URL,
   downloadUrl: "https://apps.apple.com/us/app/looped-social/id6758413180",
   description:
-    "Looped is a verified social network for workplaces and colleges where employees and students can post pseudonymously.",
+    "Looped is a verified social network for workplaces and fields where professionals can post pseudonymously.",
   offers: {
     "@type": "Offer",
     price: "0",
@@ -34,9 +34,9 @@ const MOBILE_APP_JSON_LD = {
 
 export function meta({}: Route.MetaArgs) {
   return buildMarketingPageMeta({
-    title: "Looped | Workplace & College Social Network",
+    title: "Looped | Verified Workplace Social Network",
     description:
-      "Looped is a verified social network for workplaces and colleges where employees and students can post pseudonymously.",
+      "Looped is a verified social network for workplaces and fields where professionals can post pseudonymously.",
     path: "/",
   });
 }

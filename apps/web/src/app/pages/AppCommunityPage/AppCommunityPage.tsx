@@ -564,7 +564,7 @@ function messageForActionCode(code?: string, fallback = "Action unavailable righ
     case "verify_school":
       return "Verification required. Verify your organization email to continue.";
     case "specialization_not_joined":
-      return "Join this major or field first.";
+      return "Join this field first.";
     case "specialization_join_limit":
       return "You have reached your current join limit.";
     case "specialization_join_cooldown":

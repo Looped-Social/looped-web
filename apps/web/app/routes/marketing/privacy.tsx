@@ -5,7 +5,7 @@ import { PrivacyPage } from "@/marketing/pages/PrivacyPage/PrivacyPage";
 export function meta({}: Route.MetaArgs) {
   return buildMarketingPageMeta({
     title: "Privacy",
-    description: "Learn how Looped protects pseudonymous identity on workplace and college communities.",
+    description: "Learn how Looped protects pseudonymous identity in verified workplace and field communities.",
     path: "/privacy",
   });
 }

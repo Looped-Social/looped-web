@@ -5,7 +5,7 @@ import { FAQPage } from "@/marketing/pages/FAQPage/FAQPage";
 export function meta({}: Route.MetaArgs) {
   return buildMarketingPageMeta({
     title: "Looped FAQ",
-    description: "Answers to common questions about Looped, the verified workplace and college social network.",
+    description: "Answers to common questions about Looped, the verified workplace and field social network.",
     path: "/faq",
   });
 }

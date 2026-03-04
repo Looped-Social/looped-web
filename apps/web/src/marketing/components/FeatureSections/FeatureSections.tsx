@@ -22,7 +22,7 @@ const featureSections: FeatureSection[] = [
   {
     title: "Find your people",
     description:
-      "Connect with verified people in your company or school. Join one company to unlock Fields, and at least one school to unlock Majors.",
+      "Connect with verified people in your workplace. Join your company to unlock field communities across your broader career path.",
     cta: "Learn More",
     ctaTo: "/about",
     lightImage: communityLightImage,
