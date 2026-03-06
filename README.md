@@ -1,7 +1,7 @@
 Looped Web
 ==========
 
-Repo for the Looped web experience served from `mylooped.app` (marketing/landing + authenticated web app). Shared components and design tokens live under `packages/`.
+Repo for the Looped web experience served from `looped-social.com` (marketing/landing + authenticated web app). Shared components and design tokens live under `packages/`.
 
 Repo Layout
 -----------

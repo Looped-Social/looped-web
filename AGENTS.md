@@ -1,7 +1,7 @@
 # Looped Web
 
 ## Repo Overview
-This repository contains the Looped web experience served from `mylooped.app` (marketing/landing + authenticated web app). Shared UI and design tokens live in `packages/` and are consumed by the app.
+This repository contains the Looped web experience served from `looped-social.com` (marketing/landing + authenticated web app). Shared UI and design tokens live in `packages/` and are consumed by the app.
 
 ## Structure
 - `apps/web` – marketing/landing + authenticated web app (React Router v7 + Vite + Tailwind v4)
@@ -29,7 +29,7 @@ This repository contains the Looped web experience served from `mylooped.app` (m
 - **Web App Split**: marketing UI lives in `apps/web/src/marketing`, app UI lives in `apps/web/src/app`. Route modules are split under `apps/web/app/routes/marketing` and `apps/web/app/routes/app`.
 
 ## Deployment Model
-- `apps/web` serves both marketing + app routes on `mylooped.app` (public routes at `/`, `/privacy`, `/terms`, etc., app routes under `/app/*`).
+- `apps/web` serves both marketing + app routes on `looped-social.com` (public routes at `/`, `/privacy`, `/terms`, etc., app routes under `/app/*`).
 
 ## Current Product Contract (Web Auth + Onboarding)
 - Web auth entry supports both sign in and sign up (Google, Apple, email/password) from a unified auth surface.

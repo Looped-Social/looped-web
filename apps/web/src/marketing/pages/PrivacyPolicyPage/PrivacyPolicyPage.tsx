@@ -18,7 +18,7 @@ const sections: LegalSection[] = [
       {
         title: "Questions or concerns?",
         paragraphs: [
-          "Reading this Privacy Notice will help you understand your privacy rights and choices. We are responsible for making decisions about how your personal information is processed. If you do not agree with our policies and practices, please do not use our Services. If you still have any questions or concerns, please contact us at info@mylooped.app.",
+          "Reading this Privacy Notice will help you understand your privacy rights and choices. We are responsible for making decisions about how your personal information is processed. If you do not agree with our policies and practices, please do not use our Services. If you still have any questions or concerns, please contact us at info@looped-social.com.",
         ],
       },
     ],
@@ -235,7 +235,7 @@ const sections: LegalSection[] = [
   {
     title: "16. How Can You Contact Us About This Notice?",
     paragraphs: [
-      "Email: info@mylooped.app",
+      "Email: info@looped-social.com",
       "Mail: Vance and Preston",
       "8612 Aberdeen Wood CT",
       "Charlotte, NC 28226",

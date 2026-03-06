@@ -21,7 +21,7 @@ Key folders:
 ## Networking conventions (iOS)
 
 ### Base URL
-- Default: `https://api.mylooped.app`
+- Default: `https://api.looped-social.com`
 - Override via iOS Info.plist key `API_BASE_URL`
 - Source: `looped-iOS/looped-iOS/Services/LoopedEnvironment.swift`
 
@@ -280,4 +280,3 @@ Notable iOS behavior:
 - Anonymous mode is a distinct “actor”:
   - Never send JWT + anon proof together.
   - Many “anon capable” endpoints accept JWT or anon proof, but not both.
-

@@ -359,7 +359,7 @@ export function VerificationEmailFlow({
             </a>{" "}
             and{" "}
             <a
-              href="mailto:support@mylooped.app"
+              href="mailto:support@looped-social.com"
               className="text-secondary underline underline-offset-2 hover:text-secondary/80"
             >
               email us here

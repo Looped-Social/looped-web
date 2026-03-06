@@ -15,7 +15,7 @@ Authoritative iOS references:
 ## Global conventions
 
 ### Base URL
-- Prod/stage (iOS default): `https://api.mylooped.app`
+- Prod/stage (iOS default): `https://api.looped-social.com`
 - Local dev: `http://localhost:8080`
 
 ### Auth
