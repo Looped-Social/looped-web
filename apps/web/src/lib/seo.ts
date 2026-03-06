@@ -1,6 +1,7 @@
 import type { MetaDescriptor } from "react-router";
 
 export const SITE_NAME = "Looped";
+export const IOS_APP_STORE_ID = "6758413180";
 // Used for canonical URLs + OG tags on marketing pages.
 // Override per-environment (e.g. new Cloudflare domain) with `VITE_SITE_URL`.
 export const SITE_URL =
@@ -63,6 +64,7 @@ export function buildMarketingPageMeta({
     { title: cleanTitle },
     { name: "description", content: cleanDescription },
     { name: "robots", content: robots },
+    { name: "apple-itunes-app", content: `app-id=${IOS_APP_STORE_ID}, app-argument=${canonicalUrl}` },
     { tagName: "link", rel: "canonical", href: canonicalUrl },
     { property: "og:type", content: type },
     { property: "og:site_name", content: SITE_NAME },
