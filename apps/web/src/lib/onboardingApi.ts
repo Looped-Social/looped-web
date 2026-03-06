@@ -1,6 +1,10 @@
 import { getApiBase } from "./apiBase";
 import { getFirebaseIdToken } from "./firebaseClient";
 import { presignMediaUpload, uploadFileWithPresign, completeMediaUpload } from "./mediaApi";
+import {
+  extractCompanyCommunityItems as extractCompanyCommunityItemsFromContract,
+  normalizeRecommendedOnboardingSpecializationsPayload as normalizeRecommendedOnboardingSpecializationsPayloadFromContract,
+} from "./schoolMajorContract";
 
 export class OnboardingApiError extends Error {
   status: number;
@@ -40,7 +44,9 @@ export type OnboardingSnapshot = {
   onboarding_context?: Record<string, unknown>;
 };
 
-export type CommunityKind = "company" | "school";
+export type CommunityKind = "company";
+export type DeprecatedCommunityKind = "school";
+export type CommunityKindParam = CommunityKind | DeprecatedCommunityKind;
 
 export type CommunityOption = {
   id: string;
@@ -195,32 +201,16 @@ function normalizeOnboardingSnapshot(payload: unknown): OnboardingSnapshot {
   };
 }
 
-function normalizeCommunityOption(payload: unknown): CommunityOption | null {
-  if (!isRecord(payload)) return null;
-  const id = getString(payload.id ?? payload.community_id ?? payload.communityId);
-  const kind = getString(payload.kind ?? payload.community_kind ?? payload.communityKind) ?? "unknown";
-  const name = getString(payload.name);
-  if (!id || !name) return null;
-
-  const shortName = getString(payload.short_name ?? payload.shortName) ?? undefined;
-  const memberCount = getNumber(payload.member_count ?? payload.memberCount);
-  return {
-    id,
-    kind,
-    name,
-    shortName,
-    memberCount,
-    membersLabel: memberCount !== undefined ? `${memberCount.toLocaleString()} members` : undefined,
-    imageUrl:
-      getString(payload.image_url ?? payload.imageUrl ?? payload.profile_image_url ?? payload.profileImageUrl) ??
-      undefined,
-  };
-}
-
-function extractCommunityItems(payload: unknown): CommunityOption[] {
-  if (!isRecord(payload)) return [];
-  const items = Array.isArray(payload.items) ? payload.items : [];
-  return items.map(normalizeCommunityOption).filter((item): item is CommunityOption => Boolean(item));
+export function extractCompanyCommunityItems(payload: unknown): CommunityOption[] {
+  return extractCompanyCommunityItemsFromContract(payload).map((item) => ({
+    id: item.id,
+    kind: item.kind,
+    name: item.name,
+    shortName: item.shortName,
+    memberCount: item.memberCount,
+    membersLabel: item.membersLabel,
+    imageUrl: item.imageUrl,
+  }));
 }
 
 function normalizeSpecializationOption(
@@ -441,7 +431,7 @@ export async function searchOnboardingCommunities({
   signal,
 }: {
   query: string;
-  kind?: CommunityKind;
+  kind?: CommunityKindParam;
   limit?: number;
   signal?: AbortSignal;
 }): Promise<CommunityOption[]> {
@@ -451,7 +441,7 @@ export async function searchOnboardingCommunities({
   if (kind) params.set("kind", kind);
 
   const { data } = await onboardingAuthFetch<unknown>(`/v1/communities/search?${params.toString()}`, { signal });
-  return extractCommunityItems(data);
+  return extractCompanyCommunityItems(data);
 }
 
 export async function fetchRecommendedOnboardingCommunities({
@@ -459,7 +449,7 @@ export async function fetchRecommendedOnboardingCommunities({
   limit = 40,
   signal,
 }: {
-  kind: CommunityKind;
+  kind: CommunityKindParam;
   limit?: number;
   signal?: AbortSignal;
 }): Promise<CommunityOption[]> {
@@ -467,7 +457,7 @@ export async function fetchRecommendedOnboardingCommunities({
   params.set("kind", kind);
   params.set("limit", String(limit));
   const { data } = await onboardingAuthFetch<unknown>(`/v1/communities/recommended?${params.toString()}`, { signal });
-  return extractCommunityItems(data);
+  return extractCompanyCommunityItems(data);
 }
 
 export async function fetchCommunityVerificationDomains(
@@ -540,6 +530,18 @@ export async function joinSpecialization(communityOrSpecializationId: string | n
   }
 }
 
+export function normalizeRecommendedOnboardingSpecializationsPayload(
+  data: unknown,
+  type: "all" | "major" | "field"
+): SpecializationOption[] {
+  return normalizeRecommendedOnboardingSpecializationsPayloadFromContract(data, type).map((item) => ({
+    id: item.id,
+    name: item.name,
+    type: item.type,
+    memberCount: item.memberCount,
+  }));
+}
+
 export async function fetchRecommendedOnboardingSpecializations({
   type = "all",
   limit = 50,
@@ -553,34 +555,7 @@ export async function fetchRecommendedOnboardingSpecializations({
   params.set("type", type);
   params.set("limit", String(limit));
   const { data } = await onboardingAuthFetch<unknown>(`/v1/specializations/recommended?${params.toString()}`, { signal });
-  const payload = isRecord(data) ? data : {};
-
-  const merged: SpecializationOption[] = [];
-  if (Array.isArray(payload.items)) {
-    merged.push(
-      ...payload.items
-        .map((entry) => normalizeSpecializationOption(entry, type === "all" ? "unknown" : type))
-        .filter((entry): entry is SpecializationOption => Boolean(entry))
-    );
-  }
-  if (Array.isArray(payload.majors)) {
-    merged.push(
-      ...payload.majors
-        .map((entry) => normalizeSpecializationOption(entry, "major"))
-        .filter((entry): entry is SpecializationOption => Boolean(entry))
-    );
-  }
-  if (Array.isArray(payload.fields)) {
-    merged.push(
-      ...payload.fields
-        .map((entry) => normalizeSpecializationOption(entry, "field"))
-        .filter((entry): entry is SpecializationOption => Boolean(entry))
-    );
-  }
-
-  const deduped = dedupeAndSortSpecializations(merged);
-  if (type === "all") return deduped;
-  return deduped.filter((entry) => entry.type === type);
+  return normalizeRecommendedOnboardingSpecializationsPayload(data, type);
 }
 
 export async function searchOnboardingSpecializations({

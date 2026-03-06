@@ -8,7 +8,7 @@ export type PostableCommunity = {
   id: string;
   name: string;
   shortName?: string;
-  kind?: "company" | "school" | "major" | "field" | "community";
+  kind?: "company" | "specialization" | "field" | "unknown" | "community";
   source: "verification" | "specialization";
 };
 
@@ -54,10 +54,17 @@ function normalizeOptional(value: unknown): string | undefined {
 
 function normalizeKind(value: unknown): PostableCommunity["kind"] {
   const normalized = normalizeOptional(value)?.toLowerCase();
-  if (normalized === "company" || normalized === "school" || normalized === "major" || normalized === "field") {
+  if (normalized === "company" || normalized === "specialization" || normalized === "field" || normalized === "unknown") {
     return normalized;
   }
   return "community";
+}
+
+function normalizeSpecializationType(value: unknown): "major" | "field" | "unknown" {
+  const normalized = normalizeOptional(value)?.toLowerCase();
+  if (normalized === "major") return "major";
+  if (normalized === "field") return "field";
+  return "unknown";
 }
 
 function getBoolean(value: unknown): boolean | undefined {
@@ -101,9 +108,10 @@ export async function fetchPostableCommunities(): Promise<PostableCommunity[]> {
     const canPost = getBoolean(entry.canPost ?? entry.can_post);
     if (canPost === false) continue;
 
-    const specializationType = normalizeKind(entry.specializationType ?? entry.specialization_type);
+    const specializationType = normalizeSpecializationType(entry.specializationType ?? entry.specialization_type);
+    if (specializationType === "major") continue;
     const source =
-      specializationType === "major" || specializationType === "field" ? "specialization" : "verification";
+      specializationType === "field" || kind === "specialization" ? "specialization" : "verification";
 
     communities.push({
       id,

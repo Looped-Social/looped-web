@@ -263,6 +263,13 @@ function parseCommunityOptions(payload: unknown[]): SelectOption[] {
   return options;
 }
 
+function normalizeSpecializationType(value: unknown): "major" | "field" | "unknown" {
+  const normalized = normalizeOptional(value)?.toLowerCase();
+  if (normalized === "major") return "major";
+  if (normalized === "field") return "field";
+  return "unknown";
+}
+
 function parseSpecializationOptions(payload: unknown[]): SelectOption[] {
   const options: SelectOption[] = [];
   const seen = new Set<string>();
@@ -274,6 +281,16 @@ function parseSpecializationOptions(payload: unknown[]): SelectOption[] {
       (isRecord(item.specialization) ? item.specialization : null) ??
       (isRecord(item.community) ? item.community : null) ??
       item;
+
+    const type = normalizeSpecializationType(
+      source.specialization_type ??
+        source.specializationType ??
+        source.type ??
+        source.kind ??
+        source.community_kind ??
+        source.communityKind
+    );
+    if (type !== "field") continue;
 
     const id = pickString(source, ["id", "specialization_id", "specializationId"]);
     if (!id || seen.has(id)) continue;
@@ -452,7 +469,7 @@ export function AppEditProfilePage() {
         fetchDefaultProfileImageUrl().catch(() => undefined),
         fetchUserMe(),
         fetchProfileCommunities().catch(() => []),
-        fetchJoinedSpecializations({ type: "all", limit: 200 }).catch(() => ({ items: [] })),
+        fetchJoinedSpecializations({ type: "field", limit: 200 }).catch(() => ({ items: [] })),
         fetchMyShareLink().catch(() => null),
       ]);
 
@@ -498,15 +515,6 @@ export function AppEditProfilePage() {
       }
 
       const mergedSpecializationOptions = specializationOptions.slice();
-      if (
-        normalized.displaySpecializationId &&
-        !mergedSpecializationOptions.some((entry) => entry.id === normalized.displaySpecializationId)
-      ) {
-        mergedSpecializationOptions.unshift({
-          id: normalized.displaySpecializationId,
-          label: normalized.displaySpecializationLabel ?? "Current selection",
-        });
-      }
 
       setCommunities(mergedCommunityOptions);
       setSpecializations(mergedSpecializationOptions);
@@ -518,7 +526,9 @@ export function AppEditProfilePage() {
         dateOfBirth: normalized.dateOfBirth,
         bio: normalized.bio,
         displayCommunityId: normalized.displayCommunityId,
-        displaySpecializationId: normalized.displaySpecializationId,
+        displaySpecializationId: mergedSpecializationOptions.some((entry) => entry.id === normalized.displaySpecializationId)
+          ? normalized.displaySpecializationId
+          : "",
       };
 
       setForm(normalizedForm);

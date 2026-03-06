@@ -101,12 +101,13 @@ export async function fetchJoinedSpecializations(): Promise<JoinedSpecialization
       fallbackLimit: 200,
       max: 200,
     });
-    params.set("type", "all");
+    params.set("type", "field");
     const response = await settingsAuthFetch<unknown>(`/v1/me/joined/specializations?${params.toString()}`);
 
     for (const item of extractItemsArray(response)) {
       const normalized = normalizeJoinedSpecializationItem(item);
       if (!normalized || seen.has(normalized.id)) continue;
+      if (normalized.kind === "major") continue;
       seen.add(normalized.id);
       joined.push(normalized);
     }

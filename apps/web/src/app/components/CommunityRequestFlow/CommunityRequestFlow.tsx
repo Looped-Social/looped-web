@@ -26,14 +26,11 @@ type FlowStep = "form" | "submitted";
 
 const ONBOARDING_REQUEST_TYPES: Array<{ value: CommunityRequestPayload["type"]; label: string }> = [
   { value: "company", label: "Company" },
-  { value: "school", label: "School" },
 ];
 
 const STANDARD_REQUEST_TYPES: Array<{ value: CommunityRequestPayload["type"]; label: string }> = [
   { value: "company", label: "Company" },
-  { value: "school", label: "School" },
   { value: "field", label: "Field" },
-  { value: "major", label: "Major" },
 ];
 
 const OPTIONAL_EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;

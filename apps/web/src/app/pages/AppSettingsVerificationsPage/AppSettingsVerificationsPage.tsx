@@ -119,7 +119,7 @@ function normalizeCommunityKindLabel(kind: string | undefined): string | undefin
   const normalized = kind.trim().toLowerCase();
   if (!normalized) return undefined;
   if (normalized === "company") return "Company";
-  if (normalized === "school") return "School";
+  if (normalized === "field" || normalized === "specialization") return "Field";
   return titleCaseValue(normalized);
 }
 

@@ -107,7 +107,8 @@ The web app expects:
   - `POST /v1/community-requests` only (no onboarding completion endpoint)
 - For request payloads:
   - if `notifyWhenAvailable=true`, `contactEmail` must be provided
-  - onboarding mode request type options are restricted to `company|school`
+  - onboarding mode request type options are restricted to `company` only
+  - standard mode request type options are `company|field` (`workplace` alias maps to `company`)
 
 ### Session hook
 - `looped-web/apps/web/src/hooks/useUserSession.ts`

@@ -88,11 +88,11 @@ const STEP_LABELS: Record<OnboardingFlowStep, string> = {
 const USERNAME_REGEX = /^[a-z0-9_]{3,30}$/;
 
 function normalizeCommunityKind(value: string | null | undefined): CommunityKind {
-  return value === "school" ? "school" : "company";
+  return value?.trim().toLowerCase() === "company" ? "company" : "company";
 }
 
 function isSelectableOrgKind(kind: string | null | undefined): kind is CommunityKind {
-  return kind === "company" || kind === "school";
+  return kind?.trim().toLowerCase() === "company";
 }
 
 function mergeCommunityLists(...lists: CommunityOption[][]): CommunityOption[] {
@@ -514,8 +514,8 @@ export function OnboardingPage() {
   const activeOrgQuery = searchQuery.trim();
   const visibleCommunities = activeOrgQuery.length > 0 ? searchedCommunities : recommendedCommunities;
   const selectedOrgLabel = resolvedSelectedOrgName ?? "your community";
-  const specializationType = selectedOrgKind === "school" ? "major" : "field";
-  const specializationTitle = selectedOrgKind === "school" ? "Major" : "Field";
+  const specializationType = "field";
+  const specializationTitle = "Field";
   const activeSpecializationQuery = specializationQuery.trim();
 
   const verificationPath = normalizeVerificationPath(bootstrap?.onboardingContext.verificationPath);
@@ -758,37 +758,22 @@ export function OnboardingPage() {
 
       const request =
         querySnapshot.length > 0
-          ? Promise.all([
-              searchOnboardingCommunities({
-                query: querySnapshot,
-                kind: "company",
-                limit: 25,
-                signal: controller.signal,
-              }),
-              searchOnboardingCommunities({
-                query: querySnapshot,
-                kind: "school",
-                limit: 25,
-                signal: controller.signal,
-              }),
-            ])
-          : Promise.all([
-              fetchRecommendedOnboardingCommunities({
-                kind: "company",
-                limit: 40,
-                signal: controller.signal,
-              }),
-              fetchRecommendedOnboardingCommunities({
-                kind: "school",
-                limit: 40,
-                signal: controller.signal,
-              }),
-            ]);
+          ? searchOnboardingCommunities({
+              query: querySnapshot,
+              kind: "company",
+              limit: 25,
+              signal: controller.signal,
+            })
+          : fetchRecommendedOnboardingCommunities({
+              kind: "company",
+              limit: 40,
+              signal: controller.signal,
+            });
 
       void request
-        .then(([companies, schools]) => {
+        .then((companies) => {
           if (controller.signal.aborted || requestId !== orgSearchRequestRef.current) return;
-          const merged = mergeCommunityLists(companies, schools);
+          const merged = mergeCommunityLists(companies);
           if (querySnapshot.length > 0) {
             setSearchedCommunities(merged);
           } else {
@@ -849,17 +834,9 @@ export function OnboardingPage() {
               signal: controller.signal,
             })
           : fetchRecommendedOnboardingSpecializations({
-              type: "all",
+              type: "field",
               limit: 50,
               signal: controller.signal,
-            }).then(async (items) => {
-              const filtered = items.filter((entry) => entry.type === specializationType);
-              if (filtered.length > 0) return filtered;
-              return fetchRecommendedOnboardingSpecializations({
-                type: specializationType,
-                limit: 50,
-                signal: controller.signal,
-              });
             });
 
       void request
@@ -1220,7 +1197,7 @@ export function OnboardingPage() {
         orgDraft: {
           orgId: selectedCommunity.id,
           orgName: selectedOrgNameFromResponse ?? selectedCommunity.name ?? selectedCommunity.shortName ?? "",
-          orgKind: selectedCommunity.kind,
+          orgKind: "company",
         },
         latestStep: "verification_intro",
       });
@@ -2062,7 +2039,7 @@ export function OnboardingPage() {
                               orgDraft: {
                                 orgId: community.id,
                                 orgName: community.name ?? community.shortName ?? "",
-                                orgKind: community.kind,
+                                orgKind: "company",
                               },
                             })
                           }

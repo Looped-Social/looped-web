@@ -9,7 +9,6 @@ import { usePeopleRecommendations } from "@/app/hooks/usePeopleRecommendations";
 import { resolveCommunityLabel, usePreferCommunityShortNames } from "@/lib/communityDisplayPreference";
 import { useContentPreferences } from "@/lib/contentPreferences";
 import { fetchPostDetail } from "@/lib/commentsApi";
-import { fetchFollowedCommunities } from "@/lib/feedApi";
 import { resolveMediaAssets } from "@/lib/mediaApi";
 import type { PeopleRecommendationItem } from "@/lib/peopleRecommendationsApi";
 import { extractMediaAssetIds } from "@/lib/postMediaIds";
@@ -19,7 +18,6 @@ import { fetchHashtagPosts } from "@/lib/postReadApi";
 import {
   SearchApiError,
   fetchFieldsIndex,
-  fetchMajorsIndex,
   fetchRecommendedCommunities,
   fetchSpecializationsBrowse,
   fetchTrendingPosts,
@@ -36,8 +34,6 @@ type SearchFilterId =
   | "users"
   | "communities"
   | "companies"
-  | "schools"
-  | "majors"
   | "fields";
 
 type SearchStatus = "idle" | "loading" | "ready" | "error";
@@ -126,6 +122,7 @@ const RECOMMENDED_COMMUNITIES_LIMIT = 8;
 const SPECIALIZATIONS_INITIAL_LIMIT = 24;
 const SPECIALIZATIONS_LOAD_MORE_LIMIT = 40;
 const SPECIALIZATION_GRID_PAGE_SIZE = 8;
+const MAJORS_DEPRECATION_COPY = "Majors are no longer supported; browse Fields instead.";
 
 function handleProfileImageError(event: SyntheticEvent<HTMLImageElement>) {
   const image = event.currentTarget;
@@ -140,8 +137,6 @@ const FILTERS: Array<{ id: SearchFilterId; label: string }> = [
   { id: "users", label: "Users" },
   { id: "communities", label: "Communities" },
   { id: "companies", label: "Companies" },
-  { id: "schools", label: "Schools" },
-  { id: "majors", label: "Majors" },
   { id: "fields", label: "Fields" },
 ];
 
@@ -523,11 +518,6 @@ function normalizeTrendingPost(item: unknown): TrendingPost | null {
     imageUrl,
     mediaAssetIds,
   };
-}
-
-function normalizeCommunityKind(item: unknown): string | undefined {
-  if (!isRecord(item)) return undefined;
-  return normalizedOptional(pickString(item, ["kind", "community_kind", "communityKind", "type"]));
 }
 
 function normalizeCommunityCard(item: unknown, preferCommunityShortNames: boolean): CommunityCard | null {
@@ -925,16 +915,8 @@ function normalizeRecentSearches(input: unknown): string[] {
   return unique;
 }
 
-function resolveLandingSectionOrder({
-  followsCompany,
-  followsSchool,
-}: {
-  followsCompany: boolean;
-  followsSchool: boolean;
-}): LandingSectionId[] {
-  if (followsCompany && !followsSchool) return ["fields", "majors"];
-  if (followsSchool && !followsCompany) return ["majors", "fields"];
-  return ["majors", "fields"];
+function resolveLandingSectionOrder(): LandingSectionId[] {
+  return ["fields"];
 }
 
 function SectionHeader({ title, subtitle }: { title: string; subtitle?: string }) {
@@ -1033,7 +1015,7 @@ export function AppSearchPage() {
   const [communitiesNextCursor, setCommunitiesNextCursor] = useState<string | null>(null);
   const [majorsNextCursor, setMajorsNextCursor] = useState<string | null>(null);
   const [fieldsNextCursor, setFieldsNextCursor] = useState<string | null>(null);
-  const [sectionOrder, setSectionOrder] = useState<LandingSectionId[]>(["majors", "fields"]);
+  const [sectionOrder, setSectionOrder] = useState<LandingSectionId[]>(["fields"]);
   const [isLoadingMoreCommunities, setIsLoadingMoreCommunities] = useState(false);
   const [isLoadingMoreMajors, setIsLoadingMoreMajors] = useState(false);
   const [isLoadingMoreFields, setIsLoadingMoreFields] = useState(false);
@@ -1127,68 +1109,34 @@ export function AppSearchPage() {
     setLandingError(null);
 
     try {
-      const [trendingResponse, communitiesResponse, majorsBrowseResponse, fieldsBrowseResponse, majorsIndexResponse, fieldsIndexResponse] =
+      const [trendingResponse, communitiesResponse, fieldsBrowseResponse, fieldsIndexResponse] =
         await Promise.all([
           fetchTrendingPosts({ limit: TRENDING_LIMIT }),
           fetchRecommendedCommunities({ limit: RECOMMENDED_COMMUNITIES_LIMIT }),
-          fetchSpecializationsBrowse({ type: "major", limit: SPECIALIZATIONS_INITIAL_LIMIT }),
           fetchSpecializationsBrowse({ type: "field", limit: SPECIALIZATIONS_INITIAL_LIMIT }),
-          fetchMajorsIndex(),
           fetchFieldsIndex(),
         ]);
 
-      const majorIcons = normalizeSpecializationIndexMap(majorsIndexResponse);
       const fieldIcons = normalizeSpecializationIndexMap(fieldsIndexResponse);
-      const combinedIcons = { ...majorIcons, ...fieldIcons };
+      const combinedIcons = { ...fieldIcons };
 
       const nextTrending = extractItemsArray(trendingResponse).map(normalizeTrendingPost).filter((item): item is TrendingPost => Boolean(item));
       const nextCommunities = extractItemsArray(communitiesResponse)
         .map((item) => normalizeCommunityCard(item, preferCommunityShortNames))
         .filter((item): item is CommunityCard => Boolean(item));
-      const nextMajors = extractItemsArray(majorsBrowseResponse)
-        .map((item) => normalizeSpecializationCard(item, combinedIcons))
-        .filter((item): item is SpecializationCard => Boolean(item));
       const nextFields = extractItemsArray(fieldsBrowseResponse)
         .map((item) => normalizeSpecializationCard(item, combinedIcons))
         .filter((item): item is SpecializationCard => Boolean(item));
 
-      let followsCompany = false;
-      let followsSchool = false;
-
-      const scanFollowedKinds = (payload: unknown) => {
-        for (const entry of extractItemsArray(payload)) {
-          const normalizedKind = normalizeCommunityKind(entry)?.toLowerCase();
-          if (normalizedKind === "company") followsCompany = true;
-          if (normalizedKind === "school") followsSchool = true;
-          if (followsCompany && followsSchool) return;
-        }
-      };
-
-      try {
-        let followedResponse = await fetchFollowedCommunities({ limit: 100 });
-        scanFollowedKinds(followedResponse);
-        let followedCursor = extractNextCursor(followedResponse);
-        let pagesLoaded = 0;
-
-        while ((!followsCompany || !followsSchool) && followedCursor && pagesLoaded < 2) {
-          followedResponse = await fetchFollowedCommunities({ limit: 100, cursor: followedCursor });
-          scanFollowedKinds(followedResponse);
-          followedCursor = extractNextCursor(followedResponse);
-          pagesLoaded += 1;
-        }
-      } catch {
-        // Keep default ordering when this auxiliary signal is unavailable.
-      }
-
       setSpecializationIcons(combinedIcons);
       setTrendingPosts(nextTrending.slice(0, TRENDING_LIMIT));
       setRecommendedCommunities(nextCommunities);
-      setMajorCards(nextMajors);
+      setMajorCards([]);
       setFieldCards(nextFields);
       setCommunitiesNextCursor(extractNextCursor(communitiesResponse));
-      setMajorsNextCursor(extractNextCursor(majorsBrowseResponse));
+      setMajorsNextCursor(null);
       setFieldsNextCursor(extractNextCursor(fieldsBrowseResponse));
-      setSectionOrder(resolveLandingSectionOrder({ followsCompany, followsSchool }));
+      setSectionOrder(resolveLandingSectionOrder());
       setIsLoadingMoreCommunities(false);
       setIsLoadingMoreMajors(false);
       setIsLoadingMoreFields(false);
@@ -1681,8 +1629,6 @@ export function AppSearchPage() {
           } else {
             const kindByFilter: Partial<Record<SearchFilterId, CommunitySearchKind>> = {
               companies: "company",
-              schools: "school",
-              majors: "major",
               fields: "field",
             };
             const response = await searchCommunities({
@@ -2331,6 +2277,9 @@ export function AppSearchPage() {
                     </div>
                   ) : null}
                 </div>
+                {section.id === "fields" ? (
+                  <p className="text-xs text-text-light">{MAJORS_DEPRECATION_COPY}</p>
+                ) : null}
                 {section.pages.length ? (
                   <>
                     <div

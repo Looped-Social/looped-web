@@ -9,7 +9,7 @@ export type CursorEnvelope<T> = {
   nextCursor?: string | null;
 };
 
-type JoinLimitType = "major" | "field";
+type JoinLimitType = "major" | "field" | "all";
 
 function clampLimit(value: number | undefined, fallback: number, min: number, max: number): number {
   if (typeof value !== "number" || !Number.isFinite(value)) return fallback;

@@ -1,8 +1,16 @@
 import { ApiError, getApiBase, notifyAuthGateFromHttpError } from "./apiBase";
 import { getFirebaseIdToken } from "./firebaseClient";
+import {
+  COMMUNITY_REQUEST_KINDS,
+  normalizeCommunityRequestType,
+  type CommunityRequestKind,
+} from "./schoolMajorContract";
+
+export { COMMUNITY_REQUEST_KINDS, normalizeCommunityRequestType };
+export type { CommunityRequestKind };
 
 export type CommunityRequestPayload = {
-  type: "company" | "school" | "field" | "major";
+  type: CommunityRequestKind;
   name: string;
   about: string;
   imageKey?: string;
@@ -173,9 +181,13 @@ function canvasToBlob(canvas: HTMLCanvasElement, type: string, quality?: number)
 export async function submitCommunityRequest(
   payload: CommunityRequestPayload
 ): Promise<CommunityRequestResponse> {
+  const normalizedType = normalizeCommunityRequestType(payload.type);
   return authFetch<CommunityRequestResponse>("/v1/community-requests", {
     method: "POST",
-    body: JSON.stringify(payload),
+    body: JSON.stringify({
+      ...payload,
+      type: normalizedType,
+    }),
   });
 }
 

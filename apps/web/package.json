@@ -8,6 +8,7 @@
     "dev": "react-router dev",
     "dev:staging": "react-router dev --mode staging",
     "lint": "eslint \"{app,src}/**/*.{ts,tsx}\"",
+    "test:contracts": "node --test --experimental-strip-types \"src/lib/**/*.test.ts\"",
     "format": "prettier --write \"{app,src,public}/**/*.{ts,tsx,js,jsx,json,css,md}\"",
     "format:check": "prettier --check \"{app,src,public}/**/*.{ts,tsx,js,jsx,json,css,md}\"",
     "start": "react-router-serve ./build/server/index.js",

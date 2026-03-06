@@ -1,5 +1,12 @@
 import { ApiError, getApiBase, notifyAuthGateFromHttpError } from "./apiBase";
 import { getFirebaseIdToken } from "./firebaseClient";
+import {
+  COMMUNITY_SEARCH_KINDS,
+  normalizeCommunitySearchKindParam,
+  type CommunitySearchKind,
+  type CommunitySearchKindParam,
+  type DeprecatedCommunitySearchKind,
+} from "./schoolMajorContract";
 
 export class SearchApiError extends ApiError {}
 
@@ -10,7 +17,9 @@ export type CursorEnvelope<T> = {
 };
 
 export type SpecializationType = "major" | "field";
-export type CommunitySearchKind = "company" | "school" | "major" | "field";
+
+export { COMMUNITY_SEARCH_KINDS, normalizeCommunitySearchKindParam };
+export type { CommunitySearchKind, CommunitySearchKindParam, DeprecatedCommunitySearchKind };
 
 function clampLimit(value: number | undefined, fallback: number, min: number, max: number): number {
   if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
@@ -79,7 +88,7 @@ export async function fetchRecommendedCommunities({
 }: {
   limit?: number;
   cursor?: string;
-  kind?: CommunitySearchKind;
+  kind?: CommunitySearchKindParam;
 } = {}): Promise<CursorEnvelope<unknown>> {
   const params = buildCursorParams({ limit, cursor });
   if (kind) params.set("kind", kind);
@@ -147,7 +156,7 @@ export async function searchCommunities({
   cursor,
 }: {
   query: string;
-  kind?: CommunitySearchKind;
+  kind?: CommunitySearchKindParam;
   limit?: number;
   cursor?: string;
 }): Promise<CursorEnvelope<unknown>> {

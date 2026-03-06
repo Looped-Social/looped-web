@@ -457,11 +457,8 @@ function resolveCommunityTypeLabel(kind?: string, specializationType?: string): 
   switch (resolved) {
     case "company":
       return "Workplace";
-    case "school":
-      return "School";
-    case "major":
-      return "Major";
     case "field":
+    case "specialization":
       return "Field";
     default:
       return "Community";
@@ -497,8 +494,8 @@ function normalizeCommunityView(payload: unknown, fallbackId: string): Community
     normalizeCommunityKind(node.kind ?? node.community_kind ?? node.communityKind ?? node.type) ?? undefined;
   const specializationType = (() => {
     const value = normalizeCommunityKind(node.specialization_type ?? node.specializationType);
-    if (value === "major" || value === "field") return value;
-    if (rawKind === "major" || rawKind === "field") return rawKind;
+    if (value === "field") return value;
+    if (rawKind === "field") return rawKind;
     return undefined;
   })();
   const isSpecialization = rawKind === "specialization" || Boolean(specializationType);
@@ -693,9 +690,7 @@ export function AppCommunityPage({ communityId }: AppCommunityPageProps) {
         );
         const looksLikeSpecialization =
           communityKind === "specialization" ||
-          communityKind === "major" ||
           communityKind === "field" ||
-          specializationType === "major" ||
           specializationType === "field";
 
         if (looksLikeSpecialization) {
