@@ -88,7 +88,7 @@ export function ContactPage() {
 
           <form
             onSubmit={handleSubmit}
-            className="rounded-[2rem] border border-border bg-white p-7 shadow-[0_16px_40px_rgba(15,23,42,0.04)] lg:p-8"
+            className="rounded-[2rem] border border-border bg-white p-7 shadow-[0_16px_40px_rgba(15,23,42,0.04)] dark:bg-bg-muted/55 lg:p-8"
           >
             <div className="space-y-6">
               <div>
@@ -149,12 +149,12 @@ export function ContactPage() {
 
               {status === "success" ? (
                 <div
-                  className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700"
+                  className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700 dark:border-emerald-500/35 dark:bg-emerald-500/12 dark:text-emerald-200"
                   role="status"
                   aria-live="polite"
                 >
                   <p className="font-medium">{successMessage}</p>
-                  <p className="mt-1 text-emerald-600">If you shared an email, we can follow up there.</p>
+                  <p className="mt-1 text-emerald-600 dark:text-emerald-300">If you shared an email, we can follow up there.</p>
                 </div>
               ) : null}
 
@@ -175,7 +175,7 @@ export function ContactPage() {
             {contacts.map((item) => (
               <div
                 key={item.title}
-                className="rounded-[2rem] border border-border bg-white p-7 shadow-[0_16px_40px_rgba(15,23,42,0.04)]"
+                className="rounded-[2rem] border border-border bg-white p-7 shadow-[0_16px_40px_rgba(15,23,42,0.04)] dark:bg-bg-muted/55"
               >
                 <h3 className="text-xl font-semibold text-strong">{item.title}</h3>
                 <p className="mt-3 text-base leading-7 text-text-secondary">{item.copy}</p>

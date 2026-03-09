@@ -98,7 +98,10 @@ export function AboutPage() {
 
           <div className="grid gap-6 sm:grid-cols-2">
             {pillars.map((item) => (
-              <div key={item.title} className="rounded-[2rem] border border-border bg-white p-7 shadow-[0_16px_40px_rgba(15,23,42,0.04)]">
+              <div
+                key={item.title}
+                className="rounded-[2rem] border border-border bg-white p-7 shadow-[0_16px_40px_rgba(15,23,42,0.04)] dark:bg-bg-muted/55"
+              >
                 <h3 className="text-2xl font-semibold tracking-tight text-strong">{item.title}</h3>
                 <p className="mt-4 text-base leading-8 text-text-secondary">{item.copy}</p>
               </div>
@@ -129,7 +132,7 @@ export function AboutPage() {
             {steps.map((step) => (
               <div
                 key={step.title}
-                className="rounded-[2rem] border border-border bg-white p-7 shadow-[0_16px_40px_rgba(15,23,42,0.04)]"
+                className="rounded-[2rem] border border-border bg-white p-7 shadow-[0_16px_40px_rgba(15,23,42,0.04)] dark:bg-bg-muted/55"
               >
                 <h3 className="text-xl font-semibold text-strong">{step.title}</h3>
                 <p className="mt-3 text-base leading-7 text-text-secondary">{step.copy}</p>
@@ -148,7 +151,7 @@ export function AboutPage() {
             {values.map((value) => (
               <div
                 key={value.title}
-                className="rounded-[2rem] border border-border bg-white p-7 shadow-[0_16px_40px_rgba(15,23,42,0.04)]"
+                className="rounded-[2rem] border border-border bg-white p-7 shadow-[0_16px_40px_rgba(15,23,42,0.04)] dark:bg-bg-muted/55"
               >
                 <h3 className="text-lg font-semibold text-strong">{value.title}</h3>
                 <p className="mt-2 text-base leading-7 text-text-secondary">{value.copy}</p>
@@ -188,7 +191,7 @@ export function AboutPage() {
               </Link>
               <a
                 href="mailto:support@looped.app"
-                className="inline-flex items-center justify-center rounded-full border border-brand/18 bg-bg px-5 py-3 text-sm font-semibold text-strong transition hover:bg-white/70"
+                className="inline-flex items-center justify-center rounded-full border border-brand/18 bg-bg px-5 py-3 text-sm font-semibold text-strong transition hover:bg-bg-muted dark:hover:bg-bg-muted/70"
               >
                 Email the team
               </a>
