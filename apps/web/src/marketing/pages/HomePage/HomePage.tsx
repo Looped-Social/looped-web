@@ -42,7 +42,7 @@ export function HomePage() {
   }, []);
 
   return (
-    <div className="h-screen overflow-hidden bg-bg">
+    <div className="landing-force-light h-screen overflow-hidden bg-bg">
       <HomeLandingChrome tone={chromeTone} />
       <main ref={scrollContainerRef} className="h-screen snap-y snap-mandatory overflow-y-auto">
         <Hero onOpenDialog={() => setIsDialogOpen(true)} />

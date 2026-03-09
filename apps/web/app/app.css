@@ -52,6 +52,40 @@
   display: block;
 }
 
+/* Keep the marketing home page in light mode even when the global theme is dark. */
+.landing-force-light {
+  color-scheme: light;
+  --color-contrast: #0f0f0f;
+  --color-text-primary: #1f2937;
+  --color-text-secondary: #6b7280;
+  --color-text-light: #9ca3af;
+  --color-strong: #111827;
+  --color-bg: #ffffff;
+  --color-bg-muted: #f3f4f6;
+  --color-border: #6b72804d;
+  --color-message-muted: #fafafa;
+  --color-message: #acf6f2;
+  --color-shell-bg: #ffffff;
+  --color-shell-surface: #ffffff;
+  --color-shell-surface-muted: #f3f4f6;
+  --color-shell-border: rgba(17, 24, 39, 0.08);
+  --color-shell-text: #111827;
+  --color-shell-text-muted: #6b7280;
+  --color-thread-bubble-them: #eef2f7;
+  --color-thread-video-overlay: rgba(0, 0, 0, 0.45);
+  --color-thread-media-time: rgba(0, 0, 0, 0.55);
+  --skeleton-base: color-mix(in srgb, var(--color-bg-muted) 86%, var(--color-bg));
+  --skeleton-highlight-alpha: 0.55;
+}
+
+.landing-force-light .app-store-img-light {
+  display: block;
+}
+
+.landing-force-light .app-store-img-dark {
+  display: none;
+}
+
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme]) .app-store-img-light {
     display: none;
