@@ -71,7 +71,7 @@ export function PrivacyPage() {
             {verificationSteps.map((step) => (
               <div
                 key={step.title}
-                className="rounded-[1.75rem] border border-border bg-white p-6 shadow-[0_12px_30px_rgba(15,23,42,0.035)]"
+                className="rounded-[1.75rem] border border-border bg-white p-6 shadow-[0_12px_30px_rgba(15,23,42,0.035)] dark:bg-bg-muted/55"
               >
                 <h3 className="text-xl font-semibold text-strong">{step.title}</h3>
                 <p className="mt-3 text-base leading-7 text-text-secondary">{step.copy}</p>
@@ -94,7 +94,7 @@ export function PrivacyPage() {
             {privacyGuarantees.map((item) => (
               <div
                 key={item.title}
-                className="rounded-[1.75rem] border border-border bg-white p-6 shadow-[0_12px_30px_rgba(15,23,42,0.035)]"
+                className="rounded-[1.75rem] border border-border bg-white p-6 shadow-[0_12px_30px_rgba(15,23,42,0.035)] dark:bg-bg-muted/55"
               >
                 <h3 className="text-xl font-semibold text-strong">{item.title}</h3>
                 <p className="mt-3 text-base leading-7 text-text-secondary">{item.copy}</p>
@@ -117,7 +117,7 @@ export function PrivacyPage() {
             {backupSteps.map((step) => (
               <div
                 key={step.title}
-                className="rounded-[1.75rem] border border-border bg-white p-6 shadow-[0_12px_30px_rgba(15,23,42,0.035)]"
+                className="rounded-[1.75rem] border border-border bg-white p-6 shadow-[0_12px_30px_rgba(15,23,42,0.035)] dark:bg-bg-muted/55"
               >
                 <h3 className="text-xl font-semibold text-strong">{step.title}</h3>
                 <p className="mt-3 text-base leading-7 text-text-secondary">{step.copy}</p>
