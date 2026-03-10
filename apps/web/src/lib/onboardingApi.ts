@@ -45,8 +45,7 @@ export type OnboardingSnapshot = {
 };
 
 export type CommunityKind = "company";
-export type DeprecatedCommunityKind = "school";
-export type CommunityKindParam = CommunityKind | DeprecatedCommunityKind;
+export type CommunityKindParam = CommunityKind;
 
 export type CommunityOption = {
   id: string;
@@ -61,7 +60,7 @@ export type CommunityOption = {
 export type SpecializationOption = {
   id: string;
   name: string;
-  type: "major" | "field" | "unknown";
+  type: "field" | "unknown";
   memberCount?: number;
 };
 
@@ -215,7 +214,7 @@ export function extractCompanyCommunityItems(payload: unknown): CommunityOption[
 
 function normalizeSpecializationOption(
   payload: unknown,
-  fallbackType: "major" | "field" | "unknown"
+  fallbackType: "field" | "unknown"
 ): SpecializationOption | null {
   if (!isRecord(payload)) return null;
   const id = getString(payload.id ?? payload.specialization_id ?? payload.specializationId);
@@ -223,10 +222,7 @@ function normalizeSpecializationOption(
   if (!id || !name) return null;
 
   const typeValue = getString(payload.type ?? payload.specialization_type ?? payload.specializationType);
-  const normalizedType =
-    typeValue === "major" || typeValue === "field"
-      ? typeValue
-      : fallbackType;
+  const normalizedType = typeValue ? (typeValue === "field" ? "field" : "unknown") : fallbackType;
   const memberCount = getNumber(payload.member_count ?? payload.memberCount);
 
   return {
@@ -532,7 +528,7 @@ export async function joinSpecialization(communityOrSpecializationId: string | n
 
 export function normalizeRecommendedOnboardingSpecializationsPayload(
   data: unknown,
-  type: "all" | "major" | "field"
+  type: "all" | "field"
 ): SpecializationOption[] {
   return normalizeRecommendedOnboardingSpecializationsPayloadFromContract(data, type).map((item) => ({
     id: item.id,
@@ -547,7 +543,7 @@ export async function fetchRecommendedOnboardingSpecializations({
   limit = 50,
   signal,
 }: {
-  type?: "all" | "major" | "field";
+  type?: "all" | "field";
   limit?: number;
   signal?: AbortSignal;
 }): Promise<SpecializationOption[]> {
@@ -565,7 +561,7 @@ export async function searchOnboardingSpecializations({
   signal,
 }: {
   query: string;
-  kind: "major" | "field";
+  kind: "field";
   limit?: number;
   signal?: AbortSignal;
 }): Promise<SpecializationOption[]> {
@@ -581,17 +577,6 @@ export async function searchOnboardingSpecializations({
     items
       .map((entry) => normalizeSpecializationOption(entry, kind))
       .filter((entry): entry is SpecializationOption => Boolean(entry))
-  );
-}
-
-export async function fetchMajorsForOnboarding(): Promise<SpecializationOption[]> {
-  const { data } = await onboardingAuthFetch<unknown>("/v1/majors");
-  const payload = isRecord(data) ? data : {};
-  const items = Array.isArray(payload.items) ? payload.items : [];
-  return dedupeAndSortSpecializations(
-    items
-      .map((item) => normalizeSpecializationOption(item, "major"))
-      .filter((item): item is SpecializationOption => Boolean(item))
   );
 }
 

@@ -1,7 +1,7 @@
 import { type ChangeEvent, type SyntheticEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router";
 
-import { Logo } from "@looped/ui";
+import { Logo, useTheme } from "@looped/ui";
 
 import { CameraIcon } from "@/app/components/AppIcons/AppIcons";
 import { useToast } from "@/app/components/AppToast/AppToast";
@@ -10,12 +10,8 @@ import { CommunityRequestFlow } from "@/app/components/CommunityRequestFlow/Comm
 import { OnboardingContinueButton } from "@/app/components/OnboardingContinueButton/OnboardingContinueButton";
 import { VerificationEmailFlow } from "@/app/components/VerificationEmailFlow/VerificationEmailFlow";
 import { VerificationInfoContent } from "@/app/components/VerificationInfoContent/VerificationInfoContent";
-import kickoffIllustration from "@/assets/illustrations/kickoff.png";
-import skipVerifyIllustration from "@/assets/illustrations/skip-verify.png";
-import verifiedConfirmIllustration from "@/assets/illustrations/verified-confirm.png";
-import verifyFirstIllustration from "@/assets/illustrations/verify-first.png";
-import verifyInfoIllustration from "@/assets/illustrations/verify-info.png";
 import { useUserSession } from "@/hooks/useUserSession";
+import { appIllustrations, resolveIllustrationAsset } from "@/lib/appIllustrations";
 import { useEmailVerificationMachine } from "@/lib/emailVerificationMachine";
 import {
   dismissProfileCompletionPrompt,
@@ -281,19 +277,23 @@ function mapOnboardingError(error: unknown): string {
   return "Something went wrong. Please try again.";
 }
 
-function getStepIllustration(step: OnboardingFlowStep): string {
-  if (step === "profile_setup") return kickoffIllustration;
-  if (step === "verification_info") return verifyInfoIllustration;
-  if (step === "org_selection") return kickoffIllustration;
-  if (step === "verification_intro" || step === "verification_choice") return verifyFirstIllustration;
-  if (step === "email_verification_enter_email" || step === "email_verification_enter_code") {
-    return verifyFirstIllustration;
+function getStepIllustration(step: OnboardingFlowStep, theme: "light" | "dark"): string {
+  if (step === "profile_setup") return resolveIllustrationAsset(appIllustrations.profileSetup, theme);
+  if (step === "verification_info") return resolveIllustrationAsset(appIllustrations.verifyInfo, theme);
+  if (step === "org_selection") return resolveIllustrationAsset(appIllustrations.kickoff, theme);
+  if (step === "verification_intro" || step === "verification_choice") {
+    return resolveIllustrationAsset(appIllustrations.verifyFirst, theme);
   }
-  if (step === "specialization_selection") return kickoffIllustration;
-  if (step === "skip_explainer") return skipVerifyIllustration;
-  if (step === "verification_confirmation" || step === "completed") return verifiedConfirmIllustration;
-  if (step === "unsupported_web_stage") return kickoffIllustration;
-  return kickoffIllustration;
+  if (step === "email_verification_enter_email" || step === "email_verification_enter_code") {
+    return resolveIllustrationAsset(appIllustrations.verifyFirst, theme);
+  }
+  if (step === "specialization_selection") return resolveIllustrationAsset(appIllustrations.kickoff, theme);
+  if (step === "skip_explainer") return resolveIllustrationAsset(appIllustrations.skipVerify, theme);
+  if (step === "verification_confirmation" || step === "completed") {
+    return resolveIllustrationAsset(appIllustrations.verifiedConfirm, theme);
+  }
+  if (step === "unsupported_web_stage") return resolveIllustrationAsset(appIllustrations.kickoff, theme);
+  return resolveIllustrationAsset(appIllustrations.kickoff, theme);
 }
 
 function BackArrowIcon({ className }: { className?: string }) {
@@ -409,6 +409,7 @@ function nextBackStep(step: OnboardingFlowStep): OnboardingFlowStep | null {
 
 export function OnboardingPage() {
   const navigate = useNavigate();
+  const { theme } = useTheme();
   const { showToast } = useToast();
   const { status, accessState, user, bootstrap, signOut, refreshSession } = useUserSession();
   const uid = user?.uid ?? null;
@@ -1627,7 +1628,8 @@ export function OnboardingPage() {
     return null;
   }
 
-  const illustration = getStepIllustration(currentStep);
+  const illustration = getStepIllustration(currentStep, theme);
+  const verificationIntroIllustration = resolveIllustrationAsset(appIllustrations.verifyFirst, theme);
   const isEmailVerificationStep =
     currentStep === "email_verification_enter_email" || currentStep === "email_verification_enter_code";
   const isSpecializationStep = currentStep === "specialization_selection";
@@ -2107,7 +2109,7 @@ export function OnboardingPage() {
                   <div className="grid items-center gap-8 md:grid-cols-[minmax(220px,340px)_1fr]">
                     <div className="flex justify-center md:justify-start">
                       <img
-                        src={verifyFirstIllustration}
+                        src={verificationIntroIllustration}
                         alt=""
                         className="w-full max-w-[320px] object-contain"
                         loading="lazy"

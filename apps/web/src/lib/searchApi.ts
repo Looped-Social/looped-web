@@ -5,7 +5,6 @@ import {
   normalizeCommunitySearchKindParam,
   type CommunitySearchKind,
   type CommunitySearchKindParam,
-  type DeprecatedCommunitySearchKind,
 } from "./schoolMajorContract";
 
 export class SearchApiError extends ApiError {}
@@ -16,10 +15,10 @@ export type CursorEnvelope<T> = {
   nextCursor?: string | null;
 };
 
-export type SpecializationType = "major" | "field";
+export type SpecializationType = "field";
 
 export { COMMUNITY_SEARCH_KINDS, normalizeCommunitySearchKindParam };
-export type { CommunitySearchKind, CommunitySearchKindParam, DeprecatedCommunitySearchKind };
+export type { CommunitySearchKind, CommunitySearchKindParam };
 
 function clampLimit(value: number | undefined, fallback: number, min: number, max: number): number {
   if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
@@ -107,10 +106,6 @@ export async function fetchSpecializationsBrowse({
   const params = buildCursorParams({ limit, cursor });
   params.set("type", type);
   return authFetch<CursorEnvelope<unknown>>(`/v1/specializations/browse?${params.toString()}`);
-}
-
-export async function fetchMajorsIndex(): Promise<unknown> {
-  return authFetch<unknown>("/v1/majors");
 }
 
 export async function fetchFieldsIndex(): Promise<unknown> {

@@ -8,28 +8,22 @@ import {
 } from "./schoolMajorContract.ts";
 import { normalizeCommunitySearchKindParam } from "./schoolMajorContract.ts";
 
-test("normalizeCommunitySearchKindParam keeps supported and deprecated kinds only", () => {
+test("normalizeCommunitySearchKindParam keeps supported kinds only", () => {
   assert.equal(normalizeCommunitySearchKindParam("company"), "company");
   assert.equal(normalizeCommunitySearchKindParam("specialization"), "specialization");
   assert.equal(normalizeCommunitySearchKindParam("field"), "field");
   assert.equal(normalizeCommunitySearchKindParam("unknown"), "unknown");
 
-  // Deprecated values still pass through as explicit legacy kinds.
-  assert.equal(normalizeCommunitySearchKindParam("school"), "school");
-  assert.equal(normalizeCommunitySearchKindParam("major"), "major");
-
+  assert.equal(normalizeCommunitySearchKindParam("school"), undefined);
+  assert.equal(normalizeCommunitySearchKindParam("major"), undefined);
   assert.equal(normalizeCommunitySearchKindParam("not-a-kind"), undefined);
   assert.equal(normalizeCommunitySearchKindParam(""), undefined);
 });
 
-test("normalizeCommunityRequestType maps workplace alias and keeps legacy values explicit", () => {
+test("normalizeCommunityRequestType maps workplace alias and keeps supported values explicit", () => {
   assert.equal(normalizeCommunityRequestType("workplace"), "company");
   assert.equal(normalizeCommunityRequestType("company"), "company");
   assert.equal(normalizeCommunityRequestType("field"), "field");
-
-  // Deprecated values are forwarded to backend so API returns canonical invalid_kind handling.
-  assert.equal(normalizeCommunityRequestType("school"), "school");
-  assert.equal(normalizeCommunityRequestType("major"), "major");
 });
 
 test("extractCompanyCommunityItems hides non-company onboarding org kinds", () => {
@@ -51,7 +45,7 @@ test("extractCompanyCommunityItems hides non-company onboarding org kinds", () =
   assert.equal(items[1].membersLabel, "1,200 members");
 });
 
-test("normalizeRecommendedOnboardingSpecializationsPayload is field-only and major-safe", () => {
+test("normalizeRecommendedOnboardingSpecializationsPayload is field-only", () => {
   const payload = {
     items: [
       { id: "f1", name: "Design", specialization_type: "field", member_count: 10 },
@@ -76,7 +70,4 @@ test("normalizeRecommendedOnboardingSpecializationsPayload is field-only and maj
     field.map((item) => item.id),
     ["f2", "f1"]
   );
-
-  const major = normalizeRecommendedOnboardingSpecializationsPayload(payload, "major");
-  assert.deepEqual(major, []);
 });

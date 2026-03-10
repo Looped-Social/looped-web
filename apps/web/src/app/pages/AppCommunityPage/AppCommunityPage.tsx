@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 
+import { useTheme } from "@looped/ui";
+
 import { AppLayout } from "@/app/components/AppLayout/AppLayout";
 import { useToast } from "@/app/components/AppToast/AppToast";
 import { OnboardingContinueButton } from "@/app/components/OnboardingContinueButton/OnboardingContinueButton";
 import { PostCard, type PostData } from "@/app/components/PostCard/PostCard";
 import { VerificationEmailFlow } from "@/app/components/VerificationEmailFlow/VerificationEmailFlow";
-import verifyFirstIllustration from "@/assets/illustrations/verify-first.png";
+import { appIllustrations, resolveIllustrationAsset } from "@/lib/appIllustrations";
 import { useEmailVerificationMachine, type EmailVerificationDraft, type EmailVerificationState } from "@/lib/emailVerificationMachine";
 import { extractMediaAssetIds } from "@/lib/postMediaIds";
 import { normalizePostPoll } from "@/lib/postPoll";
@@ -507,6 +509,9 @@ function normalizeCommunityView(payload: unknown, fallbackId: string): Community
   const isJoined =
     pickBoolean(node, ["is_joined", "isJoined", "viewer_joined", "viewerJoined", "joined", "user_joined"]) ??
     false;
+  const baseImageUrl = pickString(node, ["image_url", "imageUrl"]);
+  const profileImageUrl = pickString(node, ["profile_image_url", "profileImageUrl"]) ?? baseImageUrl;
+  const bannerImageUrl = pickString(node, ["banner_image_url", "bannerImageUrl"]) ?? baseImageUrl;
 
   const joinLimitInfo = isSpecialization ? resolveJoinLimitInfo(node.join_limit ?? node.joinLimit) : {};
 
@@ -516,8 +521,8 @@ function normalizeCommunityView(payload: unknown, fallbackId: string): Community
     shortName,
     description: pickString(node, ["description", "about", "bio"]) ?? undefined,
     kind: specializationType ?? rawKind,
-    bannerImageUrl: pickString(node, ["banner_image_url", "bannerImageUrl"]) ?? undefined,
-    imageUrl: pickString(node, ["image_url", "imageUrl", "profile_image_url", "profileImageUrl"]) ?? undefined,
+    bannerImageUrl: bannerImageUrl ?? undefined,
+    imageUrl: profileImageUrl ?? undefined,
     typeLabel: resolveCommunityTypeLabel(rawKind, specializationType),
     membersCount:
       pickNumber(node, ["member_count", "memberCount", "members_count", "membersCount", "follower_count", "followers_count"]) ??
@@ -630,6 +635,7 @@ function isImageUrl(value: string | undefined): boolean {
 
 export function AppCommunityPage({ communityId }: AppCommunityPageProps) {
   const navigate = useNavigate();
+  const { theme } = useTheme();
   const { showToast } = useToast();
 
   const [detailStatus, setDetailStatus] = useState<DetailStatus>("loading");
@@ -661,6 +667,8 @@ export function AppCommunityPage({ communityId }: AppCommunityPageProps) {
     pendingCode: "",
     cooldownUntil: null,
   });
+  const verificationIntroIllustration = resolveIllustrationAsset(appIllustrations.verifyFirst, theme);
+  const verificationConfirmedIllustration = resolveIllustrationAsset(appIllustrations.verifiedConfirm, theme);
 
   const loadCommunity = useCallback(async () => {
     setDetailStatus("loading");
@@ -950,6 +958,7 @@ export function AppCommunityPage({ communityId }: AppCommunityPageProps) {
   }, [closeVerificationModal, loadCommunity, showToast]);
 
   const communityHasBanner = isImageUrl(community?.bannerImageUrl);
+  const communityBannerSrc = communityHasBanner ? community?.bannerImageUrl : undefined;
   const verificationInfo = community?.verificationInfo ?? { label: "Unverified", status: "unknown" as const };
   const joinLimitInfo = community?.joinLimitInfo ?? {};
   const canShowModalBack =
@@ -1018,7 +1027,7 @@ export function AppCommunityPage({ communityId }: AppCommunityPageProps) {
                 {communityHasBanner ? (
                   <div className="h-[120px] overflow-hidden rounded-[24px] bg-white">
                     <img
-                      src={community.bannerImageUrl!}
+                      src={communityBannerSrc!}
                       alt=""
                       className="h-full w-full object-cover"
                       loading="lazy"
@@ -1325,7 +1334,7 @@ export function AppCommunityPage({ communityId }: AppCommunityPageProps) {
                 <div className="space-y-5">
                   <div className="flex justify-center">
                     <img
-                      src={verifyFirstIllustration}
+                      src={verificationIntroIllustration}
                       alt=""
                       className="w-full max-w-[240px] object-contain"
                       loading="lazy"
@@ -1410,6 +1419,14 @@ export function AppCommunityPage({ communityId }: AppCommunityPageProps) {
 
               {verificationModalStep === "confirmed" ? (
                 <div className="space-y-4">
+                  <div className="flex justify-center">
+                    <img
+                      src={verificationConfirmedIllustration}
+                      alt=""
+                      className="w-full max-w-[240px] object-contain"
+                      loading="lazy"
+                    />
+                  </div>
                   <p className="text-sm leading-6 text-text-secondary">
                     Your email is now verified for {activeVerificationCommunity.communityName}. You can close this and continue.
                   </p>

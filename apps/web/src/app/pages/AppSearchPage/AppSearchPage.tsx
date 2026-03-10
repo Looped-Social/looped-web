@@ -38,7 +38,6 @@ type SearchFilterId =
 
 type SearchStatus = "idle" | "loading" | "ready" | "error";
 type LandingStatus = "loading" | "ready" | "error";
-type LandingSectionId = "majors" | "fields";
 type SearchResultsMode = "results" | "post-search-feed" | "hashtag-feed";
 type SearchFeedStatus = "idle" | "loading" | "loading-more" | "ready" | "error";
 
@@ -69,6 +68,7 @@ type SpecializationCard = {
   label: string;
   membersLabel?: string;
   icon?: string;
+  imageUrl?: string;
 };
 
 type UserResult = {
@@ -122,7 +122,6 @@ const RECOMMENDED_COMMUNITIES_LIMIT = 8;
 const SPECIALIZATIONS_INITIAL_LIMIT = 24;
 const SPECIALIZATIONS_LOAD_MORE_LIMIT = 40;
 const SPECIALIZATION_GRID_PAGE_SIZE = 8;
-const MAJORS_DEPRECATION_COPY = "Majors are no longer supported; browse Fields instead.";
 
 function handleProfileImageError(event: SyntheticEvent<HTMLImageElement>) {
   const image = event.currentTarget;
@@ -300,7 +299,6 @@ function extractItemsArray(payload: unknown): unknown[] {
   const data = payload.data;
   if (Array.isArray(data)) return data;
 
-  if (Array.isArray(payload.majors)) return payload.majors;
   if (Array.isArray(payload.fields)) return payload.fields;
   return [];
 }
@@ -588,6 +586,10 @@ function normalizeSpecializationCard(item: unknown, icons: Record<string, string
     label,
     membersLabel,
     icon: resolveSpecializationIcon(item, icons),
+    imageUrl:
+      pickString(item, ["icon_image_url", "iconImageUrl", "profile_image_url", "profileImageUrl"]) ??
+      pickString(item, ["image_url", "imageUrl"]) ??
+      undefined,
   };
 }
 
@@ -915,10 +917,6 @@ function normalizeRecentSearches(input: unknown): string[] {
   return unique;
 }
 
-function resolveLandingSectionOrder(): LandingSectionId[] {
-  return ["fields"];
-}
-
 function SectionHeader({ title, subtitle }: { title: string; subtitle?: string }) {
   return (
     <div>
@@ -969,7 +967,11 @@ function IconBadge({ icon, imageUrl, label }: { icon?: string; imageUrl?: string
   const display = icon && icon.trim().length ? icon.trim() : initialsFromName(label).slice(0, 1);
   const isImageUrl = /^https?:\/\//i.test(display);
   return (
-    <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-xl border border-border/40 bg-bg-muted text-xl">
+    <div
+      className={`flex h-12 w-12 items-center justify-center overflow-hidden rounded-full border text-xl ${
+        image || isImageUrl ? "border-border/60 bg-bg dark:bg-white/90" : "border-border/40 bg-bg-muted"
+      }`}
+    >
       {image ? <img src={image} alt="" className="h-full w-full object-cover" loading="lazy" /> : null}
       {!image && isImageUrl ? <img src={display} alt="" className="h-full w-full object-cover" loading="lazy" /> : null}
       {!image && !isImageUrl ? <span>{display}</span> : null}
@@ -1009,18 +1011,13 @@ export function AppSearchPage() {
   const [canScrollTrendingPrev, setCanScrollTrendingPrev] = useState(false);
   const [canScrollTrendingNext, setCanScrollTrendingNext] = useState(false);
   const [recommendedCommunities, setRecommendedCommunities] = useState<CommunityCard[]>([]);
-  const [majorCards, setMajorCards] = useState<SpecializationCard[]>([]);
   const [fieldCards, setFieldCards] = useState<SpecializationCard[]>([]);
   const [specializationIcons, setSpecializationIcons] = useState<Record<string, string>>({});
   const [communitiesNextCursor, setCommunitiesNextCursor] = useState<string | null>(null);
-  const [majorsNextCursor, setMajorsNextCursor] = useState<string | null>(null);
   const [fieldsNextCursor, setFieldsNextCursor] = useState<string | null>(null);
-  const [sectionOrder, setSectionOrder] = useState<LandingSectionId[]>(["fields"]);
   const [isLoadingMoreCommunities, setIsLoadingMoreCommunities] = useState(false);
-  const [isLoadingMoreMajors, setIsLoadingMoreMajors] = useState(false);
   const [isLoadingMoreFields, setIsLoadingMoreFields] = useState(false);
   const [trendingPage, setTrendingPage] = useState(0);
-  const [majorPage, setMajorPage] = useState(0);
   const [fieldPage, setFieldPage] = useState(0);
   const [canScrollCommunitiesPrev, setCanScrollCommunitiesPrev] = useState(false);
   const [canScrollCommunitiesNext, setCanScrollCommunitiesNext] = useState(false);
@@ -1049,7 +1046,6 @@ export function AppSearchPage() {
   const communitiesScrollerRef = useRef<HTMLDivElement | null>(null);
   const trendingScrollerRef = useRef<HTMLDivElement | null>(null);
   const lastCommunityCardRef = useRef<HTMLButtonElement | null>(null);
-  const majorPagerRef = useRef<HTMLDivElement | null>(null);
   const fieldPagerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -1095,10 +1091,6 @@ export function AppSearchPage() {
     persistRecentSearches([]);
   }, [persistRecentSearches]);
 
-  const majorPages = useMemo(
-    () => chunkByPage(majorCards, SPECIALIZATION_GRID_PAGE_SIZE),
-    [majorCards]
-  );
   const fieldPages = useMemo(
     () => chunkByPage(fieldCards, SPECIALIZATION_GRID_PAGE_SIZE),
     [fieldCards]
@@ -1131,17 +1123,12 @@ export function AppSearchPage() {
       setSpecializationIcons(combinedIcons);
       setTrendingPosts(nextTrending.slice(0, TRENDING_LIMIT));
       setRecommendedCommunities(nextCommunities);
-      setMajorCards([]);
       setFieldCards(nextFields);
       setCommunitiesNextCursor(extractNextCursor(communitiesResponse));
-      setMajorsNextCursor(null);
       setFieldsNextCursor(extractNextCursor(fieldsBrowseResponse));
-      setSectionOrder(resolveLandingSectionOrder());
       setIsLoadingMoreCommunities(false);
-      setIsLoadingMoreMajors(false);
       setIsLoadingMoreFields(false);
       setTrendingPage(0);
-      setMajorPage(0);
       setFieldPage(0);
       setLandingStatus("ready");
     } catch (error) {
@@ -1174,28 +1161,6 @@ export function AppSearchPage() {
       setIsLoadingMoreCommunities(false);
     }
   }, [communitiesNextCursor, isLoadingMoreCommunities, landingStatus, preferCommunityShortNames]);
-
-  const loadMoreMajors = useCallback(async () => {
-    if (landingStatus !== "ready" || !majorsNextCursor || isLoadingMoreMajors) return;
-
-    setIsLoadingMoreMajors(true);
-    try {
-      const response = await fetchSpecializationsBrowse({
-        type: "major",
-        limit: SPECIALIZATIONS_LOAD_MORE_LIMIT,
-        cursor: majorsNextCursor,
-      });
-      const nextItems = extractItemsArray(response)
-        .map((item) => normalizeSpecializationCard(item, specializationIcons))
-        .filter((item): item is SpecializationCard => Boolean(item));
-      setMajorCards((current) => mergeUniqueById(current, nextItems));
-      setMajorsNextCursor(extractNextCursor(response));
-    } catch {
-      // Keep current data and retry later.
-    } finally {
-      setIsLoadingMoreMajors(false);
-    }
-  }, [isLoadingMoreMajors, landingStatus, majorsNextCursor, specializationIcons]);
 
   const loadMoreFields = useCallback(async () => {
     if (landingStatus !== "ready" || !fieldsNextCursor || isLoadingMoreFields) return;
@@ -1307,10 +1272,6 @@ export function AppSearchPage() {
   }, [resolvedTrendingMedia, trendingPosts]);
 
   useEffect(() => {
-    setMajorPage((current) => Math.min(current, Math.max(majorPages.length - 1, 0)));
-  }, [majorPages.length]);
-
-  useEffect(() => {
     setFieldPage((current) => Math.min(current, Math.max(fieldPages.length - 1, 0)));
   }, [fieldPages.length]);
 
@@ -1364,19 +1325,6 @@ export function AppSearchPage() {
     });
   }, []);
 
-  const handleMajorsPagerScroll = useCallback(
-    (event: SyntheticEvent<HTMLDivElement>) => {
-      const container = event.currentTarget;
-      const pageWidth = container.clientWidth || 1;
-      const nextPage = Math.max(0, Math.min(Math.round(container.scrollLeft / pageWidth), majorPages.length - 1));
-      setMajorPage(nextPage);
-      if (nextPage >= majorPages.length - 1) {
-        void loadMoreMajors();
-      }
-    },
-    [loadMoreMajors, majorPages.length]
-  );
-
   const handleFieldsPagerScroll = useCallback(
     (event: SyntheticEvent<HTMLDivElement>) => {
       const container = event.currentTarget;
@@ -1426,22 +1374,6 @@ export function AppSearchPage() {
       behavior: "smooth",
     });
   }, []);
-
-  const handleMajorsPrev = useCallback(() => {
-    if (majorPage <= 0) return;
-    scrollPagerToPage(majorPagerRef.current, majorPage - 1);
-  }, [majorPage, scrollPagerToPage]);
-
-  const handleMajorsNext = useCallback(() => {
-    const lastPage = Math.max(majorPages.length - 1, 0);
-    if (majorPage < lastPage) {
-      scrollPagerToPage(majorPagerRef.current, majorPage + 1);
-      return;
-    }
-    if (majorsNextCursor) {
-      void loadMoreMajors();
-    }
-  }, [loadMoreMajors, majorPage, majorPages.length, majorsNextCursor, scrollPagerToPage]);
 
   const handleFieldsPrev = useCallback(() => {
     if (fieldPage <= 0) return;
@@ -1683,41 +1615,23 @@ export function AppSearchPage() {
   }, [searchResults]);
 
   const landingSpecializationSections = useMemo(
-    () =>
-      sectionOrder.map((sectionId) => {
-        if (sectionId === "majors") {
-          return {
-            id: sectionId,
-            title: "Majors",
-            pages: majorPages,
-            currentPage: majorPage,
-            isLoadingMore: isLoadingMoreMajors,
-            hasMore: Boolean(majorsNextCursor),
-            onScroll: handleMajorsPagerScroll,
-            pagerRef: majorPagerRef,
-            onPrev: handleMajorsPrev,
-            onNext: handleMajorsNext,
-            canPrev: majorPage > 0,
-            canNext: majorPage < majorPages.length - 1 || (Boolean(majorsNextCursor) && !isLoadingMoreMajors),
-            dots: buildPagerDots(majorPages.length, majorPage, 5),
-          };
-        }
-        return {
-          id: sectionId,
-          title: "Fields",
-          pages: fieldPages,
-          currentPage: fieldPage,
-          isLoadingMore: isLoadingMoreFields,
-          hasMore: Boolean(fieldsNextCursor),
-          onScroll: handleFieldsPagerScroll,
-          pagerRef: fieldPagerRef,
-          onPrev: handleFieldsPrev,
-          onNext: handleFieldsNext,
-          canPrev: fieldPage > 0,
-          canNext: fieldPage < fieldPages.length - 1 || (Boolean(fieldsNextCursor) && !isLoadingMoreFields),
-          dots: buildPagerDots(fieldPages.length, fieldPage, 5),
-        };
-      }),
+    () => [
+      {
+        id: "fields",
+        title: "Fields",
+        pages: fieldPages,
+        currentPage: fieldPage,
+        isLoadingMore: isLoadingMoreFields,
+        hasMore: Boolean(fieldsNextCursor),
+        onScroll: handleFieldsPagerScroll,
+        pagerRef: fieldPagerRef,
+        onPrev: handleFieldsPrev,
+        onNext: handleFieldsNext,
+        canPrev: fieldPage > 0,
+        canNext: fieldPage < fieldPages.length - 1 || (Boolean(fieldsNextCursor) && !isLoadingMoreFields),
+        dots: buildPagerDots(fieldPages.length, fieldPage, 5),
+      },
+    ],
     [
       fieldPage,
       fieldPages,
@@ -1725,15 +1639,7 @@ export function AppSearchPage() {
       handleFieldsNext,
       handleFieldsPagerScroll,
       handleFieldsPrev,
-      handleMajorsNext,
-      handleMajorsPagerScroll,
-      handleMajorsPrev,
       isLoadingMoreFields,
-      isLoadingMoreMajors,
-      majorPage,
-      majorPages,
-      majorsNextCursor,
-      sectionOrder,
     ]
   );
 
@@ -2277,9 +2183,6 @@ export function AppSearchPage() {
                     </div>
                   ) : null}
                 </div>
-                {section.id === "fields" ? (
-                  <p className="text-xs text-text-light">{MAJORS_DEPRECATION_COPY}</p>
-                ) : null}
                 {section.pages.length ? (
                   <>
                     <div
@@ -2298,7 +2201,7 @@ export function AppSearchPage() {
                                 className="text-center"
                               >
                                 <div className="mx-auto flex w-fit justify-center">
-                                  <IconBadge icon={card.icon} label={card.label} />
+                                  <IconBadge icon={card.icon} imageUrl={card.imageUrl} label={card.label} />
                                 </div>
                                 <p className="mt-2 line-clamp-1 text-sm font-semibold text-strong">{card.label}</p>
                                 <p className="text-xs text-text-light">{card.membersLabel ?? "0 members"}</p>

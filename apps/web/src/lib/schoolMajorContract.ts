@@ -1,10 +1,9 @@
 export const COMMUNITY_SEARCH_KINDS = ["company", "specialization", "field", "unknown"] as const;
 export type CommunitySearchKind = (typeof COMMUNITY_SEARCH_KINDS)[number];
-export type DeprecatedCommunitySearchKind = "school" | "major";
-export type CommunitySearchKindParam = CommunitySearchKind | DeprecatedCommunitySearchKind;
+export type CommunitySearchKindParam = CommunitySearchKind;
 
 export const COMMUNITY_REQUEST_KINDS = ["company", "field", "workplace"] as const;
-export type CommunityRequestKind = (typeof COMMUNITY_REQUEST_KINDS)[number] | "school" | "major";
+export type CommunityRequestKind = (typeof COMMUNITY_REQUEST_KINDS)[number];
 
 export type CommunityContractOption = {
   id: string;
@@ -19,11 +18,9 @@ export type CommunityContractOption = {
 export type ContractSpecializationOption = {
   id: string;
   name: string;
-  type: "major" | "field" | "unknown";
+  type: "field" | "unknown";
   memberCount?: number;
 };
-
-const DEPRECATED_COMMUNITY_SEARCH_KINDS: DeprecatedCommunitySearchKind[] = ["school", "major"];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -57,10 +54,7 @@ function normalizeSpecializationOption(
   if (!id || !name) return null;
 
   const typeValue = getString(payload.type ?? payload.specialization_type ?? payload.specializationType);
-  const normalizedType =
-    typeValue === "major" || typeValue === "field"
-      ? typeValue
-      : fallbackType;
+  const normalizedType = typeValue ? (typeValue === "field" ? "field" : "unknown") : fallbackType;
   const memberCount = getNumber(payload.member_count ?? payload.memberCount);
 
   return {
@@ -102,9 +96,6 @@ export function normalizeCommunitySearchKindParam(value: unknown): CommunitySear
   if ((COMMUNITY_SEARCH_KINDS as readonly string[]).includes(normalized)) {
     return normalized as CommunitySearchKind;
   }
-  if ((DEPRECATED_COMMUNITY_SEARCH_KINDS as readonly string[]).includes(normalized)) {
-    return normalized as DeprecatedCommunitySearchKind;
-  }
   return undefined;
 }
 
@@ -141,7 +132,7 @@ export function extractCompanyCommunityItems(payload: unknown): CommunityContrac
 
 export function normalizeRecommendedOnboardingSpecializationsPayload(
   data: unknown,
-  type: "all" | "major" | "field"
+  type: "all" | "field"
 ): ContractSpecializationOption[] {
   const payload = isRecord(data) ? data : {};
   const merged: ContractSpecializationOption[] = [];
@@ -162,6 +153,5 @@ export function normalizeRecommendedOnboardingSpecializationsPayload(
   }
 
   const dedupedFields = dedupeAndSortSpecializations(merged).filter((entry) => entry.type === "field");
-  if (type === "major") return [];
   return dedupedFields;
 }

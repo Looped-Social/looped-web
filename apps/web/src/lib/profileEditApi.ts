@@ -219,7 +219,7 @@ export async function fetchJoinedSpecializations({
   limit = 200,
   cursor,
 }: {
-  type?: "all" | "major" | "field";
+  type?: "all" | "field";
   limit?: number;
   cursor?: string;
 } = {}): Promise<CursorEnvelope<unknown>> {

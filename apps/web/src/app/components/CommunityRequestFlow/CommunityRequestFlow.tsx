@@ -1,7 +1,8 @@
 import { type ChangeEvent, useMemo, useState } from "react";
 
-import communityRequestIllustration from "@/assets/illustrations/community-request.png";
-import requestConfirmIllustration from "@/assets/illustrations/request-confirm.png";
+import { useTheme } from "@looped/ui";
+
+import { appIllustrations, resolveIllustrationAsset } from "@/lib/appIllustrations";
 import {
   CommunityApiError,
   submitCommunityRequest,
@@ -43,6 +44,7 @@ export function CommunityRequestFlow({
   onCompleteOnboardingAfterSubmit,
   mapOnboardingCompletionError,
 }: CommunityRequestFlowProps) {
+  const { theme } = useTheme();
   const onboardingMode = mode === "onboarding";
   const [step, setStep] = useState<FlowStep>("form");
   const [name, setName] = useState(initialName);
@@ -65,6 +67,8 @@ export function CommunityRequestFlow({
   const canSubmit = trimmedName.length > 0 && trimmedAbout.length > 0 && optionalEmailValid && !isSubmitting;
   const dismissLocked = isSubmitting || isCompletingOnboarding;
   const requestTypes = mode === "onboarding" ? ONBOARDING_REQUEST_TYPES : STANDARD_REQUEST_TYPES;
+  const communityRequestIllustration = resolveIllustrationAsset(appIllustrations.communityRequest, theme);
+  const requestConfirmIllustration = resolveIllustrationAsset(appIllustrations.requestConfirm, theme);
 
   const headline = useMemo(() => {
     if (step === "submitted") return "Request submitted";
