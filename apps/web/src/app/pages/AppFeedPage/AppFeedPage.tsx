@@ -413,7 +413,9 @@ function normalizeCommunityToFilterOption(item: unknown, preferCommunityShortNam
   const icon = normalizedOptional(
     pickString(item, ["emoji", "icon_emoji", "iconEmoji", "icon_value", "iconValue", "icon_url", "iconUrl"])
   );
-  const imageUrl = normalizedOptional(pickString(item, ["image_url", "imageUrl"]));
+  const imageUrl = normalizedOptional(
+    pickString(item, ["icon_image_url", "iconImageUrl", "profile_image_url", "profileImageUrl", "image_url", "imageUrl"])
+  );
 
   return {
     id,

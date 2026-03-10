@@ -110,19 +110,19 @@ function StoryPanel({
 
         <div
           className={`flex items-center justify-center ${
-            visual === "anonymous" ? "lg:-translate-y-28 lg:justify-center" : "lg:justify-end"
+            visual === "anonymous" ? "lg:-translate-y-[4.5rem] lg:justify-center" : "lg:justify-end"
           }`}
         >
           {visual === "anonymous" ? (
-            <div className="relative w-full max-w-[980px] px-2 sm:px-0">
+            <div className="relative w-full max-w-[920px] px-2 sm:px-0">
               <div className="absolute inset-x-[10%] top-[12%] h-[62%] rounded-full bg-brand/8 blur-3xl" />
-              <div className="relative mx-auto w-full max-w-[940px]">
+              <div className="relative mx-auto w-full max-w-[880px]">
                 <img
                   src={anonymousCompositeImage}
                   alt="Looped anonymous privacy visual showing cryptographic separation and the anonymous iOS profile"
                   loading="lazy"
                   decoding="async"
-                  className="mx-auto w-full scale-[1.14] object-contain drop-shadow-[0_28px_50px_rgba(15,23,42,0.14)] lg:scale-[1.42]"
+                  className="mx-auto w-full scale-[1.13] object-contain drop-shadow-[0_28px_50px_rgba(15,23,42,0.14)] lg:scale-[1.38]"
                 />
               </div>
             </div>

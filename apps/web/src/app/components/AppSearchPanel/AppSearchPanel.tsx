@@ -211,9 +211,9 @@ export function AppSearchPanel({
                 }`}
               >
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-border/40 bg-bg-muted text-base">
-                  {imageUrl ? <img src={imageUrl} alt="" className="h-full w-full object-cover" loading="lazy" /> : null}
+                  {imageUrl ? <img src={imageUrl} alt="" className="h-full w-full object-contain p-1" loading="lazy" /> : null}
                   {!imageUrl && isImageIcon ? (
-                    <img src={iconDisplay} alt="" className="h-full w-full object-cover" loading="lazy" />
+                    <img src={iconDisplay} alt="" className="h-full w-full object-contain p-1" loading="lazy" />
                   ) : null}
                   {!imageUrl && !isImageIcon ? <span>{iconDisplay}</span> : null}
                 </div>

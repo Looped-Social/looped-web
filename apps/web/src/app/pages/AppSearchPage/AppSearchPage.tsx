@@ -69,6 +69,7 @@ type SpecializationCard = {
   membersLabel?: string;
   icon?: string;
   imageUrl?: string;
+  kind?: string;
 };
 
 type UserResult = {
@@ -541,10 +542,14 @@ function normalizeCommunityCard(item: unknown, preferCommunityShortNames: boolea
   const icon =
     extractIconValue(item.icon) ??
     pickString(item, ["emoji", "icon_emoji", "iconEmoji", "icon_value", "iconValue", "icon_url", "iconUrl"]);
-  const imageUrl = pickString(item, ["image_url", "imageUrl"]);
+  const imageUrl =
+    pickString(item, ["icon_image_url", "iconImageUrl", "profile_image_url", "profileImageUrl"]) ??
+    pickString(item, ["image_url", "imageUrl"]);
   const description = normalizedOptional(pickString(item, ["description", "bio", "summary"]));
   const shortName = normalizedOptional(pickString(item, ["short_name", "shortName"]));
   const fullName = normalizedOptional(pickString(item, ["name", "display_name", "displayName", "title"]));
+  const kind =
+    pickString(item, ["kind", "community_kind", "communityKind", "type", "specialization_type", "specializationType"]) ?? undefined;
   const subtitle =
     preferCommunityShortNames && fullName && fullName !== label
       ? fullName
@@ -560,7 +565,7 @@ function normalizeCommunityCard(item: unknown, preferCommunityShortNames: boolea
     membersLabel,
     icon: icon ?? undefined,
     imageUrl: imageUrl ?? undefined,
-    kind: pickString(item, ["kind", "community_kind", "communityKind"]),
+    kind,
   };
 }
 
@@ -590,6 +595,7 @@ function normalizeSpecializationCard(item: unknown, icons: Record<string, string
       pickString(item, ["icon_image_url", "iconImageUrl", "profile_image_url", "profileImageUrl"]) ??
       pickString(item, ["image_url", "imageUrl"]) ??
       undefined,
+    kind: pickString(item, ["specialization_type", "specializationType", "kind", "community_kind", "communityKind"]) ?? "field",
   };
 }
 
@@ -972,8 +978,8 @@ function IconBadge({ icon, imageUrl, label }: { icon?: string; imageUrl?: string
         image || isImageUrl ? "border-border/60 bg-bg dark:bg-white/90" : "border-border/40 bg-bg-muted"
       }`}
     >
-      {image ? <img src={image} alt="" className="h-full w-full object-cover" loading="lazy" /> : null}
-      {!image && isImageUrl ? <img src={display} alt="" className="h-full w-full object-cover" loading="lazy" /> : null}
+      {image ? <img src={image} alt="" className="h-full w-full object-contain p-1.5" loading="lazy" /> : null}
+      {!image && isImageUrl ? <img src={display} alt="" className="h-full w-full object-contain p-1.5" loading="lazy" /> : null}
       {!image && !isImageUrl ? <span>{display}</span> : null}
     </div>
   );
