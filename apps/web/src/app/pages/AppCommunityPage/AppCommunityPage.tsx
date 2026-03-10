@@ -8,6 +8,7 @@ import { useToast } from "@/app/components/AppToast/AppToast";
 import { OnboardingContinueButton } from "@/app/components/OnboardingContinueButton/OnboardingContinueButton";
 import { PostCard, type PostData } from "@/app/components/PostCard/PostCard";
 import { VerificationEmailFlow } from "@/app/components/VerificationEmailFlow/VerificationEmailFlow";
+import { CommunityBanner } from "@/components/CommunityBanner/CommunityBanner";
 import { appIllustrations, resolveIllustrationAsset } from "@/lib/appIllustrations";
 import { useEmailVerificationMachine, type EmailVerificationDraft, type EmailVerificationState } from "@/lib/emailVerificationMachine";
 import { extractMediaAssetIds } from "@/lib/postMediaIds";
@@ -573,7 +574,9 @@ function normalizeCommunityView(payload: unknown, fallbackId: string): Community
     false;
   const baseImageUrl = pickString(node, ["image_url", "imageUrl"]);
   const profileImageUrl = pickString(node, ["profile_image_url", "profileImageUrl"]) ?? baseImageUrl;
-  const bannerImageUrl = pickString(node, ["banner_image_url", "bannerImageUrl"]) ?? baseImageUrl;
+  const bannerImageUrl =
+    pickString(node, ["banner_image_url", "bannerImageUrl", "cover_image_url", "coverImageUrl", "header_image_url", "headerImageUrl"]) ??
+    baseImageUrl;
 
   const joinLimitInfo = isSpecialization ? resolveJoinLimitInfo(node.join_limit ?? node.joinLimit) : {};
 
@@ -1148,14 +1151,7 @@ export function AppCommunityPage({ communityId }: AppCommunityPageProps) {
 
               <div className="mt-5">
                 {communityHasBanner ? (
-                  <div className="h-[120px] overflow-hidden rounded-[24px] bg-white">
-                    <img
-                      src={communityBannerSrc!}
-                      alt=""
-                      className="h-full w-full object-cover"
-                      loading="lazy"
-                    />
-                  </div>
+                  <CommunityBanner src={communityBannerSrc!} kind={community.kind} height={120} inset={6} />
                 ) : (
                   <div className="flex h-[120px] items-center justify-center rounded-[24px] bg-bg-muted/70 px-5 text-center">
                     <h1 className="text-[2rem] leading-[1.1] font-semibold text-strong">{community.name}</h1>

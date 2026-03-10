@@ -1,6 +1,7 @@
 import { type SyntheticEvent, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router";
 
+import { CommunityBanner } from "@/components/CommunityBanner/CommunityBanner";
 import { useUserSession } from "@/hooks/useUserSession";
 import {
   CommunityShareApiError,
@@ -416,13 +417,18 @@ export function CommunitySharePage({ communityId }: CommunitySharePageProps) {
           {viewStatus === "ready" && community ? (
             <>
               <article className="bg-bg">
-                {community.bannerImageUrl ? (
-                  <div className="h-40 w-full overflow-hidden border-b border-border/70 bg-bg-muted sm:h-48">
-                    <img src={community.bannerImageUrl} alt="" className="h-full w-full object-cover" loading="lazy" />
-                  </div>
-                ) : null}
-
                 <div className="px-4 py-5 sm:px-5">
+                  {community.bannerImageUrl ? (
+                    <div className="mb-4">
+                      <CommunityBanner
+                        src={community.bannerImageUrl}
+                        kind={community.kind ?? community.specializationType}
+                        height={120}
+                        inset={6}
+                      />
+                    </div>
+                  ) : null}
+
                   <div className="min-w-0">
                     <h1 className="truncate text-[1.8rem] leading-[1.15] font-semibold text-strong">{community.name}</h1>
                     <p className="mt-1 text-[1rem] text-text-secondary">

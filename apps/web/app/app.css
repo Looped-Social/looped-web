@@ -8,6 +8,7 @@
   --color-thread-bubble-them: #eef2f7;
   --color-thread-video-overlay: rgba(0, 0, 0, 0.45);
   --color-thread-media-time: rgba(0, 0, 0, 0.55);
+  --color-community-image-backdrop: var(--color-bg);
   --skeleton-base: color-mix(in srgb, var(--color-bg-muted) 86%, var(--color-bg));
   --skeleton-highlight-alpha: 0.55;
 }
@@ -40,6 +41,7 @@
   --color-thread-bubble-them: #1a1a1a;
   --color-thread-video-overlay: rgba(0, 0, 0, 0.52);
   --color-thread-media-time: rgba(0, 0, 0, 0.62);
+  --color-community-image-backdrop: rgba(255, 255, 255, 0.94);
   --skeleton-base: color-mix(in srgb, var(--color-bg-muted) 74%, var(--color-bg));
   --skeleton-highlight-alpha: 0.18;
 }
@@ -74,6 +76,7 @@
   --color-thread-bubble-them: #eef2f7;
   --color-thread-video-overlay: rgba(0, 0, 0, 0.45);
   --color-thread-media-time: rgba(0, 0, 0, 0.55);
+  --color-community-image-backdrop: var(--color-bg);
   --skeleton-base: color-mix(in srgb, var(--color-bg-muted) 86%, var(--color-bg));
   --skeleton-highlight-alpha: 0.55;
 }
