@@ -1,5 +1,5 @@
 import { type ChangeEvent, type FormEvent, type SyntheticEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router";
+import { useLocation, useNavigate } from "react-router";
 
 import { AppLayout } from "@/app/components/AppLayout/AppLayout";
 import { useToast } from "@/app/components/AppToast/AppToast";
@@ -461,6 +461,7 @@ function validateSelectedMediaState(media: SelectedMedia[]): { valid: true } | {
 }
 
 export function AppCreatePostPage() {
+  const location = useLocation();
   const navigate = useNavigate();
   const { showToast } = useToast();
   const { user } = useCurrentUserStore({ autoLoad: true });
@@ -493,6 +494,10 @@ export function AppCreatePostPage() {
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   const anonymousBlocked = isAnonymousProfile(user);
+  const requestedCommunityId = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    return params.get("communityId")?.trim() ?? "";
+  }, [location.search]);
 
   useEffect(() => {
     selectedMediaRef.current = selectedMedia;
@@ -535,11 +540,15 @@ export function AppCreatePostPage() {
       setSelectedCommunityId("");
       return;
     }
+    if (requestedCommunityId && communities.some((community) => community.id === requestedCommunityId)) {
+      setSelectedCommunityId(requestedCommunityId);
+      return;
+    }
     const hasCurrent = communities.some((community) => community.id === selectedCommunityId);
     if (!hasCurrent) {
       setSelectedCommunityId(communities[0].id);
     }
-  }, [communities, selectedCommunityId]);
+  }, [communities, requestedCommunityId, selectedCommunityId]);
 
   const pollValidation = useMemo(
     () =>

@@ -2,6 +2,8 @@ import type { Theme } from "@looped/ui";
 
 import communityRequestDark from "@/assets/illustrations/community-request/dark.png";
 import communityRequestLight from "@/assets/illustrations/community-request/light.png";
+import communityConfirmDark from "@/assets/illustrations/community-confirm/dark.png";
+import communityConfirmLight from "@/assets/illustrations/community-confirm/light.png";
 import kickoffDark from "@/assets/illustrations/kickoff/dark.png";
 import kickoffLight from "@/assets/illustrations/kickoff/light.png";
 import profileSetupDark from "@/assets/illustrations/profile-setup/dark.png";
@@ -18,6 +20,8 @@ import verifyInfoDark from "@/assets/illustrations/verify-info/dark.png";
 import verifyInfoLight from "@/assets/illustrations/verify-info/light.png";
 import verifyWaitDark from "@/assets/illustrations/verify-wait/dark.png";
 import verifyWaitLight from "@/assets/illustrations/verify-wait/light.png";
+import startConvoDark from "@/assets/illustrations/start-convo/dark.png";
+import startConvoLight from "@/assets/illustrations/start-convo/light.png";
 
 export type ThemedIllustration = {
   light: string;
@@ -28,6 +32,10 @@ export const appIllustrations = {
   communityRequest: {
     light: communityRequestLight,
     dark: communityRequestDark,
+  },
+  communityConfirm: {
+    light: communityConfirmLight,
+    dark: communityConfirmDark,
   },
   kickoff: {
     light: kickoffLight,
@@ -48,6 +56,10 @@ export const appIllustrations = {
   verifiedConfirm: {
     light: verifiedConfirmLight,
     dark: verifiedConfirmDark,
+  },
+  startConvo: {
+    light: startConvoLight,
+    dark: startConvoDark,
   },
   verifyFirst: {
     light: verifyFirstLight,

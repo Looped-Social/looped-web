@@ -36,6 +36,7 @@ type AppCommunityPageProps = {
 type CommunityTabId = "posts" | "hashtags";
 type LoadStatus = "idle" | "loading" | "loading-more" | "error";
 type DetailStatus = "loading" | "ready" | "error";
+type EmptyPostsNudgeMode = "verified" | "needsVerification" | "needsJoin" | "unavailable";
 
 type CommunityViewData = {
   id: string;
@@ -232,6 +233,67 @@ function CommunityPostSkeleton() {
         </div>
       </div>
     </article>
+  );
+}
+
+function CommunityEmptyPostsCard({
+  illustrationSrc,
+  title = "Plant the first seed",
+  message = "Ask a question, share a win, or post a tip. The first post makes it easy for others to join in.",
+  showsPrimaryButton = true,
+  primaryButtonTitle = "Create a post",
+  isPrimaryButtonEnabled = true,
+  isPrimaryButtonLoading = false,
+  onPrimaryAction,
+  onShareCommunity,
+}: {
+  illustrationSrc: string;
+  title?: string;
+  message?: string;
+  showsPrimaryButton?: boolean;
+  primaryButtonTitle?: string;
+  isPrimaryButtonEnabled?: boolean;
+  isPrimaryButtonLoading?: boolean;
+  onPrimaryAction: () => void;
+  onShareCommunity: () => void;
+}) {
+  return (
+    <div className="px-4 py-6">
+      <div className="mx-auto max-w-xl rounded-[28px] bg-bg px-5 py-6 text-center shadow-[0_10px_30px_rgba(15,23,42,0.08)]">
+        <img
+          src={illustrationSrc}
+          alt=""
+          className="mx-auto h-auto w-full max-w-[320px] object-contain"
+          loading="lazy"
+        />
+
+        <div className="mt-3 space-y-2">
+          <h2 className="text-[1.35rem] font-semibold leading-tight text-strong">{title}</h2>
+          <p className="mx-auto max-w-lg text-sm leading-6 text-text-secondary">{message}</p>
+        </div>
+
+        <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
+          {showsPrimaryButton ? (
+            <button
+              type="button"
+              onClick={onPrimaryAction}
+              disabled={!isPrimaryButtonEnabled || isPrimaryButtonLoading}
+              className="min-h-12 rounded-full bg-brand px-5 text-sm font-semibold text-white transition hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {isPrimaryButtonLoading ? `${primaryButtonTitle}...` : primaryButtonTitle}
+            </button>
+          ) : null}
+
+          <button
+            type="button"
+            onClick={onShareCommunity}
+            className="min-h-12 rounded-full bg-bg-muted/80 px-5 text-sm font-semibold text-strong transition hover:bg-bg-muted"
+          >
+            Share
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -633,6 +695,16 @@ function isImageUrl(value: string | undefined): boolean {
   return /^https?:\/\//i.test(value) || value.startsWith("/") || value.startsWith("data:image");
 }
 
+function resolveEmptyPostsNudgeMode(community: CommunityViewData | null): EmptyPostsNudgeMode | null {
+  if (!community) return null;
+  if (community.canPost) return "verified";
+
+  const reason = normalizeCommunityKind(community.cannotPostReason);
+  if (reason === "not_verified") return "needsVerification";
+  if (reason === "not_joined") return "needsJoin";
+  return "unavailable";
+}
+
 export function AppCommunityPage({ communityId }: AppCommunityPageProps) {
   const navigate = useNavigate();
   const { theme } = useTheme();
@@ -669,6 +741,9 @@ export function AppCommunityPage({ communityId }: AppCommunityPageProps) {
   });
   const verificationIntroIllustration = resolveIllustrationAsset(appIllustrations.verifyFirst, theme);
   const verificationConfirmedIllustration = resolveIllustrationAsset(appIllustrations.verifiedConfirm, theme);
+  const communityConfirmIllustration = resolveIllustrationAsset(appIllustrations.communityConfirm, theme);
+  const kickoffIllustration = resolveIllustrationAsset(appIllustrations.kickoff, theme);
+  const startConvoIllustration = resolveIllustrationAsset(appIllustrations.startConvo, theme);
 
   const loadCommunity = useCallback(async () => {
     setDetailStatus("loading");
@@ -867,6 +942,47 @@ export function AppCommunityPage({ communityId }: AppCommunityPageProps) {
     }
   }, [community, joinLoading, showToast]);
 
+  const handleShareCommunity = useCallback(async () => {
+    if (!community) return;
+    const sharePath = `/c/${encodeURIComponent(community.id)}`;
+    const shareUrl = typeof window === "undefined" ? sharePath : `${window.location.origin}${sharePath}`;
+    const shareText = `Check out ${community.name} on Looped.`;
+
+    try {
+      if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
+        await navigator.share({
+          title: community.name,
+          text: shareText,
+          url: shareUrl,
+        });
+        return;
+      }
+
+      if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(shareUrl);
+        showToast({
+          title: "Link copied",
+          text: shareUrl,
+          kind: "success",
+        });
+        return;
+      }
+
+      showToast({
+        title: "Share unavailable",
+        text: shareUrl,
+        kind: "info",
+      });
+    } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") return;
+      showToast({
+        title: "Couldn't share community",
+        text: shareUrl,
+        tone: "error",
+      });
+    }
+  }, [community, showToast]);
+
   const updateVerificationDraft = useCallback((nextDraft: Partial<EmailVerificationDraft>) => {
     setVerificationDraft((previous) => ({
       ...previous,
@@ -961,6 +1077,13 @@ export function AppCommunityPage({ communityId }: AppCommunityPageProps) {
   const communityBannerSrc = communityHasBanner ? community?.bannerImageUrl : undefined;
   const verificationInfo = community?.verificationInfo ?? { label: "Unverified", status: "unknown" as const };
   const joinLimitInfo = community?.joinLimitInfo ?? {};
+  const emptyPostsNudgeMode = useMemo(() => resolveEmptyPostsNudgeMode(community), [community]);
+  const shouldShowEmptyPostsNudge =
+    activeTab === "posts" &&
+    posts.length === 0 &&
+    postsStatus === "idle" &&
+    !postsError &&
+    emptyPostsNudgeMode !== null;
   const canShowModalBack =
     verificationModalStep !== "confirmed" && verificationModalStep !== "intro";
   const handleVerificationModalBack = () => {
@@ -1066,61 +1189,63 @@ export function AppCommunityPage({ communityId }: AppCommunityPageProps) {
                 </button>
               </div>
 
-              <div className="mt-4">
-                {community.isSpecialization ? (
-                  <div className="rounded-[10px] border border-border/40 bg-bg-muted/70 px-2.5 py-2 text-left">
-                    <div className="flex items-start gap-3">
-                      <StatusBadgeIcon icon={community.isJoined ? "check" : "warning"} tone={community.isJoined ? "brand" : "muted"} />
-                      <div className="min-w-0">
-                        <p className="text-base font-semibold text-strong">{community.isJoined ? "Joined" : "Not joined"}</p>
-                        <p className="mt-0.5 text-sm text-text-secondary">
-                          {joinLimitInfo.summary ?? "Join limits apply"}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={openVerificationModal}
-                    className="w-full rounded-[10px] border border-border/40 bg-bg-muted/70 px-2.5 py-2 text-left transition hover:border-[var(--color-contrast)]"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex min-w-0 items-start gap-3">
-                        <StatusBadgeIcon
-                          icon={
-                            verificationInfo.label === "Verified"
-                              ? "check"
-                              : verificationInfo.label === "Pending"
-                                ? "clock"
-                                : verificationInfo.label === "Rejected"
-                                  ? "x"
-                                  : "warning"
-                          }
-                          tone={
-                            verificationInfo.label === "Verified"
-                              ? "verified"
-                              : verificationInfo.label === "Rejected"
-                                ? "error"
-                                : "muted"
-                          }
-                        />
+              {!shouldShowEmptyPostsNudge ? (
+                <div className="mt-4">
+                  {community.isSpecialization ? (
+                    <div className="rounded-[10px] border border-border/40 bg-bg-muted/70 px-2.5 py-2 text-left">
+                      <div className="flex items-start gap-3">
+                        <StatusBadgeIcon icon={community.isJoined ? "check" : "warning"} tone={community.isJoined ? "brand" : "muted"} />
                         <div className="min-w-0">
-                          <p className="text-base font-semibold text-strong">{verificationInfo.label}</p>
+                          <p className="text-base font-semibold text-strong">{community.isJoined ? "Joined" : "Not joined"}</p>
                           <p className="mt-0.5 text-sm text-text-secondary">
-                            {verificationInfo.label === "Verified" && verificationInfo.expiresAt
-                              ? `Expires ${formatDateMDY(verificationInfo.expiresAt)}`
-                              : verificationInfo.label === "Unverified"
-                                ? "Tap to verify"
-                                : "Tap to manage verification"}
+                            {joinLimitInfo.summary ?? "Join limits apply"}
                           </p>
                         </div>
                       </div>
-                      <ChevronRightIcon className="mt-1 h-5 w-5 shrink-0 text-text-light" />
                     </div>
-                  </button>
-                )}
-              </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={openVerificationModal}
+                      className="w-full rounded-[10px] border border-border/40 bg-bg-muted/70 px-2.5 py-2 text-left transition hover:border-[var(--color-contrast)]"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex min-w-0 items-start gap-3">
+                          <StatusBadgeIcon
+                            icon={
+                              verificationInfo.label === "Verified"
+                                ? "check"
+                                : verificationInfo.label === "Pending"
+                                  ? "clock"
+                                  : verificationInfo.label === "Rejected"
+                                    ? "x"
+                                    : "warning"
+                            }
+                            tone={
+                              verificationInfo.label === "Verified"
+                                ? "verified"
+                                : verificationInfo.label === "Rejected"
+                                  ? "error"
+                                  : "muted"
+                            }
+                          />
+                          <div className="min-w-0">
+                            <p className="text-base font-semibold text-strong">{verificationInfo.label}</p>
+                            <p className="mt-0.5 text-sm text-text-secondary">
+                              {verificationInfo.label === "Verified" && verificationInfo.expiresAt
+                                ? `Expires ${formatDateMDY(verificationInfo.expiresAt)}`
+                                : verificationInfo.label === "Unverified"
+                                  ? "Tap to verify"
+                                  : "Tap to manage verification"}
+                            </p>
+                          </div>
+                        </div>
+                        <ChevronRightIcon className="mt-1 h-5 w-5 shrink-0 text-text-light" />
+                      </div>
+                    </button>
+                  )}
+                </div>
+              ) : null}
 
               {community.isSpecialization ? (
                 <div className="mt-4">
@@ -1201,8 +1326,51 @@ export function AppCommunityPage({ communityId }: AppCommunityPageProps) {
                 </div>
               ) : null}
 
-              {posts.length === 0 && postsStatus === "idle" && !postsError ? (
-                <div className="px-4 py-5 text-sm text-text-secondary">No posts yet.</div>
+              {shouldShowEmptyPostsNudge && community ? (
+                <>
+                  {emptyPostsNudgeMode === "verified" ? (
+                    <CommunityEmptyPostsCard
+                      illustrationSrc={communityConfirmIllustration}
+                      onPrimaryAction={() => navigate(`/app/create?communityId=${encodeURIComponent(community.id)}`)}
+                      onShareCommunity={() => void handleShareCommunity()}
+                    />
+                  ) : null}
+
+                  {emptyPostsNudgeMode === "needsVerification" ? (
+                    <CommunityEmptyPostsCard
+                      illustrationSrc={kickoffIllustration}
+                      title="Verify to start posting"
+                      message="Verify to join the conversation, or share this community with someone who belongs here."
+                      primaryButtonTitle="Verify"
+                      onPrimaryAction={openVerificationModal}
+                      onShareCommunity={() => void handleShareCommunity()}
+                    />
+                  ) : null}
+
+                  {emptyPostsNudgeMode === "needsJoin" ? (
+                    <CommunityEmptyPostsCard
+                      illustrationSrc={startConvoIllustration}
+                      title="Join to start the conversation"
+                      message="Join this specialization to post, comment, and like."
+                      primaryButtonTitle="Join"
+                      isPrimaryButtonEnabled={!joinLoading}
+                      isPrimaryButtonLoading={joinLoading}
+                      onPrimaryAction={() => void handleJoinToggle()}
+                      onShareCommunity={() => void handleShareCommunity()}
+                    />
+                  ) : null}
+
+                  {emptyPostsNudgeMode === "unavailable" ? (
+                    <CommunityEmptyPostsCard
+                      illustrationSrc={startConvoIllustration}
+                      title="Posting unavailable"
+                      message="You can't post here right now, but you can still share this community with someone who'd jump in."
+                      showsPrimaryButton={false}
+                      onPrimaryAction={() => {}}
+                      onShareCommunity={() => void handleShareCommunity()}
+                    />
+                  ) : null}
+                </>
               ) : null}
 
               {postsCursor && postsStatus !== "loading-more" ? (
