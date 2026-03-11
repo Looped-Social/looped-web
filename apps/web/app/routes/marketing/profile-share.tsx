@@ -1,5 +1,6 @@
 import type { Route } from "./+types/profile-share";
 import { ProfileSharePage } from "@/marketing/pages/ProfileSharePage/ProfileSharePage";
+import { logShareMetaFailure, resolveShareApiBase } from "./shareMeta";
 
 type ProfileShareMeta = {
   title: string;
@@ -54,6 +55,12 @@ function pickNumber(source: Record<string, unknown>, keys: string[]): number | u
   return undefined;
 }
 
+function normalizeOptional(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
 function preferredDisplayName(value: unknown): string | undefined {
   if (typeof value === "string") {
     const trimmed = value.trim();
@@ -101,16 +108,16 @@ function buildFallbackMeta(username: string, origin: string): ProfileShareMeta {
   };
 }
 
-export async function loader({ params, request }: Route.LoaderArgs) {
+export async function loader({ params, request, context }: Route.LoaderArgs) {
   const username = normalizeSlug(params.username);
   const origin = new URL(request.url).origin;
   const fallback = buildFallbackMeta(username, origin);
 
-  const rawApiBase = import.meta.env.VITE_API_BASE_URL;
-  if (typeof rawApiBase !== "string" || rawApiBase.trim().length === 0) {
+  const apiBase = resolveShareApiBase(context);
+  if (!apiBase) {
+    logShareMetaFailure("profile-share", new Error("Missing API base for share metadata"), { username });
     return fallback;
   }
-  const apiBase = rawApiBase.replace(/\/$/, "");
 
   try {
     const response = await fetch(`${apiBase}/v1/public/profiles/${encodeURIComponent(username)}`, {
@@ -133,15 +140,28 @@ export async function loader({ params, request }: Route.LoaderArgs) {
           description: "This shared profile is unavailable.",
         } satisfies ProfileShareMeta;
       }
+      logShareMetaFailure("profile-share", new Error(`Unexpected response status: ${response.status}`), {
+        username,
+        apiBase,
+      });
       return fallback;
     }
 
     const payload = (await response.json()) as unknown;
-    if (typeof payload !== "object" || payload === null) return fallback;
+    if (typeof payload !== "object" || payload === null) {
+      logShareMetaFailure("profile-share", new Error("Profile payload was not an object"), { username, apiBase });
+      return fallback;
+    }
     const profile = payload as Record<string, unknown>;
 
     const publicUsername = normalizeSlug(pickString(profile, ["username", "handle"]) ?? username);
-    const displayName = pickString(profile, ["display_name", "displayName", "name"]) ?? `@${publicUsername}`;
+    const firstName = pickString(profile, ["first_name", "firstName"]);
+    const lastName = pickString(profile, ["last_name", "lastName"]);
+    const fullName = [normalizeOptional(firstName), normalizeOptional(lastName)]
+      .filter((value): value is string => Boolean(value))
+      .join(" ")
+      .trim();
+    const displayName = fullName || pickString(profile, ["display_name", "displayName", "name"]) || `@${publicUsername}`;
     const bio = pickString(profile, ["bio", "about", "description"]);
     const displayCommunity =
       pickString(profile, ["display_community_name", "displayCommunityName", "display_community", "displayCommunity"]) ??
@@ -171,11 +191,15 @@ export async function loader({ params, request }: Route.LoaderArgs) {
       description,
       canonicalUrl: `${origin}/u/${encodeURIComponent(publicUsername)}`,
       previewImageUrl:
-        toAbsoluteUrl(pickString(profile, ["profile_image_url", "profileImageUrl"]), origin) ??
+        toAbsoluteUrl(
+          pickString(profile, ["profile_image_url", "profileImageUrl", "avatar_url", "avatarUrl", "image_url", "imageUrl"]),
+          origin
+        ) ??
         new URL(FALLBACK_IMAGE_PATH, origin).toString(),
       iosDeepLink: `looped://profile/${encodeURIComponent(publicUsername)}`,
     } satisfies ProfileShareMeta;
-  } catch {
+  } catch (error) {
+    logShareMetaFailure("profile-share", error, { username, apiBase });
     return fallback;
   }
 }

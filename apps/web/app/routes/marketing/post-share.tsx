@@ -1,6 +1,7 @@
 import type { Route } from "./+types/post-share";
 import { extractMediaAssetIds } from "@/lib/postMediaIds";
 import { PostSharePage } from "@/marketing/pages/PostSharePage/PostSharePage";
+import { logShareMetaFailure, resolveShareApiBase } from "./shareMeta";
 
 type PostShareMeta = {
   title: string;
@@ -128,17 +129,17 @@ async function resolvePreviewImageFromMedia(
   }
 }
 
-export async function loader({ params, request }: Route.LoaderArgs) {
+export async function loader({ params, request, context }: Route.LoaderArgs) {
   const rawPostId = params.postId?.trim() ?? "";
   const postId = rawPostId || "post";
   const origin = new URL(request.url).origin;
   const fallback = buildFallbackMeta(postId, origin);
 
-  const rawApiBase = import.meta.env.VITE_API_BASE_URL;
-  if (typeof rawApiBase !== "string" || rawApiBase.trim().length === 0) {
+  const apiBase = resolveShareApiBase(context);
+  if (!apiBase) {
+    logShareMetaFailure("post-share", new Error("Missing API base for share metadata"), { postId });
     return fallback;
   }
-  const apiBase = rawApiBase.replace(/\/$/, "");
 
   try {
     const response = await fetch(`${apiBase}/v1/public/posts/${encodeURIComponent(postId)}`, {
@@ -161,17 +162,27 @@ export async function loader({ params, request }: Route.LoaderArgs) {
           description: "This shared post is unavailable.",
         } satisfies PostShareMeta;
       }
+      logShareMetaFailure("post-share", new Error(`Unexpected response status: ${response.status}`), {
+        postId,
+        apiBase,
+      });
       return fallback;
     }
 
     const payload = (await response.json()) as unknown;
-    if (typeof payload !== "object" || payload === null) return fallback;
+    if (typeof payload !== "object" || payload === null) {
+      logShareMetaFailure("post-share", new Error("Post payload was not an object"), { postId, apiBase });
+      return fallback;
+    }
     const post = payload as Record<string, unknown>;
 
     const isAnonymous = pickBoolean(post, ["author_is_anonymous", "authorIsAnonymous", "is_anonymous", "isAnonymous"]) ?? false;
+    const authorFirstName = pickString(post, ["author_first_name", "authorFirstName"]);
+    const authorLastName = pickString(post, ["author_last_name", "authorLastName"]);
+    const authorFullName = [authorFirstName, authorLastName].filter(Boolean).join(" ").trim();
     const authorName = isAnonymous
       ? "Anonymous"
-      : pickString(post, ["author_display_name", "authorDisplayName", "author_handle", "authorHandle"]) ?? "Looped member";
+      : authorFullName || pickString(post, ["author_display_name", "authorDisplayName", "author_handle", "authorHandle"]) || "Looped member";
     const authorDisplayCommunity = preferredDisplayName(post.author_display_community ?? post.authorDisplayCommunity);
     const authorDisplaySpecialization = preferredDisplayName(
       post.author_display_specialization ?? post.authorDisplaySpecialization
@@ -206,7 +217,18 @@ export async function loader({ params, request }: Route.LoaderArgs) {
 
     const resolvedPreviewUrl = await resolvePreviewImageFromMedia(apiBase, post, origin);
     const directPreviewUrl = toAbsoluteUrl(
-      pickString(post, ["thumbnail_url", "thumbnailUrl", "cdn_url", "cdnUrl", "media_url", "mediaUrl", "image_url", "imageUrl"]),
+      pickString(post, [
+        "thumbnail_url",
+        "thumbnailUrl",
+        "thumbnail_image_url",
+        "thumbnailImageUrl",
+        "cdn_url",
+        "cdnUrl",
+        "media_url",
+        "mediaUrl",
+        "image_url",
+        "imageUrl",
+      ]),
       origin
     );
 
@@ -217,7 +239,8 @@ export async function loader({ params, request }: Route.LoaderArgs) {
       previewImageUrl: resolvedPreviewUrl ?? directPreviewUrl ?? new URL(FALLBACK_IMAGE_PATH, origin).toString(),
       iosDeepLink: `looped://post/${encodeURIComponent(postId)}`,
     } satisfies PostShareMeta;
-  } catch {
+  } catch (error) {
+    logShareMetaFailure("post-share", error, { postId, apiBase });
     return fallback;
   }
 }

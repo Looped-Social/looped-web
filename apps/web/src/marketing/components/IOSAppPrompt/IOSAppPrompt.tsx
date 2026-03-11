@@ -50,6 +50,11 @@ function deepLinkForPath(pathname: string): string {
   const postMatch = pathname.match(/^\/p\/([^/]+)$/);
   if (postMatch?.[1]) return `looped://post/${encodeURIComponent(decodeURIComponent(postMatch[1]))}`;
 
+  const profileRouteMatch = pathname.match(/^\/u\/([^/]+)$/);
+  if (profileRouteMatch?.[1]) {
+    return `looped://profile/${encodeURIComponent(decodeURIComponent(profileRouteMatch[1]).replace(/^@/, "").toLowerCase())}`;
+  }
+
   const profileSlug = isLikelyProfileSlug(pathname);
   if (profileSlug) return `looped://profile/${encodeURIComponent(profileSlug)}`;
 

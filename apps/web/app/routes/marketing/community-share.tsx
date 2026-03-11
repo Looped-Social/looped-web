@@ -1,5 +1,6 @@
 import type { Route } from "./+types/community-share";
 import { CommunitySharePage } from "@/marketing/pages/CommunitySharePage/CommunitySharePage";
+import { logShareMetaFailure, resolveShareApiBase } from "./shareMeta";
 
 type CommunityShareMeta = {
   title: string;
@@ -63,17 +64,17 @@ function buildFallbackMeta(communityId: string, origin: string): CommunityShareM
   };
 }
 
-export async function loader({ params, request }: Route.LoaderArgs) {
+export async function loader({ params, request, context }: Route.LoaderArgs) {
   const rawCommunityId = params.communityId?.trim() ?? "";
   const communityId = rawCommunityId || "community";
   const origin = new URL(request.url).origin;
   const fallback = buildFallbackMeta(communityId, origin);
 
-  const rawApiBase = import.meta.env.VITE_API_BASE_URL;
-  if (typeof rawApiBase !== "string" || rawApiBase.trim().length === 0) {
+  const apiBase = resolveShareApiBase(context);
+  if (!apiBase) {
+    logShareMetaFailure("community-share", new Error("Missing API base for share metadata"), { communityId });
     return fallback;
   }
-  const apiBase = rawApiBase.replace(/\/$/, "");
 
   try {
     const response = await fetch(`${apiBase}/v1/public/communities/${encodeURIComponent(communityId)}`, {
@@ -96,11 +97,21 @@ export async function loader({ params, request }: Route.LoaderArgs) {
           description: "This shared community is unavailable.",
         } satisfies CommunityShareMeta;
       }
+      logShareMetaFailure("community-share", new Error(`Unexpected response status: ${response.status}`), {
+        communityId,
+        apiBase,
+      });
       return fallback;
     }
 
     const payload = (await response.json()) as unknown;
-    if (typeof payload !== "object" || payload === null) return fallback;
+    if (typeof payload !== "object" || payload === null) {
+      logShareMetaFailure("community-share", new Error("Community payload was not an object"), {
+        communityId,
+        apiBase,
+      });
+      return fallback;
+    }
     const community = payload as Record<string, unknown>;
 
     const node = typeof community.community === "object" && community.community !== null
@@ -124,11 +135,30 @@ export async function loader({ params, request }: Route.LoaderArgs) {
       description,
       canonicalUrl: `${origin}/c/${encodeURIComponent(communityId)}`,
       previewImageUrl:
-        toAbsoluteUrl(pickString(node, ["image_url", "imageUrl", "icon_url", "iconUrl"]), origin) ??
+        toAbsoluteUrl(
+          pickString(node, [
+            "banner_image_url",
+            "bannerImageUrl",
+            "cover_image_url",
+            "coverImageUrl",
+            "header_image_url",
+            "headerImageUrl",
+            "image_url",
+            "imageUrl",
+            "profile_image_url",
+            "profileImageUrl",
+            "icon_url",
+            "iconUrl",
+            "logo_url",
+            "logoUrl",
+          ]),
+          origin
+        ) ??
         new URL(FALLBACK_IMAGE_PATH, origin).toString(),
       iosDeepLink: `looped://community/${encodeURIComponent(communityId)}`,
     } satisfies CommunityShareMeta;
-  } catch {
+  } catch (error) {
+    logShareMetaFailure("community-share", error, { communityId, apiBase });
     return fallback;
   }
 }
