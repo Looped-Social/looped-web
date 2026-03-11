@@ -50,7 +50,24 @@ export function resolveShareApiBase(context: unknown): string | null {
   return resolveShareApiBaseCandidates(context)[0] ?? null;
 }
 
+function serializeError(error: unknown): Record<string, unknown> {
+  if (error instanceof Error) {
+    return {
+      name: error.name,
+      message: error.message,
+      stack: error.stack,
+      cause: error.cause,
+    };
+  }
+
+  if (typeof error === "object" && error !== null) {
+    return { ...(error as RecordLike) };
+  }
+
+  return { value: error };
+}
+
 export function logShareMetaFailure(routeId: string, error: unknown, extra?: Record<string, unknown>): void {
-  const payload = extra ? { ...extra, error } : error;
+  const payload = extra ? { ...extra, error: serializeError(error) } : serializeError(error);
   console.error(`[share-meta:${routeId}]`, payload);
 }

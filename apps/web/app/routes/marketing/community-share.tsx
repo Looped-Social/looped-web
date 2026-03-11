@@ -84,6 +84,7 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
         },
       });
       if (!response.ok) {
+        const responseBody = await response.text();
         if (response.status === 404) {
           return {
             ...fallback,
@@ -101,6 +102,7 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
         logShareMetaFailure("community-share", new Error(`Unexpected response status: ${response.status}`), {
           communityId,
           apiBase,
+          responseBody,
         });
         continue;
       }

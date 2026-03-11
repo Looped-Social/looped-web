@@ -127,6 +127,7 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
         },
       });
       if (!response.ok) {
+        const responseBody = await response.text();
         if (response.status === 404) {
           return {
             ...fallback,
@@ -144,6 +145,7 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
         logShareMetaFailure("profile-share", new Error(`Unexpected response status: ${response.status}`), {
           username,
           apiBase,
+          responseBody,
         });
         continue;
       }
