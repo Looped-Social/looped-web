@@ -1,7 +1,7 @@
 import type { Route } from "./+types/post-share";
 import { extractMediaAssetIds } from "@/lib/postMediaIds";
 import { PostSharePage } from "@/marketing/pages/PostSharePage/PostSharePage";
-import { logShareMetaFailure, resolveShareApiBase } from "./shareMeta";
+import { logShareMetaFailure, resolveShareApiBaseCandidates } from "./shareMeta";
 
 type PostShareMeta = {
   title: string;
@@ -135,114 +135,120 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
   const origin = new URL(request.url).origin;
   const fallback = buildFallbackMeta(postId, origin);
 
-  const apiBase = resolveShareApiBase(context);
-  if (!apiBase) {
+  const apiBases = resolveShareApiBaseCandidates(context);
+  if (apiBases.length === 0) {
     logShareMetaFailure("post-share", new Error("Missing API base for share metadata"), { postId });
     return fallback;
   }
 
-  try {
-    const response = await fetch(`${apiBase}/v1/public/posts/${encodeURIComponent(postId)}`, {
-      headers: {
-        Accept: "application/json",
-      },
-    });
-    if (!response.ok) {
-      if (response.status === 404) {
-        return {
-          ...fallback,
-          title: "Looped — Post Not Found",
-          description: "This shared post could not be found.",
-        } satisfies PostShareMeta;
-      }
-      if (response.status === 410) {
-        return {
-          ...fallback,
-          title: "Looped — Post Unavailable",
-          description: "This shared post is unavailable.",
-        } satisfies PostShareMeta;
-      }
-      logShareMetaFailure("post-share", new Error(`Unexpected response status: ${response.status}`), {
-        postId,
-        apiBase,
+  for (const apiBase of apiBases) {
+    try {
+      const response = await fetch(`${apiBase}/v1/public/posts/${encodeURIComponent(postId)}`, {
+        headers: {
+          Accept: "application/json",
+        },
       });
-      return fallback;
+      if (!response.ok) {
+        if (response.status === 404) {
+          return {
+            ...fallback,
+            title: "Looped — Post Not Found",
+            description: "This shared post could not be found.",
+          } satisfies PostShareMeta;
+        }
+        if (response.status === 410) {
+          return {
+            ...fallback,
+            title: "Looped — Post Unavailable",
+            description: "This shared post is unavailable.",
+          } satisfies PostShareMeta;
+        }
+        logShareMetaFailure("post-share", new Error(`Unexpected response status: ${response.status}`), {
+          postId,
+          apiBase,
+        });
+        continue;
+      }
+
+      const payload = (await response.json()) as unknown;
+      if (typeof payload !== "object" || payload === null) {
+        logShareMetaFailure("post-share", new Error("Post payload was not an object"), { postId, apiBase });
+        continue;
+      }
+      const post = payload as Record<string, unknown>;
+
+      const isAnonymous =
+        pickBoolean(post, ["author_is_anonymous", "authorIsAnonymous", "is_anonymous", "isAnonymous"]) ?? false;
+      const authorFirstName = pickString(post, ["author_first_name", "authorFirstName"]);
+      const authorLastName = pickString(post, ["author_last_name", "authorLastName"]);
+      const authorFullName = [authorFirstName, authorLastName].filter(Boolean).join(" ").trim();
+      const authorName = isAnonymous
+        ? "Anonymous"
+        : authorFullName ||
+          pickString(post, ["author_display_name", "authorDisplayName", "author_handle", "authorHandle"]) ||
+          "Looped member";
+      const authorDisplayCommunity = preferredDisplayName(post.author_display_community ?? post.authorDisplayCommunity);
+      const authorDisplaySpecialization = preferredDisplayName(
+        post.author_display_specialization ?? post.authorDisplaySpecialization
+      );
+      const memberLine =
+        isAnonymous
+          ? undefined
+          : authorDisplayCommunity && authorDisplaySpecialization
+            ? `${authorDisplaySpecialization} @ ${authorDisplayCommunity}`
+            : authorDisplayCommunity ?? authorDisplaySpecialization;
+      const communityName =
+        pickString(post, ["community_short_name", "communityShortName"]) ??
+        pickString(post, ["community_name", "communityName"]);
+      const content = pickString(post, ["content", "text", "body", "message"]) ?? "";
+
+      const likesCount = pickNumber(post, ["likes_count", "likesCount", "like_count", "likeCount"]) ?? 0;
+      const commentsCount = pickNumber(post, ["comments_count", "commentsCount", "comment_count", "commentCount"]) ?? 0;
+      const statsSummary = `${likesCount} like${likesCount === 1 ? "" : "s"} · ${commentsCount} comment${commentsCount === 1 ? "" : "s"}`;
+
+      const title = communityName ? `${authorName} in ${communityName} | Looped` : `${authorName} on Looped`;
+      const description = sanitizeMetaText(
+        [
+          memberLine,
+          content
+            ? truncate(content, 150)
+            : `View this shared post from ${authorName}${communityName ? ` in ${communityName}` : ""} on Looped.`,
+          statsSummary,
+        ]
+          .filter(Boolean)
+          .join(" • ")
+      );
+
+      const resolvedPreviewUrl = await resolvePreviewImageFromMedia(apiBase, post, origin);
+      const directPreviewUrl = toAbsoluteUrl(
+        pickString(post, [
+          "thumbnail_url",
+          "thumbnailUrl",
+          "thumbnail_image_url",
+          "thumbnailImageUrl",
+          "cdn_url",
+          "cdnUrl",
+          "media_url",
+          "mediaUrl",
+          "image_url",
+          "imageUrl",
+        ]),
+        origin
+      );
+
+      return {
+        title,
+        description,
+        canonicalUrl: `${origin}/p/${encodeURIComponent(postId)}`,
+        previewImageUrl: resolvedPreviewUrl ?? directPreviewUrl ?? new URL(FALLBACK_IMAGE_PATH, origin).toString(),
+        iosDeepLink: `looped://post/${encodeURIComponent(postId)}`,
+      } satisfies PostShareMeta;
+    } catch (error) {
+      logShareMetaFailure("post-share", error, { postId, apiBase });
     }
-
-    const payload = (await response.json()) as unknown;
-    if (typeof payload !== "object" || payload === null) {
-      logShareMetaFailure("post-share", new Error("Post payload was not an object"), { postId, apiBase });
-      return fallback;
-    }
-    const post = payload as Record<string, unknown>;
-
-    const isAnonymous = pickBoolean(post, ["author_is_anonymous", "authorIsAnonymous", "is_anonymous", "isAnonymous"]) ?? false;
-    const authorFirstName = pickString(post, ["author_first_name", "authorFirstName"]);
-    const authorLastName = pickString(post, ["author_last_name", "authorLastName"]);
-    const authorFullName = [authorFirstName, authorLastName].filter(Boolean).join(" ").trim();
-    const authorName = isAnonymous
-      ? "Anonymous"
-      : authorFullName || pickString(post, ["author_display_name", "authorDisplayName", "author_handle", "authorHandle"]) || "Looped member";
-    const authorDisplayCommunity = preferredDisplayName(post.author_display_community ?? post.authorDisplayCommunity);
-    const authorDisplaySpecialization = preferredDisplayName(
-      post.author_display_specialization ?? post.authorDisplaySpecialization
-    );
-    const memberLine =
-      isAnonymous
-        ? undefined
-        : authorDisplayCommunity && authorDisplaySpecialization
-          ? `${authorDisplaySpecialization} @ ${authorDisplayCommunity}`
-          : authorDisplayCommunity ?? authorDisplaySpecialization;
-    const communityName =
-      pickString(post, ["community_short_name", "communityShortName"]) ??
-      pickString(post, ["community_name", "communityName"]);
-    const content = pickString(post, ["content", "text", "body", "message"]) ?? "";
-
-    const likesCount = pickNumber(post, ["likes_count", "likesCount", "like_count", "likeCount"]) ?? 0;
-    const commentsCount = pickNumber(post, ["comments_count", "commentsCount", "comment_count", "commentCount"]) ?? 0;
-    const statsSummary = `${likesCount} like${likesCount === 1 ? "" : "s"} · ${commentsCount} comment${commentsCount === 1 ? "" : "s"}`;
-
-    const title = communityName ? `${authorName} in ${communityName} | Looped` : `${authorName} on Looped`;
-    const description = sanitizeMetaText(
-      [
-        memberLine,
-        content
-          ? truncate(content, 150)
-          : `View this shared post from ${authorName}${communityName ? ` in ${communityName}` : ""} on Looped.`,
-        statsSummary,
-      ]
-        .filter(Boolean)
-        .join(" • ")
-    );
-
-    const resolvedPreviewUrl = await resolvePreviewImageFromMedia(apiBase, post, origin);
-    const directPreviewUrl = toAbsoluteUrl(
-      pickString(post, [
-        "thumbnail_url",
-        "thumbnailUrl",
-        "thumbnail_image_url",
-        "thumbnailImageUrl",
-        "cdn_url",
-        "cdnUrl",
-        "media_url",
-        "mediaUrl",
-        "image_url",
-        "imageUrl",
-      ]),
-      origin
-    );
-
-    return {
-      title,
-      description,
-      canonicalUrl: `${origin}/p/${encodeURIComponent(postId)}`,
-      previewImageUrl: resolvedPreviewUrl ?? directPreviewUrl ?? new URL(FALLBACK_IMAGE_PATH, origin).toString(),
-      iosDeepLink: `looped://post/${encodeURIComponent(postId)}`,
-    } satisfies PostShareMeta;
-  } catch (error) {
-    logShareMetaFailure("post-share", error, { postId, apiBase });
-    return fallback;
   }
+
+    return fallback;
 }
 
 export function meta({ data }: Route.MetaArgs) {

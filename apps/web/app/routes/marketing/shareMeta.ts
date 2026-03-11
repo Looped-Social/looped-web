@@ -1,4 +1,5 @@
 type RecordLike = Record<string, unknown>;
+const DEFAULT_PROD_API_BASE = "https://api.looped-social.com";
 
 function asRecord(value: unknown): RecordLike | null {
   return typeof value === "object" && value !== null ? (value as RecordLike) : null;
@@ -17,7 +18,7 @@ function readCloudflareEnv(context: unknown): RecordLike | null {
   return asRecord(cloudflare?.env);
 }
 
-export function resolveShareApiBase(context: unknown): string | null {
+export function resolveShareApiBaseCandidates(context: unknown): string[] {
   const cloudflareEnv = readCloudflareEnv(context);
   const processEnv =
     typeof process !== "undefined" && process?.env && typeof process.env === "object"
@@ -30,14 +31,23 @@ export function resolveShareApiBase(context: unknown): string | null {
     cloudflareEnv?.API_BASE_URL,
     processEnv?.VITE_API_BASE_URL,
     processEnv?.API_BASE_URL,
+    DEFAULT_PROD_API_BASE,
   ];
 
+  const resolved: string[] = [];
+  const seen = new Set<string>();
   for (const candidate of candidates) {
     const normalized = normalizeUrl(candidate);
-    if (normalized) return normalized;
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    resolved.push(normalized);
   }
 
-  return null;
+  return resolved;
+}
+
+export function resolveShareApiBase(context: unknown): string | null {
+  return resolveShareApiBaseCandidates(context)[0] ?? null;
 }
 
 export function logShareMetaFailure(routeId: string, error: unknown, extra?: Record<string, unknown>): void {

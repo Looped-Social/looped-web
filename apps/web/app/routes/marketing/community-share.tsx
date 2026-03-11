@@ -1,6 +1,6 @@
 import type { Route } from "./+types/community-share";
 import { CommunitySharePage } from "@/marketing/pages/CommunitySharePage/CommunitySharePage";
-import { logShareMetaFailure, resolveShareApiBase } from "./shareMeta";
+import { logShareMetaFailure, resolveShareApiBaseCandidates } from "./shareMeta";
 
 type CommunityShareMeta = {
   title: string;
@@ -70,97 +70,101 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
   const origin = new URL(request.url).origin;
   const fallback = buildFallbackMeta(communityId, origin);
 
-  const apiBase = resolveShareApiBase(context);
-  if (!apiBase) {
+  const apiBases = resolveShareApiBaseCandidates(context);
+  if (apiBases.length === 0) {
     logShareMetaFailure("community-share", new Error("Missing API base for share metadata"), { communityId });
     return fallback;
   }
 
-  try {
-    const response = await fetch(`${apiBase}/v1/public/communities/${encodeURIComponent(communityId)}`, {
-      headers: {
-        Accept: "application/json",
-      },
-    });
-    if (!response.ok) {
-      if (response.status === 404) {
-        return {
-          ...fallback,
-          title: "Looped — Community Not Found",
-          description: "This shared community could not be found.",
-        } satisfies CommunityShareMeta;
-      }
-      if (response.status === 410) {
-        return {
-          ...fallback,
-          title: "Looped — Community Unavailable",
-          description: "This shared community is unavailable.",
-        } satisfies CommunityShareMeta;
-      }
-      logShareMetaFailure("community-share", new Error(`Unexpected response status: ${response.status}`), {
-        communityId,
-        apiBase,
+  for (const apiBase of apiBases) {
+    try {
+      const response = await fetch(`${apiBase}/v1/public/communities/${encodeURIComponent(communityId)}`, {
+        headers: {
+          Accept: "application/json",
+        },
       });
-      return fallback;
+      if (!response.ok) {
+        if (response.status === 404) {
+          return {
+            ...fallback,
+            title: "Looped — Community Not Found",
+            description: "This shared community could not be found.",
+          } satisfies CommunityShareMeta;
+        }
+        if (response.status === 410) {
+          return {
+            ...fallback,
+            title: "Looped — Community Unavailable",
+            description: "This shared community is unavailable.",
+          } satisfies CommunityShareMeta;
+        }
+        logShareMetaFailure("community-share", new Error(`Unexpected response status: ${response.status}`), {
+          communityId,
+          apiBase,
+        });
+        continue;
+      }
+
+      const payload = (await response.json()) as unknown;
+      if (typeof payload !== "object" || payload === null) {
+        logShareMetaFailure("community-share", new Error("Community payload was not an object"), {
+          communityId,
+          apiBase,
+        });
+        continue;
+      }
+      const community = payload as Record<string, unknown>;
+
+      const node =
+        typeof community.community === "object" && community.community !== null
+          ? (community.community as Record<string, unknown>)
+          : community;
+
+      const name =
+        pickString(node, ["short_name", "shortName", "name", "display_name", "displayName", "title"]) ?? "Community";
+      const descriptionBase =
+        pickString(node, ["description", "about", "bio"]) ??
+        (() => {
+          const members =
+            pickNumber(node, ["member_count", "memberCount", "members_count", "membersCount", "followers_count"]) ?? 0;
+          if (members > 0) return `${members} ${members === 1 ? "member" : "members"}`;
+          return "View this shared Looped community.";
+        })();
+      const description = sanitizeMetaText(truncate(descriptionBase, 180));
+
+      return {
+        title: `${name} | Looped`,
+        description,
+        canonicalUrl: `${origin}/c/${encodeURIComponent(communityId)}`,
+        previewImageUrl:
+          toAbsoluteUrl(
+            pickString(node, [
+              "banner_image_url",
+              "bannerImageUrl",
+              "cover_image_url",
+              "coverImageUrl",
+              "header_image_url",
+              "headerImageUrl",
+              "image_url",
+              "imageUrl",
+              "profile_image_url",
+              "profileImageUrl",
+              "icon_url",
+              "iconUrl",
+              "logo_url",
+              "logoUrl",
+            ]),
+            origin
+          ) ??
+          new URL(FALLBACK_IMAGE_PATH, origin).toString(),
+        iosDeepLink: `looped://community/${encodeURIComponent(communityId)}`,
+      } satisfies CommunityShareMeta;
+    } catch (error) {
+      logShareMetaFailure("community-share", error, { communityId, apiBase });
     }
-
-    const payload = (await response.json()) as unknown;
-    if (typeof payload !== "object" || payload === null) {
-      logShareMetaFailure("community-share", new Error("Community payload was not an object"), {
-        communityId,
-        apiBase,
-      });
-      return fallback;
-    }
-    const community = payload as Record<string, unknown>;
-
-    const node = typeof community.community === "object" && community.community !== null
-      ? (community.community as Record<string, unknown>)
-      : community;
-
-    const name =
-      pickString(node, ["short_name", "shortName", "name", "display_name", "displayName", "title"]) ?? "Community";
-    const descriptionBase =
-      pickString(node, ["description", "about", "bio"]) ??
-      (() => {
-        const members =
-          pickNumber(node, ["member_count", "memberCount", "members_count", "membersCount", "followers_count"]) ?? 0;
-        if (members > 0) return `${members} ${members === 1 ? "member" : "members"}`;
-        return "View this shared Looped community.";
-      })();
-    const description = sanitizeMetaText(truncate(descriptionBase, 180));
-
-    return {
-      title: `${name} | Looped`,
-      description,
-      canonicalUrl: `${origin}/c/${encodeURIComponent(communityId)}`,
-      previewImageUrl:
-        toAbsoluteUrl(
-          pickString(node, [
-            "banner_image_url",
-            "bannerImageUrl",
-            "cover_image_url",
-            "coverImageUrl",
-            "header_image_url",
-            "headerImageUrl",
-            "image_url",
-            "imageUrl",
-            "profile_image_url",
-            "profileImageUrl",
-            "icon_url",
-            "iconUrl",
-            "logo_url",
-            "logoUrl",
-          ]),
-          origin
-        ) ??
-        new URL(FALLBACK_IMAGE_PATH, origin).toString(),
-      iosDeepLink: `looped://community/${encodeURIComponent(communityId)}`,
-    } satisfies CommunityShareMeta;
-  } catch (error) {
-    logShareMetaFailure("community-share", error, { communityId, apiBase });
-    return fallback;
   }
+
+    return fallback;
 }
 
 export function meta({ data }: Route.MetaArgs) {
