@@ -177,8 +177,11 @@ export function AboutPage() {
             <h3 className="text-2xl font-semibold tracking-tight text-strong">Get in touch</h3>
             <p className="mt-4 text-base leading-8 text-text-secondary">
               Reach out through our contact page or send an email to{" "}
-              <a className="font-semibold text-brand transition hover:text-brand/85" href="mailto:support@looped.app">
-                support@looped.app
+              <a
+                className="font-semibold text-brand transition hover:text-brand/85"
+                href="mailto:support@looped-social.com"
+              >
+                support@looped-social.com
               </a>
               .
             </p>
@@ -190,7 +193,7 @@ export function AboutPage() {
                 Contact us
               </Link>
               <a
-                href="mailto:support@looped.app"
+                href="mailto:support@looped-social.com"
                 className="inline-flex items-center justify-center rounded-full border border-brand/18 bg-bg px-5 py-3 text-sm font-semibold text-strong transition hover:bg-bg-muted dark:hover:bg-bg-muted/70"
               >
                 Email the team

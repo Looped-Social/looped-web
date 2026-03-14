@@ -9,22 +9,22 @@ const contacts = [
   {
     title: "General inquiries",
     copy: "Questions about Looped or need help getting started?",
-    email: "support@looped.app",
+    email: "support@looped-social.com",
   },
   {
     title: "Bug reports",
     copy: "Found a bug or technical issue? Let us know so we can fix it.",
-    email: "bugs@looped.app",
+    email: "bugs@looped-social.com",
   },
   {
     title: "Press & media",
     copy: "Journalists and media inquiries welcome.",
-    email: "press@looped.app",
+    email: "press@looped-social.com",
   },
   {
     title: "Business & partnerships",
     copy: "Interested in partnering with Looped?",
-    email: "business@looped.app",
+    email: "business@looped-social.com",
   },
 ];
 

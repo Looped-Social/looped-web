@@ -131,7 +131,7 @@ const faqs: FAQItemProps[] = [
   {
     id: "who-can-i-contact-for-support",
     question: "Who can I contact for support?",
-    answer: "For support inquiries, email us at support@looped.app. We typically respond within 24–48 hours.",
+    answer: "For support inquiries, email us at support@looped-social.com. We typically respond within 24–48 hours.",
   },
 ];
 
@@ -170,8 +170,8 @@ export function FAQPage() {
           <h3 className="text-xl font-semibold text-strong">Still have questions?</h3>
           <p className="mt-2 text-base leading-7 text-text-secondary">
             Can't find the answer you're looking for? Contact us at{" "}
-            <a className="font-semibold text-brand hover:text-brand/90" href="mailto:support@looped.app">
-              support@looped.app
+            <a className="font-semibold text-brand hover:text-brand/90" href="mailto:support@looped-social.com">
+              support@looped-social.com
             </a>
           </p>
         </div>
