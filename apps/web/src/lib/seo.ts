@@ -22,6 +22,7 @@ type MarketingMetaInput = {
   imageUrl?: string;
   type?: "website" | "article" | "profile";
   robots?: string;
+  includeIosAppMeta?: boolean;
 };
 
 type AppNoIndexMetaInput = {
@@ -54,6 +55,7 @@ export function buildMarketingPageMeta({
   imageUrl,
   type = "website",
   robots = "index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1",
+  includeIosAppMeta = true,
 }: MarketingMetaInput): MetaDescriptor[] {
   const cleanTitle = sanitizeMetaText(title);
   const cleanDescription = sanitizeMetaText(description);
@@ -64,7 +66,9 @@ export function buildMarketingPageMeta({
     { title: cleanTitle },
     { name: "description", content: cleanDescription },
     { name: "robots", content: robots },
-    { name: "apple-itunes-app", content: `app-id=${IOS_APP_STORE_ID}, app-argument=${canonicalUrl}` },
+    ...(includeIosAppMeta
+      ? [{ name: "apple-itunes-app", content: `app-id=${IOS_APP_STORE_ID}, app-argument=${canonicalUrl}` }]
+      : []),
     { tagName: "link", rel: "canonical", href: canonicalUrl },
     { property: "og:type", content: type },
     { property: "og:site_name", content: SITE_NAME },

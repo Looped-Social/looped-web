@@ -36,7 +36,7 @@ export function Hero({ onOpenDialog }: HeroProps) {
       data-home-tone="light"
       className="relative min-h-screen snap-start snap-always overflow-hidden bg-white"
     >
-      <div className="mx-auto flex min-h-screen max-w-7xl flex-col px-4 pb-20 pt-24 sm:px-6 sm:pb-24 sm:pt-28 lg:px-8 lg:pb-28 lg:pt-32">
+      <div className="mx-auto flex min-h-screen max-w-7xl flex-col px-4 pb-20 pt-36 sm:px-6 sm:pb-24 sm:pt-40 lg:px-8 lg:pb-28 lg:pt-44">
         <div className="flex flex-1 flex-col items-center justify-center gap-10 lg:grid lg:grid-cols-[0.38fr_0.62fr] lg:items-center lg:gap-3">
           <div className="mx-auto flex max-w-4xl flex-col items-center text-center lg:mx-0 lg:-translate-y-20 lg:items-start lg:pl-6 lg:text-left xl:pl-8">
             <h1 className="flex flex-col items-center text-[2.8rem] font-semibold leading-[0.97] tracking-[-0.05em] text-strong sm:text-[3.7rem] lg:items-start lg:text-[4.9rem]">

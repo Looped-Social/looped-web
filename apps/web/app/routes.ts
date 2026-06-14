@@ -6,6 +6,7 @@ export default [
   route('robots.txt', 'routes/marketing/robots.tsx'),
   route('sitemap.xml', 'routes/marketing/sitemap.tsx'),
   index('routes/marketing/home.tsx'),
+  route('blog/looped-is-shutting-down', 'routes/marketing/looped-is-shutting-down.tsx'),
   route('about', 'routes/marketing/about.tsx'),
   route('contact', 'routes/marketing/contact.tsx'),
   route('privacy', 'routes/marketing/privacy.tsx'),

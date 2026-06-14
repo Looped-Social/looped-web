@@ -11,7 +11,9 @@ function xmlEscape(value: string): string {
 
 export function loader({ request }: Route.LoaderArgs) {
   const origin = new URL(request.url).origin;
-  const urls = ["/", "/about", "/contact", "/faq", "/privacy", "/terms"].map((path) => new URL(path, origin).toString());
+  const urls = ["/", "/blog/looped-is-shutting-down", "/about", "/contact", "/faq", "/privacy", "/terms"].map((path) =>
+    new URL(path, origin).toString(),
+  );
 
   const body =
     `<?xml version="1.0" encoding="UTF-8"?>\n` +
@@ -27,4 +29,3 @@ export function loader({ request }: Route.LoaderArgs) {
     },
   });
 }
-

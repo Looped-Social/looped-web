@@ -12,6 +12,7 @@ const homeFooterLinks = [
   { label: "terms", to: "/terms" },
   { label: "FAQs", to: "/faq" },
 ];
+const SHUTDOWN_POST_PATH = "/blog/looped-is-shutting-down";
 
 export function HomeChoiceDialog({
   isOpen,
@@ -134,6 +135,21 @@ export function HomeLandingChrome({
 
   return (
     <div className="pointer-events-none fixed inset-x-0 top-0 z-[70]">
+      <aside
+        aria-label="Looped shutdown announcement"
+        className="pointer-events-auto flex min-h-12 items-center justify-center bg-strong px-4 py-2.5 text-center text-sm text-white sm:px-6"
+      >
+        <p>
+          Looped is shutting down.{" "}
+          <Link
+            to={SHUTDOWN_POST_PATH}
+            className="font-semibold text-white underline decoration-white/60 underline-offset-4 transition hover:decoration-white"
+          >
+            Read a note from Luke and William
+          </Link>
+        </p>
+      </aside>
+
       <div className="hidden w-full items-center justify-between px-4 py-3 sm:px-6 lg:px-8 md:flex">
         <div className="pointer-events-auto origin-left scale-110 px-1 py-1">
           <Logo variant={logoVariant} />
