@@ -21,9 +21,7 @@ export function ShutdownPostPage() {
       <main className="px-4 py-10 sm:px-6 sm:py-14 md:py-16 lg:px-8">
         <article className="mx-auto max-w-3xl">
           <header className="mt-10 border-b border-border pb-10">
-            <p className="text-sm font-semibold uppercase tracking-[0.14em] text-brand">
-              A note from the founders
-            </p>
+            <p className="text-sm font-semibold text-brand">A note from the founders</p>
             <h1 className="mt-4 text-[2.8rem] font-semibold leading-[0.98] tracking-[-0.045em] text-strong sm:text-[4rem]">
               Looped is shutting down.
             </h1>
